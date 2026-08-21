@@ -132,14 +132,9 @@ func imageFileETag(key string, stat os.FileInfo) string {
 }
 
 func freshNegativeImageCache(failPath string) bool {
-	stat, err := os.Stat(failPath)
-	if err != nil {
-		return false
+	if _, err := os.Stat(failPath); err == nil {
+		_ = os.Remove(failPath)
 	}
-	if time.Since(stat.ModTime()) < imageNegativeCacheTTL {
-		return true
-	}
-	_ = os.Remove(failPath)
 	return false
 }
 

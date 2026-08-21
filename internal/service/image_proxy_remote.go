@@ -86,9 +86,8 @@ func (p *ImageProxy) serveRemoteImage(ctx context.Context, w http.ResponseWriter
 	if !forceRefresh && serveCachedImageFile(w, r, key, cachePath) {
 		return nil
 	}
-	if !forceRefresh && p.serveFreshRemoteFailure(w, failPath) {
-		return nil
-	}
+	// No negative caching: a previously failed fetch is retried on every
+	// subsequent request, so the image recovers as soon as upstream does.
 	data, ctype, contentLength, err := p.fetchAndCacheRemoteImage(ctx, raw, host, cachePath, failPath)
 	if err != nil {
 		if forceRefresh && serveCachedImageFile(w, r, key, cachePath) {
@@ -126,16 +125,6 @@ func (p *ImageProxy) removeUnusableImageCache(cachePath, failPath string) {
 	}
 	_ = os.Remove(cachePath)
 	_ = os.Remove(failPath)
-}
-
-func (p *ImageProxy) serveFreshRemoteFailure(w http.ResponseWriter, failPath string) bool {
-	if stat, err := os.Stat(failPath); err == nil && time.Since(stat.ModTime()) < imageNegativeCacheTTL {
-		serveCachedPlaceholder(w)
-		return true
-	} else if err == nil {
-		_ = os.Remove(failPath)
-	}
-	return false
 }
 
 func (p *ImageProxy) fetchAndCacheRemoteImage(ctx context.Context, raw, host, cachePath, failPath string) ([]byte, string, string, error) {
@@ -188,11 +177,8 @@ func (p *ImageProxy) Fetch(ctx context.Context, raw string) ([]byte, string, err
 		_ = os.Remove(cachePath)
 		_ = os.Remove(failPath)
 	}
-	if stat, err := os.Stat(failPath); err == nil && time.Since(stat.ModTime()) < imageNegativeCacheTTL {
-		return nil, "", errors.New("recent image fetch failure")
-	} else if err == nil {
-		_ = os.Remove(failPath)
-	}
+	// No negative caching: a previously failed fetch is retried on every
+	// subsequent request, so the image recovers as soon as upstream does.
 	data, ctype, _, err := p.fetchAndCacheRemoteImage(ctx, raw, host, cachePath, failPath)
 	return data, ctype, err
 }

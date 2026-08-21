@@ -44,7 +44,6 @@ type ImageProxy struct {
 const (
 	imageBrowserCacheControl     = "public, max-age=2592000, immutable"
 	imagePlaceholderCacheControl = "no-store"
-	imageNegativeCacheTTL        = 6 * time.Hour
 )
 
 // NewImageProxy is the constructor.

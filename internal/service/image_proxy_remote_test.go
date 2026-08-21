@@ -17,7 +17,7 @@ import (
 	"github.com/ShukeBta/MediaStationGo/internal/config"
 )
 
-func TestImageProxyCachesFailedRemoteImageFetch(t *testing.T) {
+func TestImageProxyDoesNotNegativeCacheFailedRemoteImageFetch(t *testing.T) {
 	var calls int32
 	proxy := NewImageProxy(&config.Config{Cache: config.CacheConfig{CacheDir: filepath.Join(t.TempDir(), "cache")}}, zap.NewNop())
 	proxy.client = &http.Client{Transport: imageRoundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -42,12 +42,13 @@ func TestImageProxyCachesFailedRemoteImageFetch(t *testing.T) {
 		if rec.Body.Len() != len(transparent1x1PNG) {
 			t.Fatalf("body length = %d, want placeholder %d", rec.Body.Len(), len(transparent1x1PNG))
 		}
+		// No negative caching: every request re-attempts upstream.
 		if got := rec.Header().Get("Cache-Control"); got != imagePlaceholderCacheControl {
 			t.Fatalf("Cache-Control = %q, want %q", got, imagePlaceholderCacheControl)
 		}
 	}
-	if got := atomic.LoadInt32(&calls); got != 1 {
-		t.Fatalf("upstream calls = %d, want 1 due to negative cache", got)
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Fatalf("upstream calls = %d, want 2 (one per request, no negative cache)", got)
 	}
 }
 
