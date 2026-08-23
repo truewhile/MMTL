@@ -85,42 +85,6 @@ func imageProxyHandler(svc *service.Container) gin.HandlerFunc {
 	}
 }
 
-func cloudArtworkProxyHandler(svc *service.Container) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		typ := c.Param("type")
-		ref := c.Query("ref")
-		if !service.IsAdminCloudConfigurable(typ) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported cloud provider"})
-			return
-		}
-		if ref == "" || !isCloudImageRef(ref) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "image ref required"})
-			return
-		}
-		if svc == nil || svc.ImageProxy == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "image proxy unavailable"})
-			return
-		}
-		stableKey := typ + ":" + ref
-		if svc.ImageProxy.ServeCloudCached(c.Writer, c.Request, stableKey) {
-			return
-		}
-		if svc.StorageCfg == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "cloud storage service unavailable"})
-			return
-		}
-		link, err := svc.StorageCfg.CloudResolve(c.Request.Context(), typ, ref, c.Request.UserAgent())
-		if err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
-			return
-		}
-		if err := svc.ImageProxy.ServeCloudResolved(c.Request.Context(), c.Writer, c.Request, stableKey, link); err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
-			return
-		}
-	}
-}
-
 type scrapeRequest struct {
 	EpisodeArtwork *bool `json:"episode_artwork"`
 	EpisodeImages  *bool `json:"episode_images"`

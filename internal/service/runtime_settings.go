@@ -100,12 +100,6 @@ func ApplyRuntimeSetting(cfg *config.Config, key, value string) {
 		}
 	case "transcode.video_bitrate", "transcoder.video_bitrate":
 		cfg.Transcoder.VideoBitrate = value
-	case "license.server_url":
-		cfg.License.ServerURL = value
-	case "license.hmac_secret":
-		cfg.License.HMACSecret = value
-	case "license.public_key":
-		cfg.License.PublicKey = value
 	}
 }
 

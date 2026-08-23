@@ -2,7 +2,6 @@ import { Outlet } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import clsx from 'clsx'
 
-import { AppFooter } from './AppFooter'
 import { LayoutSidebarContent, type LayoutSidebarContentProps } from './LayoutSidebarContent'
 import { RouteErrorBoundary } from './RouteErrorBoundary'
 import type { useLayoutSidebar } from './useLayoutSidebar'
@@ -22,9 +21,10 @@ type LayoutMobileSidebarProps = {
 
 type LayoutSidebarsProps = Omit<
   LayoutSidebarContentProps,
-  'isSidebarOpen' | 'isMobileDrawerOpen' | 'openGroups' | 'isRouteIn' | 'onToggleGroup' | 'onToggleSidebar' | 'onCloseMobileDrawer'
+  'isSidebarOpen' | 'isMobileDrawerOpen' | 'onToggleSidebar' | 'onCloseMobileDrawer'
 > & {
   sidebar: LayoutSidebarState
+  showSidebar: boolean
 }
 
 type LayoutWorkspaceProps = {
@@ -76,25 +76,32 @@ export function LayoutMobileSidebar({ children, isOpen, onClose }: LayoutMobileS
 export function LayoutSidebars({
   sidebar,
   isAdmin,
-  username,
   can,
-  onLogout,
+  showSidebar,
 }: LayoutSidebarsProps) {
   const content = (
     <LayoutSidebarContent
       isSidebarOpen={sidebar.isSidebarOpen}
       isMobileDrawerOpen={sidebar.isMobileDrawerOpen}
-      openGroups={sidebar.openGroups}
       isAdmin={isAdmin}
-      username={username}
       can={can}
-      isRouteIn={sidebar.isRouteIn}
-      onToggleGroup={sidebar.toggleGroup}
-      onToggleSidebar={() => sidebar.setIsSidebarOpen((current) => !current)}
+      onToggleSidebar={sidebar.toggleSidebar}
       onCloseMobileDrawer={() => sidebar.setIsMobileDrawerOpen(false)}
-      onLogout={onLogout}
     />
   )
+
+  if (!showSidebar) {
+    return (
+      <>
+        <LayoutMobileSidebar
+          isOpen={sidebar.isMobileDrawerOpen}
+          onClose={() => sidebar.setIsMobileDrawerOpen(false)}
+        >
+          {content}
+        </LayoutMobileSidebar>
+      </>
+    )
+  }
 
   return (
     <>
@@ -128,12 +135,6 @@ export function LayoutWorkspace({ routeKey }: LayoutWorkspaceProps) {
         </AnimatePresence>
       </div>
     </main>
-  )
-}
-
-export function LayoutFrameFooter() {
-  return (
-    <AppFooter className="border-t border-[var(--app-border)] bg-[var(--app-panel)] py-5 text-center text-xs text-[var(--app-muted)]" />
   )
 }
 

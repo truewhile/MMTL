@@ -40,9 +40,14 @@ var (
 	ErrUserExpired        = errors.New("user account has expired")
 )
 
-// MaxUsers is kept for compatibility with tests and callers; dynamic runtime
-// checks use LicensedMaxUsers so official licensed builds can raise the quota.
+// MaxUsers 是单实例允许的最大用户数（开源版本固定上限）。
 const MaxUsers = OpenSourceUserLimit
+
+// OpenSourceUserLimit 是开源版本的用户数上限。
+const OpenSourceUserLimit = 20
+
+// UserLimit 是注册/邀请码发放时的固定用户数上限（授权管理已移除，固定为开源上限）。
+const UserLimit = OpenSourceUserLimit
 
 // SeedAdmin makes sure at least one admin user exists. It mirrors the
 // legacy default behaviour: if no admin row is found we create
@@ -100,7 +105,7 @@ func (s *AuthService) Register(ctx context.Context, username, password string) (
 	}
 	if n, err := s.repo.User.Count(ctx); err != nil {
 		return nil, nil, err
-	} else if n >= LicensedMaxUsers(ctx, s.repo) {
+	} else if n >= UserLimit {
 		return nil, nil, ErrUserLimitReached
 	}
 	hash, err := hashPassword(password)

@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -19,7 +18,6 @@ import (
 	"github.com/ShukeBta/MediaStationGo/internal/model"
 	"github.com/ShukeBta/MediaStationGo/internal/repository"
 	"github.com/ShukeBta/MediaStationGo/internal/service"
-	"github.com/ShukeBta/MediaStationGo/internal/service/cloud"
 )
 
 func TestEmbyItemImageServesWithoutAPIAuth(t *testing.T) {
@@ -89,63 +87,6 @@ func TestEmbyItemImageServesWithoutAPIAuth(t *testing.T) {
 	}
 	if got := w.Header().Get("Expires"); got != "" {
 		t.Fatalf("image Expires = %q, want empty", got)
-	}
-}
-
-func TestEmbyItemImageServesCachedCloudArtworkWithoutResolve(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/jpeg")
-		_, _ = w.Write(handlerTestJPEG)
-	}))
-	defer upstream.Close()
-
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	if err := db.AutoMigrate(&model.Media{}); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-
-	cfg := &config.Config{Cache: config.CacheConfig{CacheDir: t.TempDir()}}
-	imageProxy := service.NewImageProxy(cfg, zap.NewNop())
-	ref := "/Movies/Cloud Movie/poster.jpg"
-	if err := imageProxy.PrefetchCloudResolved(t.Context(), "openlist:"+ref, &cloud.DirectLink{URL: upstream.URL + "/poster.jpg"}); err != nil {
-		t.Fatalf("prefetch cloud poster: %v", err)
-	}
-	repos := repository.New(db)
-	if err := db.Create(&model.Media{
-		Base:      model.Base{ID: "cloud-media-1"},
-		Title:     "Cloud Poster Test",
-		Path:      "cloud://openlist/Movies/Cloud Movie/movie.mkv",
-		PosterURL: service.CloudArtworkURL("openlist", ref),
-	}).Error; err != nil {
-		t.Fatalf("create media: %v", err)
-	}
-
-	router := gin.New()
-	registerEmbyRoutes(router, "test-secret", &service.Container{
-		Repo:       repos,
-		Emby:       service.NewEmbyService(cfg, zap.NewNop(), repos),
-		ImageProxy: imageProxy,
-	})
-
-	req := httptest.NewRequest(http.MethodGet, "/Items/cloud-media-1/Images/Primary", nil)
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("unexpected status: %d body=%s", w.Code, w.Body.String())
-	}
-	if got := w.Body.Bytes(); !bytes.Equal(got, handlerTestJPEG) {
-		t.Fatalf("body = %q, want cached cloud poster", got)
-	}
-	if location := w.Header().Get("Location"); location != "" {
-		t.Fatalf("expected direct cached image response, got redirect to %q", location)
-	}
-	if got := w.Header().Get("Cache-Control"); !strings.Contains(got, "max-age=2592000") {
-		t.Fatalf("image Cache-Control = %q, want long browser cache", got)
 	}
 }
 

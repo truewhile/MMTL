@@ -1,14 +1,6 @@
 package service
 
-import (
-	"testing"
-
-	"go.uber.org/zap"
-
-	"github.com/ShukeBta/MediaStationGo/internal/config"
-	"github.com/ShukeBta/MediaStationGo/internal/model"
-	"github.com/ShukeBta/MediaStationGo/internal/repository"
-)
+import "testing"
 
 func TestClassifyMediaCategoryMatchesSmartRules(t *testing.T) {
 	tests := []struct {
@@ -436,28 +428,5 @@ func TestNormalizeMediaTypeDoesNotTreatReleaseTokensAsTV(t *testing.T) {
 
 	if got := normalizeMediaType("", "The Last of Us", `F:\media\tv\The Last of Us`); got != "tv" {
 		t.Fatalf("standalone tv path token = %q, want tv", got)
-	}
-}
-
-func TestSubscriptionResolveClassifiedSavePath(t *testing.T) {
-	db := newServiceTestDB(t, &model.Setting{})
-	repos := repository.New(db)
-	if err := repos.Setting.Set(t.Context(), "organizer.smart_classify", "true"); err != nil {
-		t.Fatal(err)
-	}
-	if err := repos.Setting.Set(t.Context(), "qbittorrent.savepath", `D:\Downloads`); err != nil {
-		t.Fatal(err)
-	}
-	svc := NewSubscriptionService(&config.Config{}, zap.NewNop(), repos, nil, nil, nil)
-	sub := &model.Subscription{Name: "声生不息 自动订阅", MediaType: "tv"}
-
-	mediaType, category := svc.classifySubscriptionItem(t.Context(), sub, "声生不息 S01E01", "综艺")
-	if mediaType != "tv" || category != "综艺" {
-		t.Fatalf("classification = %q/%q, want tv/综艺", mediaType, category)
-	}
-	got := svc.resolveSubscriptionSavePath(t.Context(), sub, mediaType, category)
-	want := `D:\Downloads\综艺`
-	if got != want {
-		t.Fatalf("save path = %q, want %q", got, want)
 	}
 }

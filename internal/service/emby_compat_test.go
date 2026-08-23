@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -10,7 +9,6 @@ import (
 	"github.com/ShukeBta/MediaStationGo/internal/config"
 	"github.com/ShukeBta/MediaStationGo/internal/model"
 	"github.com/ShukeBta/MediaStationGo/internal/repository"
-	"github.com/ShukeBta/MediaStationGo/internal/service/cloud"
 )
 
 func newTestEmbyService(t *testing.T) *EmbyService {
@@ -66,30 +64,4 @@ func TestEmbyLatestItemsOrderByReleaseDate(t *testing.T) {
 	if _, ok := items[0]["PremiereDate"].(time.Time); !ok {
 		t.Fatalf("latest item should expose PremiereDate for Emby clients: %#v", items[0])
 	}
-}
-
-type fakeCloudPlaybackResolver struct {
-	link *cloud.DirectLink
-	typ  string
-	ref  string
-	ua   string
-}
-
-func (f *fakeCloudPlaybackResolver) CloudResolve(_ context.Context, typ, fileRef, clientUA string) (*cloud.DirectLink, error) {
-	f.typ = typ
-	f.ref = fileRef
-	f.ua = clientUA
-	return f.link, nil
-}
-
-type fakeCloudPlaybackProber struct {
-	probe   *ProbeResult
-	rawURL  string
-	headers map[string]string
-}
-
-func (f *fakeCloudPlaybackProber) ProbeHTTP(_ context.Context, rawURL string, headers map[string]string) (*ProbeResult, error) {
-	f.rawURL = rawURL
-	f.headers = headers
-	return f.probe, nil
 }

@@ -32,9 +32,6 @@ func (s *ScannerService) ScanLibraryRoot(ctx context.Context, libraryID, rootID 
 	if root == nil {
 		return nil, errors.New("library root not found")
 	}
-	if mount, ok := ParseCloudLibraryMount(root.Path); ok {
-		return s.scanCloudLibraryRoot(ctx, lib, root, mount, true)
-	}
 	return s.scanLocalLibraryRoot(ctx, lib, root, true)
 }
 
@@ -73,9 +70,6 @@ func (s *ScannerService) scanLibrary(ctx context.Context, libraryID string, auto
 	}
 	if lib == nil {
 		return nil, errors.New("library not found")
-	}
-	if mount, ok := ParseCloudLibraryMount(lib.Path); ok {
-		return s.scanMountedCloudLibrary(ctx, lib, mount, autoScrape)
 	}
 	res := &ScanResult{LibraryID: lib.ID}
 	writeBatch := newLocalMediaWriteBatch(s, ctx, res, 100)
@@ -216,9 +210,7 @@ func (s *ScannerService) finishLocalLibraryScan(ctx context.Context, lib *model.
 		"error_count": res.ErrorCount,
 		"errors":      res.Errors,
 	})
-	s.notifyScanFinished(lib, res, nil, false)
 	s.invalidateMediaCache(ctx)
-	s.maybeGenerateSTRMAfterScan(lib.ID)
 
 	if scanHasImportChanges(res) && autoScrape && s.scraper != nil && s.scraper.AnyEnabled() && s.autoScrapeEnabled(ctx) {
 		s.startAutoScrape(ctx, lib.ID)

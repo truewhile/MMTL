@@ -31,7 +31,7 @@ func TestSchedulerOrganizeSourceDisabledByDefault(t *testing.T) {
 	}
 
 	organizer := NewOrganizerService(&config.Config{}, zap.NewNop(), repos)
-	scheduler := NewSchedulerService(zap.NewNop(), repos, nil, nil, organizer, nil, NewHub(zap.NewNop()), "")
+	scheduler := NewSchedulerService(zap.NewNop(), repos, nil, nil, organizer, NewHub(zap.NewNop()), "")
 	if err := scheduler.jobOrganizeSource(t.Context()); err != nil {
 		t.Fatalf("disabled organize source job should be a no-op: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestSchedulerOrganizeSourceUsesConfiguredSourceAndDestination(t *testing.T)
 	}
 
 	organizer := NewOrganizerService(&config.Config{}, zap.NewNop(), repos)
-	scheduler := NewSchedulerService(zap.NewNop(), repos, nil, nil, organizer, nil, NewHub(zap.NewNop()), "")
+	scheduler := NewSchedulerService(zap.NewNop(), repos, nil, nil, organizer, NewHub(zap.NewNop()), "")
 	if err := scheduler.jobOrganizeSource(t.Context()); err != nil {
 		t.Fatalf("organize source job: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestSchedulerRunNowOrganizeSourceBypassesDisabledSwitch(t *testing.T) {
 	}
 
 	organizer := NewOrganizerService(&config.Config{}, zap.NewNop(), repos)
-	scheduler := NewSchedulerService(zap.NewNop(), repos, nil, nil, organizer, nil, NewHub(zap.NewNop()), "")
+	scheduler := NewSchedulerService(zap.NewNop(), repos, nil, nil, organizer, NewHub(zap.NewNop()), "")
 	scheduler.jobs = []*scheduledJob{{
 		name:     "organize_source",
 		interval: time.Minute,
@@ -136,7 +136,7 @@ func TestSchedulerOrganizeSourceSyncsVisibilityWhenTargetAlreadyExists(t *testin
 		t.Fatalf("seed organize destination: %v", err)
 	}
 	scanner := NewScannerService(&config.Config{}, zap.NewNop(), repos, NewHub(zap.NewNop()), nil, nil)
-	scheduler := NewSchedulerService(zap.NewNop(), repos, scanner, nil, organizer, nil, NewHub(zap.NewNop()), "")
+	scheduler := NewSchedulerService(zap.NewNop(), repos, scanner, nil, organizer, NewHub(zap.NewNop()), "")
 	scheduler.jobs = []*scheduledJob{{
 		name:     "organize_source",
 		interval: time.Minute,

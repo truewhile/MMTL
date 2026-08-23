@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"go.uber.org/zap"
-
 	"github.com/ShukeBta/MediaStationGo/internal/model"
 )
 
@@ -21,7 +19,6 @@ func (e *EmbyService) PlaybackInfo(ctx context.Context, mediaID, userID string) 
 	if err != nil || m == nil {
 		return nil, err
 	}
-	e.ensureCloudTrackMetadata(ctx, m)
 	return map[string]any{
 		"MediaSources":  e.mediaSourcesForItem(ctx, m, false, e.directPlayOnly(ctx)),
 		"PlaySessionId": fmt.Sprintf("%s-%d", m.ID, time.Now().Unix()),
@@ -108,60 +105,6 @@ var (
 // 拖长到秒级，又让每一次点开详情/起播都可能触发一次云盘数据下载，是
 // Docker 部署下 CPU/带宽长期居高的来源之一。探测结果落库后，下一次
 // 请求自然能读到完整元数据。
-func (e *EmbyService) ensureCloudTrackMetadata(ctx context.Context, m *model.Media) {
-	if e == nil || m == nil || e.storage == nil || e.probe == nil || !mediaTrackMetadataMissing(m) {
-		return
-	}
-	typ, ref, ok := parseCloudMediaPlaybackURL(m.STRMURL)
-	if !ok {
-		return
-	}
-	mediaID := m.ID
-	e.cloudProbeMu.Lock()
-	if e.cloudProbeInFlight == nil {
-		e.cloudProbeInFlight = make(map[string]struct{})
-	}
-	if _, busy := e.cloudProbeInFlight[mediaID]; busy {
-		e.cloudProbeMu.Unlock()
-		return
-	}
-	e.cloudProbeInFlight[mediaID] = struct{}{}
-	e.cloudProbeMu.Unlock()
-
-	go e.probeCloudTrackMetadata(mediaID, typ, ref)
-}
-
-func (e *EmbyService) probeCloudTrackMetadata(mediaID, typ, ref string) {
-	defer func() {
-		e.cloudProbeMu.Lock()
-		delete(e.cloudProbeInFlight, mediaID)
-		e.cloudProbeMu.Unlock()
-	}()
-	probeCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	link, err := e.storage.CloudResolve(probeCtx, typ, ref, "")
-	if err != nil {
-		if e.log != nil {
-			e.log.Debug("resolve cloud media for playback probe failed", zap.String("media_id", mediaID), zap.Error(err))
-		}
-		return
-	}
-	probe, err := e.probe.ProbeHTTP(probeCtx, link.URL, link.Headers)
-	if err != nil {
-		if e.log != nil {
-			e.log.Debug("playback cloud ffprobe failed", zap.String("media_id", mediaID), zap.Error(err))
-		}
-		return
-	}
-	updates := probeResultUpdates(probe)
-	if len(updates) == 0 {
-		return
-	}
-	if err := e.repo.DB.WithContext(probeCtx).Model(&model.Media{}).Where("id = ?", mediaID).Updates(updates).Error; err != nil && e.log != nil {
-		e.log.Debug("persist playback cloud probe failed", zap.String("media_id", mediaID), zap.Error(err))
-	}
-}
-
 func mediaTrackMetadataMissing(m *model.Media) bool {
 	return m.DurationSec <= 0 ||
 		m.Width <= 0 ||

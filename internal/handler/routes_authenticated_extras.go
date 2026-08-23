@@ -16,18 +16,8 @@ func registerAuthedUISurfaceRoutes(authed *gin.RouterGroup, svc *service.Contain
 	authed.DELETE("/watch-history", historyDeleteHandler(svc))
 	authed.DELETE("/watch-history/:id", historyDeleteOneHandler(svc))
 
-	authed.GET("/discover/sections", requirePermission(svc, "can_view_discover"), discoverSectionsHandler(svc))
-	authed.GET("/discover/feed", requirePermission(svc, "can_view_discover"), discoverFeedHandler(svc))
-
 	authed.GET("/system/info", systemInfoHandler(svc))
 	authed.GET("/system/status", systemStatusHandler(svc))
-	authed.GET("/system/scheduler", systemSchedulerHandler(svc))
-
-	authed.GET("/stats/overview", statsOverviewHandler(svc))
-	authed.GET("/stats/trend", statsTrendHandler(svc))
-	authed.GET("/stats/top-content", statsTopContentHandler(svc))
-	authed.GET("/stats/libraries", statsLibrariesHandler(svc))
-	authed.GET("/stats/monitor", statsMonitorHandler(svc))
 
 	authed.GET("/play-profiles", listPlayProfilesHandler(svc))
 	authed.POST("/play-profiles", createPlayProfileHandler(svc))
@@ -40,7 +30,6 @@ func registerAuthedSearchRoutes(authed *gin.RouterGroup, svc *service.Container)
 	authed.GET("/search", searchUnifiedHandler(svc))
 	authed.GET("/search/advanced", searchAdvancedHandler(svc))
 	authed.GET("/search/tmdb", searchTMDbHandler(svc))
-	authed.GET("/search/sites", searchSitesHandler(svc))
 }
 
 func registerAuthedSystemExtraRoutes(authed *gin.RouterGroup, svc *service.Container) {
@@ -53,16 +42,6 @@ func registerAuthedStatsExtraRoutes(authed *gin.RouterGroup, svc *service.Contai
 	authed.GET("/stats/user/:id", statsUserHandler(svc))
 	authed.GET("/stats/top-users", statsTopUsersHandler(svc))
 	authed.POST("/stats/play", statsPlayHandler(svc))
-}
-
-func registerAuthedSitesExtraRoutes(authed *gin.RouterGroup, svc *service.Container) {
-	authed.GET("/sites/:id/resource", requirePermission(svc, "can_manage_sites"), siteResourceHandler(svc))
-	authed.GET("/sites/:id/userdata", requirePermission(svc, "can_manage_sites"), siteUserdataHandler(svc))
-}
-
-func registerAuthedSubscriptionExtraRoutes(authed *gin.RouterGroup, svc *service.Container) {
-	authed.PUT("/subscriptions/:id", requirePermission(svc, "can_manage_subscriptions"), updateSubscriptionHandler(svc))
-	authed.POST("/subscriptions/:id/search", requirePermission(svc, "can_manage_subscriptions"), searchSubscriptionHandler(svc))
 }
 
 func registerAuthedPlaylistExtraRoutes(authed *gin.RouterGroup, svc *service.Container) {
@@ -93,25 +72,4 @@ func registerAuthedPlaybackExtraRoutes(authed *gin.RouterGroup, svc *service.Con
 	authed.GET("/playback/:id/external-players", externalPlayersHandler(svc))
 	authed.GET("/playback/:id/external-url", externalURLHandler(svc))
 	authed.GET("/playback/transcode/:job_id/status", transcodeStatusHandler(svc))
-}
-
-func registerAuthedDownloadOpsRoutes(authed *gin.RouterGroup, svc *service.Container) {
-	authed.POST("/download/:id/pause", requirePermission(svc, "can_manage_downloads"), downloadPauseHandler(svc))
-	authed.POST("/download/:id/resume", requirePermission(svc, "can_manage_downloads"), downloadResumeHandler(svc))
-	authed.POST("/download/:id/organize", requirePermission(svc, "can_manage_files"), downloadOrganizeOneHandler(svc))
-	authed.POST("/download/organize", requirePermission(svc, "can_manage_files"), downloadOrganizeAllHandler(svc))
-	authed.POST("/download/sync", requirePermission(svc, "can_manage_downloads"), downloadSyncHandler(svc))
-	authed.POST("/download/start-auto-sync", requirePermission(svc, "can_manage_downloads"), downloadAutoSyncHandler(svc))
-	authed.GET("/download/tasks", requirePermission(svc, "can_manage_downloads"), downloadTasksAliasHandler(svc))
-}
-
-func registerAuthedAssistantRoutes(authed *gin.RouterGroup, svc *service.Container) {
-	authed.GET("/admin/assistant/sessions", listAssistantSessionsHandler(svc))
-	authed.POST("/admin/assistant/sessions", createAssistantSessionHandler(svc))
-	authed.GET("/admin/assistant/session/:id", getAssistantSessionHandler(svc))
-	authed.DELETE("/admin/assistant/session/:id", deleteAssistantSessionHandler(svc))
-	authed.POST("/admin/assistant/chat", assistantChatHandler(svc))
-	authed.POST("/admin/assistant/execute", assistantExecuteHandler(svc))
-	authed.POST("/admin/assistant/undo/:op_id", assistantUndoHandler(svc))
-	authed.GET("/admin/assistant/history", assistantHistoryHandler(svc))
 }

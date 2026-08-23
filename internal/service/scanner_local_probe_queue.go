@@ -50,6 +50,39 @@ func (s *ScannerService) startLocalMediaProbeWorkers() {
 	})
 }
 
+func (s *ScannerService) ffprobeWorkerCount() int {
+	if s == nil || s.cfg == nil {
+		return 1
+	}
+	return normalizeFFprobeMaxConcurrent(s.cfg.App.FFprobeMaxConcurrent)
+}
+
+func probeResultUpdates(probe *ProbeResult) map[string]any {
+	updates := map[string]any{}
+	if probe == nil {
+		return updates
+	}
+	if probe.DurationSec > 0 {
+		updates["duration_sec"] = probe.DurationSec
+	}
+	if probe.Width > 0 {
+		updates["width"] = probe.Width
+	}
+	if probe.Height > 0 {
+		updates["height"] = probe.Height
+	}
+	if strings.TrimSpace(probe.VideoCodec) != "" {
+		updates["video_codec"] = probe.VideoCodec
+	}
+	if strings.TrimSpace(probe.AudioCodec) != "" {
+		updates["audio_codec"] = probe.AudioCodec
+	}
+	if probe.Container != "" {
+		updates["container"] = probe.Container
+	}
+	return updates
+}
+
 func (s *ScannerService) reserveLocalMediaProbe(path string) bool {
 	s.localMediaProbeMu.Lock()
 	defer s.localMediaProbeMu.Unlock()

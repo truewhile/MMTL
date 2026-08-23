@@ -2,6 +2,15 @@ package service
 
 import "testing"
 
+func containsString(values []string, want string) bool {
+	for _, v := range values {
+		if v == want {
+			return true
+		}
+	}
+	return false
+}
+
 func TestBuildSubscribeKeyword(t *testing.T) {
 	if got := buildSubscribeKeyword("沙丘", 2024); got != "沙丘 2024" {
 		t.Fatalf("keyword = %q", got)

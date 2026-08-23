@@ -5,8 +5,6 @@
 //
 //	library_scan      every 24 h  — optional full re-scan for local libraries;
 //	                                  filesystem watchers handle normal changes.
-//	cloud_sync        low frequency — optional cloud library sync.
-//	cloud_upload      low frequency — optional local-to-cloud metadata upload.
 //	organize_source   opt-in        — organize the configured staging folder.
 //	transcode_cleanup every 24 h   — purge HLS transcode artefacts
 //	                                  older than 24 h.
@@ -38,7 +36,6 @@ type SchedulerService struct {
 	transcoder       *TranscoderService
 	organizer        *OrganizerService
 	organizePipeline *OrganizePipelineService
-	storageCfg       *StorageConfigService
 	hub              *Hub
 	tasks            *TaskTrackerService
 	cacheDir         string
@@ -75,10 +72,7 @@ type scheduledJob struct {
 
 type schedulerManualRunKey struct{}
 
-const (
-	localLastPeriodicScanDateKey   = "scan.last_periodic_date"
-	cloudAutoSyncCompletedDateForm = "2006-01-02"
-)
+const localLastPeriodicScanDateKey = "scan.last_periodic_date"
 
 // NewSchedulerService is the constructor.
 func NewSchedulerService(
@@ -87,7 +81,6 @@ func NewSchedulerService(
 	scanner *ScannerService,
 	transcoder *TranscoderService,
 	organizer *OrganizerService,
-	storageCfg *StorageConfigService,
 	hub *Hub,
 	cacheDir string,
 ) *SchedulerService {
@@ -97,7 +90,6 @@ func NewSchedulerService(
 		scanner:    scanner,
 		transcoder: transcoder,
 		organizer:  organizer,
-		storageCfg: storageCfg,
 		hub:        hub,
 		cacheDir:   cacheDir,
 		now:        time.Now,
@@ -112,16 +104,6 @@ func (s *SchedulerService) Start(ctx context.Context) {
 			name:     "library_scan",
 			interval: 24 * time.Hour,
 			run:      s.jobScanLibraries,
-		},
-		{
-			name:     "cloud_sync",
-			interval: s.cloudSyncInterval(ctx),
-			run:      s.jobSyncCloudLibraries,
-		},
-		{
-			name:     "cloud_upload",
-			interval: s.cloudUploadInterval(ctx),
-			run:      s.jobUploadLocalToCloud,
 		},
 		{
 			name:     "organize_source",

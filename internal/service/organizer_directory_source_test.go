@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -32,48 +31,6 @@ func TestOrganizeDirectoryUsesConfiguredSourceWhenRequestSourceEmpty(t *testing.
 	if res.SourcePath != filepath.Clean(src) || res.Organized != 1 {
 		t.Fatalf("result = %+v, want source=%q organized=1", res, src)
 	}
-}
-
-func TestOrganizeDirectorySkipsActiveQBitTorrentDownloads(t *testing.T) {
-	root := t.TempDir()
-	src := filepath.Join(root, "downloads")
-	dest := filepath.Join(root, "media")
-	active := filepath.Join(src, "Still.Downloading.2026.1080p.mkv")
-	done := filepath.Join(src, "Dune 2021 2160p WEB-DL.mkv")
-	writeOrgFile(t, active, "partial")
-	writeOrgFile(t, done, "done")
-
-	org := NewOrganizerService(&config.Config{}, zap.NewNop(), newOrganizerTestRepo(t))
-	org.SetActiveDownloadProvider(func(context.Context) []QBitTorrent {
-		return []QBitTorrent{{
-			Hash:        "active",
-			Name:        "Still.Downloading.2026.1080p",
-			State:       "downloading",
-			Progress:    0.42,
-			SavePath:    src,
-			ContentPath: active,
-		}}
-	})
-	res, err := org.OrganizeDirectory(t.Context(), OrganizeOptions{
-		SourcePath:   src,
-		DestPath:     dest,
-		TransferMode: TransferMove,
-	})
-	if err != nil {
-		t.Fatalf("organize directory: %v", err)
-	}
-	if res.Organized != 1 || res.Skipped != 1 {
-		t.Fatalf("result = %+v, want organized=1 skipped=1", res)
-	}
-	if _, err := os.Stat(active); err != nil {
-		t.Fatalf("active qB file must stay in source: %v", err)
-	}
-	for _, item := range res.Items {
-		if item.Source == active && item.Action == "skip" && item.Reason == organizeSkipActiveDownload {
-			return
-		}
-	}
-	t.Fatalf("missing active-download skip item: %+v", res.Items)
 }
 
 func TestOrganizeDirectoryMapsConfiguredHostPathsToContainerPaths(t *testing.T) {

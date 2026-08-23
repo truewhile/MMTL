@@ -49,23 +49,6 @@ func (o *OrganizerService) SetProbe(p *FFprobeService) { o.probe = p }
 // metadata before it decides the final folder and filename.
 func (o *OrganizerService) SetScraper(s *ScraperService) { o.scraper = s }
 
-// SetActiveDownloadPathProvider wires a live downloader snapshot. Directory
-// organize must never move/copy files that still belong to an unfinished
-// torrent, regardless of which UI switch triggered the organize operation.
-func (o *OrganizerService) SetActiveDownloadPathProvider(provider func(context.Context) []string) {
-	o.activeDownloadPaths = provider
-}
-
-func (o *OrganizerService) SetActiveDownloadProvider(provider func(context.Context) []QBitTorrent) {
-	if provider == nil {
-		o.activeDownloadPaths = nil
-		return
-	}
-	o.activeDownloadPaths = func(ctx context.Context) []string {
-		return activeDownloadPathCandidates(provider(ctx), nil)
-	}
-}
-
 // OrganizeMedia moves a single media file into the target library directory.
 // It auto-detects whether the media is a movie or TV episode based on the
 // parsed season/episode numbers and builds the destination path accordingly.

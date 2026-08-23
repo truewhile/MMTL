@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"regexp"
-	"sort"
 	"strings"
 
 	"github.com/ShukeBta/MediaStationGo/internal/model"
@@ -35,27 +34,6 @@ func EnrichExternalMediaAvailability(ctx context.Context, repo *repository.Conta
 			items[i].TotalEpisodes = availability.TotalEpisodes
 		}
 	}
-}
-
-func EnrichSubscriptionProgress(ctx context.Context, repo *repository.Container, items []model.Subscription) {
-	for i := range items {
-		availability := SubscriptionLocalAvailability(ctx, repo, &items[i])
-		items[i].DownloadedEpisodes = availability.DownloadedEpisodes
-		items[i].LocalMediaCount = availability.LocalMediaCount
-		items[i].MissingEpisodes = availability.MissingEpisodes
-		items[i].InLibrary = availability.InLibrary
-		if items[i].TotalEpisodes == 0 {
-			items[i].TotalEpisodes = availability.TotalEpisodes
-		}
-	}
-}
-
-func SubscriptionLocalAvailability(ctx context.Context, repo *repository.Container, sub *model.Subscription) LocalAvailability {
-	if sub == nil {
-		return LocalAvailability{}
-	}
-	expected := sub.TotalEpisodes
-	return LookupLocalAvailability(ctx, repo, sub.Name, sub.Filter, sub.MediaType, expected)
 }
 
 func LookupLocalAvailability(ctx context.Context, repo *repository.Container, title, keyword, mediaType string, expectedTotal int) LocalAvailability {
@@ -116,6 +94,15 @@ func LookupLocalAvailability(ctx context.Context, repo *repository.Container, ti
 	return out
 }
 
+func isSubscriptionSeriesType(mediaType string) bool {
+	switch normalizeMediaType(mediaType, "", "") {
+	case "tv", "anime", "variety":
+		return true
+	default:
+		return false
+	}
+}
+
 func missingEpisodes(existing map[string]struct{}, total int) []int {
 	if total <= 0 {
 		return nil
@@ -153,77 +140,4 @@ func episodeKey(season, episode int) string {
 		season = 1
 	}
 	return fmt.Sprintf("%02dE%03d", season, episode)
-}
-
-func missingEpisodeSet(availability LocalAvailability) map[int]struct{} {
-	out := make(map[int]struct{}, len(availability.MissingEpisodes))
-	for _, episode := range availability.MissingEpisodes {
-		out[episode] = struct{}{}
-	}
-	return out
-}
-
-func sortedEpisodeCandidates(candidates []siteSearchCandidate) []siteSearchCandidate {
-	selected := make([]siteSearchCandidate, 0, len(candidates))
-	covered := make(map[string]struct{}, len(candidates))
-	for _, candidate := range candidates {
-		keys := candidateEpisodeKeys(candidate)
-		if len(keys) == 0 {
-			continue
-		}
-		if episodeKeysOverlap(covered, keys) {
-			continue
-		}
-		selected = append(selected, candidate)
-		for _, key := range keys {
-			covered[key] = struct{}{}
-		}
-	}
-	sort.SliceStable(selected, func(i, j int) bool {
-		return candidateFirstEpisodeKey(selected[i]) < candidateFirstEpisodeKey(selected[j])
-	})
-	return selected
-}
-
-func candidateEpisodeKeys(candidate siteSearchCandidate) []string {
-	episodes := candidateEpisodeNumbers(candidate)
-	if len(episodes) == 0 {
-		return nil
-	}
-	season := candidate.Season
-	if season <= 0 {
-		season = 1
-	}
-	keys := make([]string, 0, len(episodes))
-	seen := make(map[string]struct{}, len(episodes))
-	for _, episode := range episodes {
-		if episode <= 0 {
-			continue
-		}
-		key := episodeKey(season, episode)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-func candidateFirstEpisodeKey(candidate siteSearchCandidate) string {
-	keys := candidateEpisodeKeys(candidate)
-	if len(keys) == 0 {
-		return ""
-	}
-	return keys[0]
-}
-
-func episodeKeysOverlap(covered map[string]struct{}, keys []string) bool {
-	for _, key := range keys {
-		if _, ok := covered[key]; ok {
-			return true
-		}
-	}
-	return false
 }

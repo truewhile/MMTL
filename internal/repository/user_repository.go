@@ -141,9 +141,6 @@ func (r *UserRepository) Delete(ctx context.Context, id string) error {
 		if err := tx.Where("id = ?", id).First(&user).Error; err != nil {
 			return err
 		}
-		if err := tx.Unscoped().Where("user_id = ?", id).Delete(&model.TelegramBinding{}).Error; err != nil {
-			return err
-		}
 		released := user.Username + "__deleted__" + time.Now().Format("20060102150405.000000000")
 		if len(released) > 64 {
 			sum := sha256.Sum256([]byte(user.ID + user.Username))

@@ -19,7 +19,6 @@ import (
 
 	"github.com/ShukeBta/MediaStationGo/internal/config"
 	"github.com/ShukeBta/MediaStationGo/internal/repository"
-	"github.com/ShukeBta/MediaStationGo/internal/service/cloud"
 	"go.uber.org/zap"
 )
 
@@ -47,8 +46,6 @@ type EmbyService struct {
 	cfg     *config.Config
 	log     *zap.Logger
 	repo    *repository.Container
-	storage cloudPlaybackResolver
-	probe   cloudPlaybackProber
 	cache   *RuntimeCacheService
 	subtitle *SubtitleService
 
@@ -60,19 +57,8 @@ type EmbyService struct {
 	visibilityMu    sync.RWMutex
 	visibilityCache map[string]embyVisibilityCacheEntry
 
-	cloudProbeMu       sync.Mutex
-	cloudProbeInFlight map[string]struct{}
-
 	libraryCoverMu    sync.Mutex
 	libraryCoverCache map[string]embyArtworkCacheEntry
-}
-
-type cloudPlaybackResolver interface {
-	CloudResolve(ctx context.Context, typ, fileRef, clientUA string) (*cloud.DirectLink, error)
-}
-
-type cloudPlaybackProber interface {
-	ProbeHTTP(ctx context.Context, rawURL string, headers map[string]string) (*ProbeResult, error)
 }
 
 // NewEmbyService is the constructor.
@@ -85,14 +71,6 @@ func (e *EmbyService) SetRuntimeCache(cache *RuntimeCacheService) *EmbyService {
 		e.cache = cache
 	}
 	return e
-}
-
-func (e *EmbyService) SetCloudProbe(storage cloudPlaybackResolver, probe cloudPlaybackProber) {
-	if e == nil {
-		return
-	}
-	e.storage = storage
-	e.probe = probe
 }
 
 // SetSubtitleService wires the external-subtitle discovery service into the

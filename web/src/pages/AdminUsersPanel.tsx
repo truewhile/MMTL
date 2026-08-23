@@ -2,7 +2,6 @@ import { FormEvent, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { adminAPI } from '../api/admin'
-import { licenseAPI, type LicenseStatus } from '../api/license'
 import type { User } from '../types'
 import { confirmAction } from '../components/confirmAction'
 import { requestPassword } from '../components/requestPassword'
@@ -11,19 +10,13 @@ import { AdminUsersTable } from './AdminUsersTable'
 
 export function AdminUsersPanel() {
   const [users, setUsers] = useState<User[]>([])
-  const [licenseStatus, setLicenseStatus] = useState<LicenseStatus | null>(null)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [editingID, setEditingID] = useState<string | null>(null)
   const [editingUsername, setEditingUsername] = useState('')
   const [resettingPasswordID, setResettingPasswordID] = useState<string | null>(null)
   const refresh = async () => {
-    const [nextUsers, nextLicense] = await Promise.all([
-      adminAPI.listUsers(),
-      licenseAPI.status().catch(() => null),
-    ])
-    setUsers(nextUsers)
-    setLicenseStatus(nextLicense)
+    setUsers(await adminAPI.listUsers())
   }
   useEffect(() => {
     refresh().catch(() => undefined)
@@ -31,12 +24,9 @@ export function AdminUsersPanel() {
     return () => window.clearInterval(timer)
   }, [])
 
-  const unlimitedUsers =
-    licenseStatus?.active === true &&
-    (licenseStatus.unlimited_users === true || licenseStatus.max_users == null)
-  const maxUsers = unlimitedUsers ? null : (licenseStatus?.max_users ?? 20)
-  const userLimitReached = maxUsers != null && users.length >= maxUsers
-  const userLimitLabel = unlimitedUsers ? '不限制' : String(maxUsers)
+  const maxUsers = 20
+  const userLimitReached = users.length >= maxUsers
+  const userLimitLabel = String(maxUsers)
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault()

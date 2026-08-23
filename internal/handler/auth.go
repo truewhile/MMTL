@@ -62,7 +62,6 @@ func registerHandler(svc *service.Container) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		refreshLicenseCapacityBestEffort(c.Request.Context(), svc)
 		u, tokens, err := svc.Auth.Register(c.Request.Context(), req.Username, req.Password)
 		if err != nil {
 			if errors.Is(err, service.ErrUsernameTaken) {

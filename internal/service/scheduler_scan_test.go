@@ -28,7 +28,7 @@ func TestSchedulerPeriodicLocalScanRunsAtMostOncePerDay(t *testing.T) {
 	}
 	log := zap.NewNop()
 	scanner := NewScannerService(&config.Config{}, log, repos, NewHub(log), nil, nil)
-	scheduler := NewSchedulerService(log, repos, scanner, nil, nil, nil, NewHub(log), "")
+	scheduler := NewSchedulerService(log, repos, scanner, nil, nil, NewHub(log), "")
 	scheduler.now = func() time.Time {
 		return time.Date(2026, 6, 20, 10, 0, 0, 0, time.Local)
 	}
@@ -75,7 +75,7 @@ func TestSchedulerManualLocalScanBypassesDailyPeriodicLimit(t *testing.T) {
 	}
 	log := zap.NewNop()
 	scanner := NewScannerService(&config.Config{}, log, repos, NewHub(log), nil, nil)
-	scheduler := NewSchedulerService(log, repos, scanner, nil, nil, nil, NewHub(log), "")
+	scheduler := NewSchedulerService(log, repos, scanner, nil, nil, NewHub(log), "")
 	scheduler.now = func() time.Time {
 		return time.Date(2026, 6, 20, 10, 0, 0, 0, time.Local)
 	}

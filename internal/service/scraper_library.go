@@ -109,7 +109,6 @@ func (s *ScraperService) EnrichLibraryDetailedWithOptions(ctx context.Context, l
 		}
 		if err := s.EnrichOneWithOptions(ctx, &rows[i], runOptions); err != nil {
 			s.log.Warn("enrich failed", zap.String("media", rows[i].ID), zap.Error(err))
-			s.notifyScrapeFailed(rows[i], err)
 			result.Failed++
 			continue
 		}
@@ -192,22 +191,6 @@ func shouldScrapeCandidateRow(media model.Media) bool {
 		return true
 	}
 	return organizeMediaTitleLooksLikeRelease(media.Title)
-}
-
-func (s *ScraperService) notifyScrapeFailed(m model.Media, err error) {
-	if s == nil || s.notify == nil || err == nil {
-		return
-	}
-	body := strings.TrimSpace(m.Title)
-	if body == "" {
-		body = m.Path
-	}
-	body = "媒体：" + body + "\n错误：" + err.Error()
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		s.notify.Broadcast(ctx, "MediaStationGo 刮削失败", body, EventScrapeFailed)
-	}()
 }
 
 func (s *ScraperService) scrapeDelay(ctx context.Context) time.Duration {

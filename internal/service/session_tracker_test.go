@@ -1,7 +1,6 @@
 package service
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -132,61 +131,6 @@ func TestLogoutKeepsRealtimeLastActivityWithoutOnlineSession(t *testing.T) {
 	}
 	if users[0].RealtimeOnline || users[0].RealtimeDeviceCount != 0 {
 		t.Fatalf("logged-out user should keep last activity but no online devices, online=%v devices=%d", users[0].RealtimeOnline, users[0].RealtimeDeviceCount)
-	}
-}
-
-func TestBotDevicesIncludesRealtimeSessionOnlyDevices(t *testing.T) {
-	repos, bot := newBotTestService(t)
-	user := model.User{Base: model.Base{ID: "u1"}, Username: "viewer", PasswordHash: "x", Role: "user", IsActive: true}
-	if err := repos.User.Create(t.Context(), &user); err != nil {
-		t.Fatal(err)
-	}
-	if err := repos.DB.Create(&model.TelegramBinding{TelegramUserID: 9103, ChatID: 9103, UserID: user.ID}).Error; err != nil {
-		t.Fatal(err)
-	}
-	tracker := NewSessionTrackerService(zap.NewNop())
-	now := time.Date(2026, 6, 21, 11, 0, 0, 0, time.UTC)
-	tracker.now = func() time.Time { return now }
-	tracker.RecordActivity(t.Context(), user.ID, user.Username, "dev-1", "Apple TV", "Yamby", "10.0.0.8")
-	device := NewDeviceService(zap.NewNop(), repos)
-	device.SetSessionTracker(tracker)
-	bot.SetDeviceService(device)
-
-	reply := bot.replyDevices(t.Context(), &TelegramMessage{
-		From: TelegramUser{ID: 9103, Username: "viewer"},
-		Chat: TelegramChat{ID: 9103, Type: "private"},
-	})
-
-	if !strings.Contains(reply.Text, "Apple TV / Yamby") || !strings.Contains(reply.Text, "在线") {
-		t.Fatalf("reply should include realtime online device, got %q", reply.Text)
-	}
-	if !strings.Contains(reply.Text, "06-21 11:00") {
-		t.Fatalf("reply should use realtime last seen time, got %q", reply.Text)
-	}
-}
-
-func TestBotUserInfoUsesRealtimeLastLogin(t *testing.T) {
-	repos, bot := newBotTestService(t)
-	now := time.Date(2026, 6, 21, 13, 45, 0, 0, time.UTC)
-	old := now.Add(-6 * time.Hour)
-	user := model.User{Base: model.Base{ID: "u1"}, Username: "viewer", PasswordHash: "x", Role: "user", IsActive: true, LastLoginAt: &old}
-	if err := repos.User.Create(t.Context(), &user); err != nil {
-		t.Fatal(err)
-	}
-	tracker := NewSessionTrackerService(zap.NewNop())
-	tracker.now = func() time.Time { return now }
-	tracker.RecordActivity(t.Context(), user.ID, user.Username, "dev-1", "Apple TV", "Yamby", "10.0.0.8")
-	device := NewDeviceService(zap.NewNop(), repos)
-	device.SetSessionTracker(tracker)
-	bot.SetDeviceService(device)
-
-	reply := bot.cmdMgoUserInfo(t.Context(), []string{"viewer"})
-
-	if !strings.Contains(reply.Text, "最后登录：<b>2026-06-21 13:45</b>") {
-		t.Fatalf("reply should use realtime last login, got %q", reply.Text)
-	}
-	if !strings.Contains(reply.Text, "设备：<b>1</b>") {
-		t.Fatalf("reply should count realtime device, got %q", reply.Text)
 	}
 }
 

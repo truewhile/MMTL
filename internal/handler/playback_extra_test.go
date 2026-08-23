@@ -275,63 +275,6 @@ func TestScopedPlaybackTokenCannotStreamAnotherMedia(t *testing.T) {
 	}
 }
 
-func TestScopedPlaybackTokenCanFollowCloudRedirectForSameMedia(t *testing.T) {
-	router, svc, _ := newPlaybackScopeTestRouter(t)
-	user, err := svc.Repo.User.FindByID(t.Context(), "user-1")
-	if err != nil || user == nil {
-		t.Fatalf("find user: %v", err)
-	}
-	playToken, err := svc.Auth.IssueExternalPlaybackToken(user, "media-1", 2*60*60)
-	if err != nil {
-		t.Fatalf("issue playback token: %v", err)
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "http://nas.local/api/stream/media-1?token="+url.QueryEscape(playToken), nil)
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	if w.Code != http.StatusFound {
-		t.Fatalf("stream status = %d body=%s, want 302", w.Code, w.Body.String())
-	}
-	loc := w.Header().Get("Location")
-	if !strings.Contains(loc, "/api/cloud/play/openlist?") ||
-		!strings.Contains(loc, "media_id=media-1") ||
-		!strings.Contains(loc, "token="+url.QueryEscape(playToken)) {
-		t.Fatalf("redirect Location should carry scoped token and media_id, got %q", loc)
-	}
-
-	req = httptest.NewRequest(http.MethodGet, loc, nil)
-	w = httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	if w.Code == http.StatusForbidden || w.Code == http.StatusUnauthorized {
-		t.Fatalf("cloud redirect rejected scoped token: status=%d body=%s", w.Code, w.Body.String())
-	}
-	if w.Code != http.StatusServiceUnavailable {
-		t.Fatalf("cloud redirect status = %d body=%s, want storage service fallback 503", w.Code, w.Body.String())
-	}
-}
-
-func TestScopedPlaybackTokenCannotRetargetCloudRef(t *testing.T) {
-	router, svc, _ := newPlaybackScopeTestRouter(t)
-	user, err := svc.Repo.User.FindByID(t.Context(), "user-1")
-	if err != nil || user == nil {
-		t.Fatalf("find user: %v", err)
-	}
-	playToken, err := svc.Auth.IssueExternalPlaybackToken(user, "media-1", 2*60*60)
-	if err != nil {
-		t.Fatalf("issue playback token: %v", err)
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "http://nas.local/api/cloud/play/openlist?ref=other&media_id=media-1&token="+url.QueryEscape(playToken), nil)
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
-	}
-}
-
 func TestScopedPlaybackTokenCannotCallRegularAPI(t *testing.T) {
 	router, svc, _ := newPlaybackScopeTestRouter(t)
 	api := router.Group("/api")
@@ -464,6 +407,5 @@ func newPlaybackScopeTestRouter(t *testing.T) (*gin.Engine, *service.Container, 
 	api.GET("/playback/:id/external-url", externalURLHandler(svc))
 	api.GET("/playback/:id/external-players", externalPlayersHandler(svc))
 	api.GET("/stream/:id", streamHandler(svc))
-	api.GET("/cloud/play/:type", cloudPlayHandler(svc))
 	return router, svc, cfg.Secrets.JWTSecret
 }

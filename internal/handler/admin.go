@@ -43,7 +43,6 @@ func createUserHandler(svc *service.Container) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		refreshLicenseCapacityBestEffort(c.Request.Context(), svc)
 		u, _, err := svc.Auth.Register(c.Request.Context(), req.Username, req.Password)
 		if err != nil {
 			writeUserMutationError(c, svc, err)
@@ -227,8 +226,7 @@ func writeUserMutationError(c *gin.Context, svc *service.Container, err error) {
 	case errors.Is(err, service.ErrUsernameTaken):
 		c.JSON(http.StatusConflict, gin.H{"error": "username already taken"})
 	case errors.Is(err, service.ErrUserLimitReached):
-		maxUsers := service.LicensedMaxUsers(c.Request.Context(), svc.Repo)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "user limit reached", "max_users": maxUsers})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "user limit reached", "max_users": service.UserLimit})
 	default:
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 	}

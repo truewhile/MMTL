@@ -293,37 +293,14 @@ func (s *MediaService) ensureLibraryRootPathUnique(ctx context.Context, libraryI
 
 func normalizeLibraryRootPath(rawPath string) (string, error) {
 	rawPath = strings.TrimSpace(rawPath)
-	if info, ok := ParseCloudLibraryMount(rawPath); ok {
-		displayDir := canonicalLibraryDisplayDir(firstNonEmpty(info.DisplayDir, info.ScanDir))
-		if displayDir == "" {
-			displayDir = firstNonEmpty(info.DisplayDir, info.ScanDir)
-		}
-		if CloudLibraryAutoCategory(model.Library{Path: rawPath}) {
-			return BuildCloudAutoCategoryLibraryPathWithScanDir(info.Provider, info.ScanDir, displayDir), nil
-		}
-		return BuildCloudLibraryPath(info.Provider, info.ScanDir, displayDir), nil
-	}
 	return resolveAccessibleLibraryPath(rawPath)
 }
 
 func libraryRootPathKey(pathValue string) string {
 	pathValue = strings.TrimSpace(pathValue)
-	if info, ok := ParseCloudLibraryMount(pathValue); ok {
-		auto := "0"
-		if CloudLibraryAutoCategory(model.Library{Path: pathValue}) {
-			auto = "1"
-		}
-		return strings.ToLower(info.Provider + "\x00" + info.ScanDir + "\x00" + info.DisplayDir + "\x00" + auto)
-	}
 	return strings.ToLower(filepath.Clean(pathValue))
 }
 
 func libraryRootNameForPath(pathValue string) string {
-	if info, ok := ParseCloudLibraryMount(pathValue); ok {
-		if base := cloudMountDirBase(firstNonEmpty(info.DisplayDir, info.ScanDir)); base != "" {
-			return base
-		}
-		return CloudMountProviderLabel(info.Provider)
-	}
 	return filepath.Base(filepath.Clean(pathValue))
 }

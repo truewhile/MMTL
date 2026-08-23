@@ -20,9 +20,6 @@ func Register(r *gin.Engine, cfg *config.Config, log *zap.Logger, svc *service.C
 		api.GET("/version", versionInfo)
 		api.GET("/public/ui-config", publicUIConfigHandler(svc))
 
-		// Telegram Bot webhook — called by Telegram servers, no auth.
-		api.POST("/telegram/webhook", telegramWebhookHandler(svc))
-
 		registerPublicAuthRoutes(api, svc, log)
 
 		registerAuthenticatedRoutes(api, cfg, svc)
@@ -88,42 +85,6 @@ func deleteApiConfigHandler(svc *service.Container) gin.HandlerFunc {
 func testApiConfigHandler(svc *service.Container) gin.HandlerFunc {
 	h := NewApiConfigHandler(svc, svc.Log)
 	return h.TestApiConfig
-}
-
-// ─── Download Client Handler 包装 ─────────────────────────────────────────────
-
-func getDownloadClientHandler(svc *service.Container) gin.HandlerFunc {
-	h := NewDownloadClientHandler(svc, svc.Log)
-	return h.Get
-}
-
-// ─── Notify Channel Handler 包装 ──────────────────────────────────────────────
-
-func getNotifyChannelTypesHandler(svc *service.Container) gin.HandlerFunc {
-	h := NewNotifyHandler(svc, svc.Log)
-	return h.GetTypes
-}
-
-func getNotifyChannelHandler(svc *service.Container) gin.HandlerFunc {
-	h := NewNotifyHandler(svc, svc.Log)
-	return h.Get
-}
-
-// ─── Scheduler Handler 包装 ──────────────────────────────────────────────────
-
-func schedulerListTasksHandler(svc *service.Container) gin.HandlerFunc {
-	h := NewSchedulerHandler(svc, svc.Log)
-	return h.ListTasks
-}
-
-func schedulerRunTaskHandler(svc *service.Container) gin.HandlerFunc {
-	h := NewSchedulerHandler(svc, svc.Log)
-	return h.RunTask
-}
-
-func schedulerGetStatusHandler(svc *service.Container) gin.HandlerFunc {
-	h := NewSchedulerHandler(svc, svc.Log)
-	return h.GetStatus
 }
 
 // ─── SSE Handler ──────────────────────────────────────────────────────────────

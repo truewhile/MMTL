@@ -31,41 +31,6 @@ func (g activeDownloadGuard) contains(path string) bool {
 	return false
 }
 
-func activeDownloadPathCandidates(torrents []QBitTorrent, mappings map[string]string) []string {
-	if len(torrents) == 0 {
-		return nil
-	}
-	var out []string
-	for _, torrent := range torrents {
-		if qbitTorrentCompleted(torrent) {
-			continue
-		}
-		for _, raw := range []string{
-			torrent.ContentPath,
-			filepath.Join(strings.TrimSpace(torrent.SavePath), strings.TrimSpace(torrent.Name)),
-		} {
-			out = appendDownloadPathCandidates(out, raw, mappings)
-		}
-	}
-	return cleanUniqueExistingPaths(out)
-}
-
-func appendDownloadPathCandidates(out []string, raw string, mappings map[string]string) []string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" || raw == "." {
-		return out
-	}
-	if translated := translateClientPath(raw, mappings); translated != "" {
-		out = append(out, translated)
-	}
-	for _, candidate := range mappedPathCandidates(raw) {
-		if _, err := os.Stat(candidate); err == nil {
-			out = append(out, candidate)
-		}
-	}
-	return out
-}
-
 func cleanUniqueExistingPaths(paths []string) []string {
 	if len(paths) == 0 {
 		return nil

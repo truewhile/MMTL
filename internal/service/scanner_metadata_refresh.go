@@ -19,100 +19,6 @@ type scanDerivedMetadata struct {
 	EpisodeNum   int
 }
 
-func cloudMetadataNeedsRefresh(existing existingCloudMedia, localMeta *LocalMetadata) bool {
-	if localMeta == nil {
-		return false
-	}
-	if localMeta.PathHint && !localMeta.HasNFO && !localMeta.HasArtwork {
-		return cloudPathHintNeedsRefresh(existing, localMeta)
-	}
-	if localMetadataMarksMatched(localMeta) && strings.TrimSpace(existing.ScrapeStatus) != "matched" {
-		return true
-	}
-	if localMeta.Title != "" && strings.TrimSpace(existing.Title) != strings.TrimSpace(localMeta.Title) {
-		return true
-	}
-	if localMeta.OriginalName != "" && strings.TrimSpace(existing.OriginalName) != strings.TrimSpace(localMeta.OriginalName) {
-		return true
-	}
-	if localMeta.EpisodeTitle != "" && strings.TrimSpace(existing.EpisodeTitle) != strings.TrimSpace(localMeta.EpisodeTitle) {
-		return true
-	}
-	if localMeta.AdultCode != "" && !strings.EqualFold(strings.TrimSpace(existing.OriginalName), strings.TrimSpace(localMeta.AdultCode)) {
-		return true
-	}
-	if localMeta.Year > 0 && existing.Year != localMeta.Year {
-		return true
-	}
-	if localMeta.ReleaseDate != "" && strings.TrimSpace(existing.ReleaseDate) != strings.TrimSpace(localMeta.ReleaseDate) {
-		return true
-	}
-	if localMeta.Overview != "" && strings.TrimSpace(existing.Overview) != strings.TrimSpace(localMeta.Overview) {
-		return true
-	}
-	if localMeta.Rating > 0 && existing.Rating != localMeta.Rating {
-		return true
-	}
-	if localMeta.TMDbID > 0 && existing.TMDbID != localMeta.TMDbID {
-		return true
-	}
-	if localMeta.BangumiID > 0 && existing.BangumiID != localMeta.BangumiID {
-		return true
-	}
-	if strings.TrimSpace(localMeta.DoubanID) != "" && strings.TrimSpace(existing.DoubanID) != strings.TrimSpace(localMeta.DoubanID) {
-		return true
-	}
-	if strings.TrimSpace(localMeta.TheTVDBID) != "" && strings.TrimSpace(existing.TheTVDBID) != strings.TrimSpace(localMeta.TheTVDBID) {
-		return true
-	}
-	if strings.TrimSpace(localMeta.PosterURL) != "" && strings.TrimSpace(existing.PosterURL) != strings.TrimSpace(localMeta.PosterURL) {
-		return true
-	}
-	if strings.TrimSpace(localMeta.BackdropURL) != "" && strings.TrimSpace(existing.BackdropURL) != strings.TrimSpace(localMeta.BackdropURL) {
-		return true
-	}
-	if (localMeta.SeasonNum > 0 || localMeta.EpisodeNum > 0) && existing.SeasonNum != localMeta.SeasonNum {
-		return true
-	}
-	if localMeta.EpisodeNum > 0 && existing.EpisodeNum != localMeta.EpisodeNum {
-		return true
-	}
-	if localMeta.Genres != "" && strings.TrimSpace(existing.Genres) != strings.TrimSpace(localMeta.Genres) {
-		return true
-	}
-	if localMeta.Countries != "" && strings.TrimSpace(existing.Countries) != strings.TrimSpace(localMeta.Countries) {
-		return true
-	}
-	if localMeta.Languages != "" && strings.TrimSpace(existing.Languages) != strings.TrimSpace(localMeta.Languages) {
-		return true
-	}
-	if localMeta.NSFW && !existing.NSFW {
-		return true
-	}
-	return false
-}
-
-func cloudPathHintNeedsRefresh(existing existingCloudMedia, localMeta *LocalMetadata) bool {
-	if localMeta.TMDbID > 0 && existing.TMDbID != localMeta.TMDbID {
-		return true
-	}
-	if localMeta.BangumiID > 0 && existing.BangumiID != localMeta.BangumiID {
-		return true
-	}
-	if strings.TrimSpace(localMeta.DoubanID) != "" && strings.TrimSpace(existing.DoubanID) != strings.TrimSpace(localMeta.DoubanID) {
-		return true
-	}
-	return strings.TrimSpace(localMeta.TheTVDBID) != "" && strings.TrimSpace(existing.TheTVDBID) != strings.TrimSpace(localMeta.TheTVDBID)
-}
-
-func cloudTrackMetadataMissing(existing existingCloudMedia) bool {
-	return existing.DurationSec <= 0 ||
-		existing.Width <= 0 ||
-		existing.Height <= 0 ||
-		strings.TrimSpace(existing.VideoCodec) == "" ||
-		strings.TrimSpace(existing.AudioCodec) == ""
-}
-
 func localMetadataNeedsRefresh(existing existingLocalMedia, local *LocalMetadata) bool {
 	if local == nil {
 		return false
@@ -178,24 +84,6 @@ func localMetadataNeedsRefresh(existing existingLocalMedia, local *LocalMetadata
 		return true
 	}
 	return local.NSFW && !existing.NSFW
-}
-
-func cloudDerivedMetadataNeedsRefresh(existing existingCloudMedia, incoming *model.Media) bool {
-	if incoming == nil {
-		return false
-	}
-	return scanDerivedMetadataNeedsRefresh(scanDerivedMetadata{
-		Title:        existing.Title,
-		ScrapeStatus: existing.ScrapeStatus,
-		Year:         existing.Year,
-		ReleaseDate:  existing.ReleaseDate,
-		TMDbID:       existing.TMDbID,
-		BangumiID:    existing.BangumiID,
-		DoubanID:     existing.DoubanID,
-		TheTVDBID:    existing.TheTVDBID,
-		SeasonNum:    existing.SeasonNum,
-		EpisodeNum:   existing.EpisodeNum,
-	}, incoming)
 }
 
 func localDerivedMetadataNeedsRefresh(existing existingLocalMedia, incoming *model.Media) bool {

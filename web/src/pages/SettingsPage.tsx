@@ -1,23 +1,36 @@
 import { FormEvent, useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Loader2, Save, SettingsIcon } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 import { adminAPI } from '../api/admin'
 import { libraryAPI } from '../api/library'
 import type { Library, Setting } from '../types'
+import { APIConfigsPanel } from '../components/APIConfigsPanel'
 import { AdultSettingsPanel } from './AdultSettingsPanel'
+import { LibrarySettingsPanel } from './LibrarySettingsPanel'
 import { RecognitionWordsPanel } from './RecognitionWordsPanel'
 import { SettingRow } from './SettingsRow'
-import { SystemUpdatePanel } from './SystemUpdatePanel'
 import { ALL_KEYS, GROUPS } from './settingsGroups'
 
 export function SettingsPage() {
-  const [activeGroup, setActiveGroup] = useState(GROUPS[0].key)
+  const [searchParams] = useSearchParams()
+  const [activeGroup, setActiveGroup] = useState(() => {
+    const fromQuery = searchParams.get('group')
+    return GROUPS.some((g) => g.key === fromQuery) ? (fromQuery as string) : GROUPS[0].key
+  })
   const [values, setValues] = useState<Record<string, string>>({})
   const [dirty, setDirty] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [libraries, setLibraries] = useState<Library[]>([])
+
+  useEffect(() => {
+    const fromQuery = searchParams.get('group')
+    if (fromQuery && GROUPS.some((g) => g.key === fromQuery)) {
+      setActiveGroup(fromQuery)
+    }
+  }, [searchParams])
 
   const refresh = async () => {
     setLoading(true)
@@ -108,10 +121,11 @@ export function SettingsPage() {
 
       {!loading && (
         <div className="space-y-4">
-          {group.key === 'system-update' && <SystemUpdatePanel />}
+          {group.key === 'library' && <LibrarySettingsPanel />}
+          {group.key === 'api-configs' && <APIConfigsPanel />}
           {group.key === 'recognition-words' && <RecognitionWordsPanel />}
           {group.key === 'adult' && <AdultSettingsPanel />}
-          {group.key !== 'adult' && group.items.length > 0 && (
+          {group.key !== 'adult' && group.key !== 'library' && group.items.length > 0 && (
             <form onSubmit={onSave} className="glass-panel space-y-4">
               {group.description && <p className="text-xs text-sand-500">{group.description}</p>}
               {group.items.map((it) => (

@@ -31,46 +31,30 @@ type Container struct {
 	Bangumi          *BangumiProvider
 	TheTVDB          *TheTVDBProvider
 	Fanart           *FanartProvider
-	Scraper          *ScraperService
-	Discover         *DiscoverService
-	Playback         *PlaybackService
+		Scraper          *ScraperService
+		Playback         *PlaybackService
 	ImageProxy       *ImageProxy
 	Watcher          *WatcherService
-	Downloads        *DownloadService
-	Subscription     *SubscriptionService
 	Subtitle         *SubtitleService
-	Stats            *StatsService
 	Profile          *ProfileService
 	Audit            *AuditService
 	NFO              *NFOService
-	AI               *AIService
 	APIConfig        *APIConfigService
 	Crypto           *CryptoService
-	Duplicate        *DuplicateService
 	FileManager      *FileManagerService
 	DLNA             *DLNAService
 	Scheduler        *SchedulerService
 	Storage          *StorageService
 	Emby             *EmbyService
 	Backup           *BackupService
-	Notifier         *NotifierService
-	NotifyChannels   *NotifyChannelService
-	TelegramBot      *TelegramBotService
 	PlayProfiles     *PlayProfileService
 	Permissions      *PermissionService
-	StorageCfg       *StorageConfigService
-	STRM             *STRMService
 	SystemUpdate     *SystemUpdateService
-	DownloadClients  *DownloadClientService
-	Assistant        *AssistantService
 	Organizer        *OrganizerService
 	OrganizePipeline *OrganizePipelineService
 	Douban           *DoubanProvider
 	Token            *TokenService
 	ApiConfig        *ApiConfigService
-	DownloadMgr      *DownloadManager
-	Notify           *NotifyService
-	Site             *SiteService
 	Device           *DeviceService
 	Cache            *RuntimeCacheService
 	Sessions         *SessionTrackerService
@@ -96,14 +80,9 @@ func (c *Container) Boot() {
 	if err := c.NormalizeLocalLibraryPaths(c.stopCtx); err != nil {
 		c.Log.Warn("normalize local library paths failed", zap.Error(err))
 	}
-	if err := c.NormalizeCloudLibraryTypes(c.stopCtx); err != nil {
-		c.Log.Warn("normalize cloud library types failed", zap.Error(err))
-	}
 	if err := c.Watcher.Start(c.stopCtx); err != nil {
 		c.Log.Warn("watcher start failed", zap.Error(err))
 	}
-	c.Downloads.Start(c.stopCtx)
-	c.Subscription.Start(c.stopCtx)
 	if err := c.APIConfig.SeedDefaults(c.stopCtx); err != nil {
 		c.Log.Warn("api config seed failed", zap.Error(err))
 	}
@@ -111,12 +90,6 @@ func (c *Container) Boot() {
 
 	// 启动调度器定时任务
 	c.Scheduler.Start(c.stopCtx)
-
-	// 云盘存储健康检查
-	c.BootCloudStorageHealthCheck(c.stopCtx)
-
-	// 自动扫描云盘媒体库，使内容对所有用户立即可见
-	c.BootCloudLibraries(c.stopCtx)
 
 	// Mgo 保号规则巡检：默认关闭，由管理员通过 Telegram Bot 命令开启。
 	// 每天触发一次评估；规则里的窗口可随机，不固定。
@@ -162,12 +135,6 @@ func (c *Container) Close() {
 	}
 	if c.Watcher != nil {
 		c.Watcher.Stop()
-	}
-	if c.Subscription != nil {
-		c.Subscription.Stop()
-	}
-	if c.Downloads != nil {
-		c.Downloads.Stop()
 	}
 	if c.Transcoder != nil {
 		c.Transcoder.StopAll()

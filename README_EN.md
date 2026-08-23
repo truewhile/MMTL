@@ -1,7 +1,7 @@
-# MediaStationGo
+# MMTL (My Movie and TV Library)
 
 <p align="center">
-  <img src="web/public/brand/mgo-emby-icon.svg" width="96" height="96" alt="MediaStationGo Logo" />
+  <img src="web/public/brand/logo-192.png" width="96" height="96" alt="MMTL Logo" />
 </p>
 
 <h3 align="center">A lightweight, polished, NAS-friendly private media center</h3>

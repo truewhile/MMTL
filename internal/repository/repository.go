@@ -17,20 +17,12 @@ type Container struct {
 	History        *HistoryRepository
 	Favorite       *FavoriteRepository
 	Playlist       *PlaylistRepository
-	Download       *DownloadRepository
-	Subscription   *SubscriptionRepository
 	Setting        *SettingRepository
 	Log            *AccessLogRepository
 	Permission     *PermissionRepository
 	RefreshToken   *RefreshTokenRepository
 	ApiConfig      *ApiConfigRepository
-	DownloadClient *DownloadClientRepository
-	NotifyChannel  *NotifyChannelRepository
-	Site           *SiteRepository
-	STRM           *STRMRepository
 	PlayProfile    *PlayProfileRepository
-	StorageConfig  *StorageConfigRepository
-	Assistant      *AssistantRepository
 	RegCode        *RegistrationCodeRepository
 	SignIn         *SignInRepository
 	UserDevice     *UserDeviceRepository
@@ -47,20 +39,12 @@ func New(db *gorm.DB) *Container {
 		History:        &HistoryRepository{db: db},
 		Favorite:       &FavoriteRepository{db: db},
 		Playlist:       &PlaylistRepository{db: db},
-		Download:       &DownloadRepository{db: db},
-		Subscription:   &SubscriptionRepository{db: db},
 		Setting:        &SettingRepository{db: db},
 		Log:            &AccessLogRepository{db: db},
 		Permission:     &PermissionRepository{db: db},
 		RefreshToken:   &RefreshTokenRepository{db: db},
 		ApiConfig:      &ApiConfigRepository{db: db},
-		DownloadClient: &DownloadClientRepository{db: db},
-		NotifyChannel:  &NotifyChannelRepository{db: db},
-		Site:           &SiteRepository{db: db},
-		STRM:           &STRMRepository{db: db},
 		PlayProfile:    &PlayProfileRepository{db: db},
-		StorageConfig:  &StorageConfigRepository{db: db},
-		Assistant:      &AssistantRepository{db: db},
 		RegCode:        &RegistrationCodeRepository{db: db},
 		SignIn:         &SignInRepository{db: db},
 		UserDevice:     &UserDeviceRepository{db: db},

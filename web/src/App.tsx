@@ -16,7 +16,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { hasError: bo
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('MediaStationGo UI crashed', error, info)
+    console.error('MMTL UI crashed', error, info)
   }
 
   render() {

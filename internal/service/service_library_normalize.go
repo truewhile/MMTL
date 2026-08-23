@@ -79,28 +79,6 @@ func normalizePersistedLocalLibraryPath(pathValue string) string {
 }
 
 func (c *Container) NormalizeCloudLibraryTypes(ctx context.Context) error {
-	if c == nil || c.Repo == nil || c.Repo.Library == nil || c.Repo.DB == nil {
-		return nil
-	}
-	libs, err := c.Repo.Library.List(ctx)
-	if err != nil {
-		return err
-	}
-	for _, lib := range libs {
-		info, ok := ParseCloudLibraryMount(lib.Path)
-		if !ok {
-			continue
-		}
-		want := InferCloudMountMediaType(info.DisplayDir, lib.Name)
-		if want == "" || want == lib.Type {
-			continue
-		}
-		if err := c.Repo.DB.WithContext(ctx).
-			Model(&model.Library{}).
-			Where("id = ?", lib.ID).
-			Update("type", want).Error; err != nil {
-			return err
-		}
-	}
+	// 网盘后端已移除，不再存在 cloud:// 挂载库类型需修正。
 	return nil
 }

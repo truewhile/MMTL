@@ -2,8 +2,6 @@ import type { FormEvent, ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowRight, Eye, EyeOff, Lock, User } from 'lucide-react'
 
-import { AppFooter } from '../components/AppFooter'
-
 type LoginPageShellProps = {
   children: ReactNode
 }
@@ -37,7 +35,6 @@ export function LoginPageShell({ children }: LoginPageShellProps) {
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gray-50/50 px-4">
       <LoginBackground />
       {children}
-      <LoginFooter />
     </div>
   )
 }
@@ -75,8 +72,8 @@ function LoginBrandHeader() {
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ delay: 0.15, type: 'spring', stiffness: 200 }}
-        src="/brand/mediastationgo-logo.svg"
-        alt="MediaStationGo"
+        src="/brand/logo-192.png"
+        alt="MMTL"
         className="mb-4 h-14 w-14 rounded-2xl object-contain shadow-sm"
       />
 
@@ -86,7 +83,7 @@ function LoginBrandHeader() {
         transition={{ delay: 0.25 }}
         className="font-display text-2xl font-extrabold tracking-tight text-gray-900"
       >
-        MediaStationGo
+        MMTL
       </motion.h1>
 
       <motion.p
@@ -217,18 +214,5 @@ function LoginReadyLabel() {
     <span className="flex items-center gap-2">
       立即开启观影之旅 <ArrowRight size={16} />
     </span>
-  )
-}
-
-function LoginFooter() {
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ delay: 0.6 }}
-      className="relative z-10 mt-10 text-gray-500 transition-colors hover:text-gray-600"
-    >
-      <AppFooter />
-    </motion.div>
   )
 }

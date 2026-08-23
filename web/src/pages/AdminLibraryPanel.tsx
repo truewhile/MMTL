@@ -1,12 +1,13 @@
 import { AdminLibraryCreateForm } from './AdminLibraryPanelSections'
 import { AdminLibraryTable } from './AdminLibraryTable'
+import { LibraryStorageStats } from './LibraryStorageStats'
 import { useAdminLibraryPanel } from './useAdminLibraryPanel'
 
 export function AdminLibraryPanel() {
   const { libs, createForm, editableRoots, rootActions, libraryActions } = useAdminLibraryPanel()
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <AdminLibraryCreateForm
         name={createForm.name}
         type={createForm.type}
@@ -33,6 +34,7 @@ export function AdminLibraryPanel() {
         onAddLibraryRoot={libraryActions.addLibraryRoot}
         onEditLibraryCover={libraryActions.editLibraryCover}
       />
+      <LibraryStorageStats />
     </div>
   )
 }

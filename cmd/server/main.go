@@ -26,7 +26,6 @@ import (
 
 	"github.com/ShukeBta/MediaStationGo/internal/config"
 	"github.com/ShukeBta/MediaStationGo/internal/database"
-	"github.com/ShukeBta/MediaStationGo/internal/handler"
 	"github.com/ShukeBta/MediaStationGo/internal/repository"
 	"github.com/ShukeBta/MediaStationGo/internal/service"
 )
@@ -63,7 +62,7 @@ func main() {
 	defer func() { _ = logger.Sync() }()
 
 	appVersion := effectiveVersion(version)
-	logger.Info("starting MediaStationGo",
+	logger.Info("starting MMTL",
 		zap.String("version", appVersion),
 		zap.Int("port", cfg.App.Port),
 		zap.String("data_dir", cfg.App.DataDir),
@@ -94,12 +93,6 @@ func main() {
 	service.ApplyRuntimeSettings(context.Background(), cfg, repos, logger)
 	applyCPUThreadLimit(cfg, logger)
 	services := service.NewWithVersion(cfg, logger, repos, appVersion)
-
-	if repaired, err := services.RepairCloudPathMetadata(context.Background()); err != nil {
-		logger.Warn("cloud path metadata repair failed", zap.Error(err))
-	} else if repaired > 0 {
-		logger.Info("cloud path metadata repair completed", zap.Int("media_count", repaired))
-	}
 
 	// 一次性清洗历史脏数据: 老版本把单集 episode id / 单集名写进整剧字段, 导致
 	// 同一部剧被拆成多张单集卡。清空被污染的字段并重置为 pending(借后续重刮修正)。
@@ -143,8 +136,6 @@ func main() {
 		}
 	}()
 	go services.Boot()
-	go handler.RunLicenseHeartbeatLoop(services.Context(), services)
-	go services.TelegramBot.StartPolling(context.Background())
 
 	// Graceful shutdown.
 	stop := make(chan os.Signal, 1)
@@ -158,5 +149,5 @@ func main() {
 		logger.Error("graceful shutdown failed", zap.Error(err))
 	}
 	services.Close()
-	logger.Info("MediaStationGo stopped")
+	logger.Info("MMTL stopped")
 }

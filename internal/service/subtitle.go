@@ -31,24 +31,13 @@ import (
 
 // SubtitleService is the discovery + conversion entry point.
 type SubtitleService struct {
-	log     *zap.Logger
-	repo    *repository.Container
-	storage *StorageConfigService
+	log  *zap.Logger
+	repo *repository.Container
 }
 
 // NewSubtitleService is the constructor.
-func NewSubtitleService(log *zap.Logger, repo *repository.Container, storage ...*StorageConfigService) *SubtitleService {
-	s := &SubtitleService{log: log, repo: repo}
-	if len(storage) > 0 {
-		s.storage = storage[0]
-	}
-	return s
-}
-
-func (s *SubtitleService) SetStorageConfig(storage *StorageConfigService) {
-	if s != nil {
-		s.storage = storage
-	}
+func NewSubtitleService(log *zap.Logger, repo *repository.Container) *SubtitleService {
+	return &SubtitleService{log: log, repo: repo}
 }
 
 // SubtitleTrack describes one external subtitle file.
@@ -78,9 +67,6 @@ func (s *SubtitleService) Discover(ctx context.Context, mediaID string) ([]Subti
 	}
 	if m == nil {
 		return nil, errors.New("media not found")
-	}
-	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(m.Path)), "cloud://") {
-		return discoverCloudSubtitles(ctx, s, *m), nil
 	}
 	dir := filepath.Dir(m.Path)
 	base := strings.TrimSuffix(filepath.Base(m.Path), filepath.Ext(m.Path))
@@ -148,9 +134,6 @@ func (s *SubtitleService) Serve(ctx context.Context, mediaID, sub string, w io.W
 	if err != nil || m == nil {
 		return errors.New("media not found")
 	}
-	if typ, ref, name, ok := parseCloudSubtitlePath(sub); ok {
-		return serveCloudSubtitle(ctx, s, *m, typ, ref, name, w)
-	}
 	abs, err := filepath.Abs(sub)
 	if err != nil {
 		return err
@@ -194,9 +177,6 @@ func (s *SubtitleService) ServeRaw(ctx context.Context, mediaID, sub string, w i
 	m, err := s.repo.Media.FindByID(ctx, mediaID)
 	if err != nil || m == nil {
 		return errors.New("media not found")
-	}
-	if typ, ref, name, ok := parseCloudSubtitlePath(sub); ok {
-		return serveCloudSubtitleRaw(ctx, s, *m, typ, ref, name, w)
 	}
 	abs, err := filepath.Abs(sub)
 	if err != nil {

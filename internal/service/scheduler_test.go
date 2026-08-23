@@ -12,7 +12,7 @@ import (
 )
 
 func TestSchedulerRunNowAsyncSurvivesCallerCancellation(t *testing.T) {
-	scheduler := NewSchedulerService(zap.NewNop(), nil, nil, nil, nil, nil, nil, "")
+	scheduler := NewSchedulerService(zap.NewNop(), nil, nil, nil, nil, nil, "")
 	started := make(chan struct{})
 	release := make(chan struct{})
 	finished := make(chan struct{})
@@ -66,7 +66,7 @@ func TestSchedulerRunNowAsyncSurvivesCallerCancellation(t *testing.T) {
 }
 
 func TestSchedulerRunNowAsyncRejectsDuplicateRun(t *testing.T) {
-	scheduler := NewSchedulerService(zap.NewNop(), nil, nil, nil, nil, nil, nil, "")
+	scheduler := NewSchedulerService(zap.NewNop(), nil, nil, nil, nil, nil, "")
 	started := make(chan struct{})
 	release := make(chan struct{})
 	scheduler.jobs = []*scheduledJob{{
@@ -90,7 +90,7 @@ func TestSchedulerRunNowAsyncRejectsDuplicateRun(t *testing.T) {
 }
 
 func TestSchedulerStartDoesNotRegisterSubscriptionPullJob(t *testing.T) {
-	scheduler := NewSchedulerService(zap.NewNop(), nil, nil, nil, nil, nil, nil, "")
+	scheduler := NewSchedulerService(zap.NewNop(), nil, nil, nil, nil, nil, "")
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	scheduler.Start(ctx)
@@ -104,7 +104,7 @@ func TestSchedulerStartDoesNotRegisterSubscriptionPullJob(t *testing.T) {
 }
 
 func TestSchedulerLoopWaitsIntervalAfterSlowRun(t *testing.T) {
-	scheduler := NewSchedulerService(zap.NewNop(), nil, nil, nil, nil, nil, nil, "")
+	scheduler := NewSchedulerService(zap.NewNop(), nil, nil, nil, nil, nil, "")
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 

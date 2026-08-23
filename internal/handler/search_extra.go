@@ -83,24 +83,3 @@ func searchTMDbHandler(svc *service.Container) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{"items": out})
 	}
 }
-
-// searchSitesHandler mirrors the existing /sites/search but at the
-// /search/sites alias the Vue UI uses.
-func searchSitesHandler(svc *service.Container) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		keyword := c.Query("keyword")
-		if keyword == "" {
-			keyword = c.Query("q")
-		}
-		if keyword == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "keyword required"})
-			return
-		}
-		results, err := svc.Site.Search(c.Request.Context(), keyword)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"items": results})
-	}
-}

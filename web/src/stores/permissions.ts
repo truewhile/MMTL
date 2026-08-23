@@ -74,7 +74,6 @@ export const defaultPermissions: Record<string, boolean> = {
   can_use_ai: false,
   can_capture_frames: false,
   can_manage_downloads: false,
-  can_view_discover: false,
   can_manage_subscriptions: false,
   can_manage_sites: false,
   can_use_ai_assistant: false,
@@ -97,7 +96,6 @@ export const permissionDisplayNames: Record<string, string> = {
   can_use_ai: '使用 AI 搜索',
   can_capture_frames: '截图',
   can_manage_downloads: '管理下载',
-  can_view_discover: '发现',
   can_manage_subscriptions: '管理订阅',
   can_manage_sites: '管理站点',
   can_use_ai_assistant: 'AI 助手',
@@ -127,7 +125,6 @@ export const permissionCategories = {
   advanced: [
     'can_use_ai',
     'can_use_ai_assistant',
-    'can_view_discover',
     'can_manage_downloads',
     'can_manage_subscriptions',
     'can_manage_sites',

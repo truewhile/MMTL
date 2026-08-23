@@ -19,7 +19,6 @@ func TestMediaReferenceFieldsAllowVirtualEmbyIDs(t *testing.T) {
 		{name: "playback_history_media_id", model: &PlaybackHistory{}, fieldName: "MediaID"},
 		{name: "favorite_media_id", model: &Favorite{}, fieldName: "MediaID"},
 		{name: "playlist_item_media_id", model: &PlaylistItem{}, fieldName: "MediaID"},
-		{name: "strm_record_media_id", model: &STRMRecord{}, fieldName: "MediaID"},
 	}
 
 	for _, tc := range cases {

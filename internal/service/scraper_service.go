@@ -22,7 +22,6 @@ type ScraperService struct {
 	fanart  *FanartProvider
 	adult   *AdultProvider
 	hub     *Hub
-	notify  *NotifyChannelService
 	cache   *RuntimeCacheService
 	images  *ImageProxy
 }
@@ -51,12 +50,6 @@ func NewScraperService(
 
 func (s *ScraperService) SetDouban(douban *DoubanProvider) {
 	s.douban = douban
-}
-
-func (s *ScraperService) SetNotifyChannels(notify *NotifyChannelService) {
-	if s != nil {
-		s.notify = notify
-	}
 }
 
 func (s *ScraperService) SetRuntimeCache(cache *RuntimeCacheService) *ScraperService {

@@ -1,62 +1,157 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { libraryAPI, mediaAPI } from '../api/library'
+import { libraryAPI } from '../api/library'
 import { playbackAPI, type HistoryItem } from '../api/playback'
 import type { Library, Media } from '../types'
 import { groupSeries, type SeriesCard } from '../utils/groupSeries'
 import {
   ContinueWatchingSection,
+  HomeCarouselSection,
   HomeEmptyState,
-  HomeFeaturedSection,
+  HomeLibrariesSection,
+  HomeLibraryRowSection,
   HomeLoadingState,
-  RecentMediaSection,
 } from './HomePageSections'
 
+const CAROUSEL_STORAGE_KEY = 'mmtl.home.carousel_libraries'
 const hasArtwork = (media?: Media | null) => !!(media?.poster_url || media?.backdrop_url)
-const asArray = <T,>(value: unknown): T[] => (Array.isArray(value) ? value as T[] : [])
+const asArray = <T,>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : [])
 
 export function HomePage() {
   const [libraries, setLibraries] = useState<Library[]>([])
-  const [recentCards, setRecentCards] = useState<SeriesCard[]>([])
+  const [libraryData, setLibraryData] = useState<Record<string, { cards: SeriesCard[]; items: Media[]; total: number }>>({})
+  const [selectedLibraryIds, setSelectedLibraryIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem(CAROUSEL_STORAGE_KEY)
+      return saved ? JSON.parse(saved) : []
+    } catch {
+      return []
+    }
+  })
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
+
     async function load() {
       setLoading(true)
       try {
-        const [libs, recentItems, hist] = await Promise.all([
+        const [libs, hist] = await Promise.all([
           libraryAPI.list().then((rows) => asArray<Library>(rows)).catch(() => [] as Library[]),
-          mediaAPI.recent(24).then((rows) => asArray<SeriesCard>(rows)).catch(async () => {
-            const fallback = await mediaAPI.search('', 120).then((d) => asArray<Media>(d?.items)).catch(() => [] as Media[])
-            return groupSeries(fallback).slice(0, 24)
-          }),
           playbackAPI.recentHistory().then((rows) => asArray<HistoryItem>(rows)).catch(() => [] as HistoryItem[]),
         ])
+
         if (cancelled) return
         setLibraries(libs)
-        setRecentCards(recentItems)
         setHistory(hist.filter((h) => h && !h.completed && !!h.media))
+
+        // Set default selected libraries if none saved yet
+        setSelectedLibraryIds((current) => {
+          if (current.length > 0) return current
+          const allIds = libs.map((l) => l.id)
+          try {
+            localStorage.setItem(CAROUSEL_STORAGE_KEY, JSON.stringify(allIds))
+          } catch {
+            // ignore
+          }
+          return allIds
+        })
+
+        // Fetch media items for all libraries in parallel
+        const results = await Promise.allSettled(
+          libs.map(async (lib) => {
+            const page = await libraryAPI.listMedia(lib.id, 1, 30)
+            const items = asArray<Media>(page?.items)
+            const cards = groupSeries(items)
+            return {
+              id: lib.id,
+              cards,
+              items,
+              total: page?.total ?? items.length,
+            }
+          }),
+        )
+
+        if (cancelled) return
+        const mapData: Record<string, { cards: SeriesCard[]; items: Media[]; total: number }> = {}
+        for (const res of results) {
+          if (res.status === 'fulfilled' && res.value) {
+            mapData[res.value.id] = {
+              cards: res.value.cards,
+              items: res.value.items,
+              total: res.value.total,
+            }
+          }
+        }
+        setLibraryData(mapData)
       } finally {
         if (!cancelled) setLoading(false)
       }
     }
+
     load()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [])
 
-  const featuredItem = useMemo(() => {
-    const candidates = [
-      ...(history.map((h) => h.media).filter(Boolean) as Media[]),
-      ...recentCards.map((card) => card.rep),
-    ]
-    return candidates.find(hasArtwork) ?? candidates[0] ?? null
-  }, [history, recentCards])
-  const featuredVisual = featuredItem?.backdrop_url || featuredItem?.poster_url || ''
-  const featuredPoster = featuredItem?.poster_url || featuredItem?.backdrop_url || ''
-  const featuredMark = (featuredItem?.title || 'MS').trim().slice(0, 4).toUpperCase()
-  const empty = !loading && libraries.length === 0 && recentCards.length === 0 && history.length === 0
+  // Quick lookup map for libraries
+  const libraryMap = useMemo(() => {
+    const map = new Map<string, Library>()
+    for (const lib of libraries) {
+      map.set(lib.id, lib)
+    }
+    return map
+  }, [libraries])
+
+  // Counts lookup
+  const libraryCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const lib of libraries) {
+      counts[lib.id] = libraryData[lib.id]?.total ?? 0
+    }
+    return counts
+  }, [libraries, libraryData])
+
+  // Compute items to show in the Hero Carousel
+  const carouselItems = useMemo(() => {
+    const candidateMedia: Media[] = []
+    const effectiveSelectedIds =
+      selectedLibraryIds.length > 0 ? selectedLibraryIds : libraries.map((l) => l.id)
+
+    for (const libId of effectiveSelectedIds) {
+      const data = libraryData[libId]
+      if (data && data.items.length > 0) {
+        // Pick representative items from series cards or raw items
+        for (const card of data.cards) {
+          if (hasArtwork(card.rep)) {
+            candidateMedia.push(card.rep)
+          }
+        }
+      }
+    }
+
+    // Sort by artwork score / rating or shuffle / interleave
+    if (candidateMedia.length === 0) {
+      // Fallback to all loaded items with artwork
+      for (const lib of libraries) {
+        const data = libraryData[lib.id]
+        if (data) {
+          for (const card of data.cards) {
+            candidateMedia.push(card.rep)
+          }
+        }
+      }
+    }
+
+    return candidateMedia.slice(0, 10)
+  }, [selectedLibraryIds, libraries, libraryData])
+
+  const empty =
+    !loading &&
+    libraries.length === 0 &&
+    history.length === 0
 
   if (loading) {
     return <HomeLoadingState />
@@ -67,18 +162,38 @@ export function HomePage() {
   }
 
   return (
-    <div className="space-y-12">
-      {featuredItem && (
-        <HomeFeaturedSection
-          featuredItem={featuredItem}
-          featuredVisual={featuredVisual}
-          featuredPoster={featuredPoster}
-          featuredMark={featuredMark}
+    <div className="space-y-12 pb-16">
+      {/* 1. 顶部海报轮播区 */}
+      {carouselItems.length > 0 && (
+        <HomeCarouselSection items={carouselItems} libraryMap={libraryMap} />
+      )}
+
+      {/* 2. 继续观看（若有历史） */}
+      {history.length > 0 && <ContinueWatchingSection history={history} />}
+
+      {/* 3. 媒体库卡片区 */}
+      {libraries.length > 0 && (
+        <HomeLibrariesSection
+          libraries={libraries}
+          libraryData={libraryData}
+          libraryCounts={libraryCounts}
         />
       )}
 
-      {history.length > 0 && <ContinueWatchingSection history={history} />}
-      {recentCards.length > 0 && <RecentMediaSection recentCards={recentCards} />}
+      {/* 4. 各媒体库内容展示行 */}
+      <div className="space-y-10">
+        {libraries.map((lib) => {
+          const cards = libraryData[lib.id]?.cards || []
+          if (cards.length === 0) return null
+          return (
+            <HomeLibraryRowSection
+              key={lib.id}
+              library={lib}
+              cards={cards}
+            />
+          )
+        })}
+      </div>
     </div>
   )
 }

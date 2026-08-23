@@ -110,86 +110,6 @@ func TestListLibrariesHidesAdultDirectoriesUnlessAdminRequestsAll(t *testing.T) 
 	}
 }
 
-func TestListLibrariesIncludeHiddenNormalizesCloudDisplayNames(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AutoMigrate(&model.Library{}, &model.Media{}); err != nil {
-		t.Fatal(err)
-	}
-	repos := repository.New(db)
-	cloud := model.Library{Name: "OpenList · 国产剧", Path: service.BuildCloudLibraryPath("openlist", "/国产剧", "/国产剧"), Type: "tv", Enabled: true}
-	if err := repos.Library.Create(t.Context(), &cloud); err != nil {
-		t.Fatal(err)
-	}
-	svc := &service.Container{
-		Repo:  repos,
-		Media: service.NewMediaService(&config.Config{}, zap.NewNop(), repos),
-	}
-
-	all := requestLibraries(t, svc, "admin", "admin", "/api/libraries?include_hidden=1")
-	if len(all) != 1 {
-		t.Fatalf("include_hidden list = %#v, want one library", all)
-	}
-	if all[0].Name != "国产剧" {
-		t.Fatalf("cloud display name = %q, want stripped directory name", all[0].Name)
-	}
-}
-
-func TestListLibrariesShowsAutoCategoryLibraries(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AutoMigrate(&model.Library{}, &model.Media{}); err != nil {
-		t.Fatal(err)
-	}
-	repos := repository.New(db)
-	root := model.Library{Name: "OpenList", Path: "cloud://openlist", Type: "movie", Enabled: true}
-	auto := model.Library{Name: "欧美剧", Path: service.BuildCloudAutoCategoryLibraryPath("openlist", "电视剧/欧美剧"), Type: "tv", Enabled: true}
-	for _, lib := range []*model.Library{&root, &auto} {
-		if err := repos.Library.Create(t.Context(), lib); err != nil {
-			t.Fatal(err)
-		}
-	}
-	svc := &service.Container{
-		Repo:  repos,
-		Media: service.NewMediaService(&config.Config{}, zap.NewNop(), repos),
-	}
-
-	all := requestLibraries(t, svc, "admin", "admin", "/api/libraries?include_hidden=1")
-	if len(all) != 2 {
-		t.Fatalf("include_hidden list = %#v, want root plus auto category library", all)
-	}
-	ids := map[string]bool{}
-	for _, lib := range all {
-		ids[lib.ID] = true
-	}
-	if !ids[root.ID] || !ids[auto.ID] {
-		t.Fatalf("include_hidden list = %#v, want root %s and auto category %s", all, root.ID, auto.ID)
-	}
-
-	visible := requestLibraries(t, svc, "user-1", "user", "/api/libraries")
-	if len(visible) != 2 {
-		t.Fatalf("visible list = %#v, want root plus auto category library", visible)
-	}
-	ids = map[string]bool{}
-	for _, lib := range visible {
-		ids[lib.ID] = true
-	}
-	if !ids[root.ID] || !ids[auto.ID] {
-		t.Fatalf("visible list = %#v, want root %s and auto category %s", visible, root.ID, auto.ID)
-	}
-
-	got := requestLibrary(t, svc, "user-1", "user", "/api/libraries/"+auto.ID, auto.ID)
-	if got.ID != auto.ID || got.Name != auto.Name {
-		t.Fatalf("auto category detail = %#v, want accessible category library", got)
-	}
-}
-
 func TestGetLibraryAllowsEmptyLibrary(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -333,41 +253,6 @@ func TestListLibrarySeriesDoesNotTruncateLargeEpisodeLibraries(t *testing.T) {
 	}
 	if episodes.Items[0].EpisodeNum != 1 || episodes.Items[len(episodes.Items)-1].EpisodeNum != 2001 {
 		t.Fatalf("episode order first=%d last=%d", episodes.Items[0].EpisodeNum, episodes.Items[len(episodes.Items)-1].EpisodeNum)
-	}
-}
-
-func TestScanLibraryHandlerSurfacesCloudQueueStartFailure(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AutoMigrate(&model.Library{}, &model.LibraryRoot{}, &model.Media{}, &model.Setting{}); err != nil {
-		t.Fatal(err)
-	}
-	repos := repository.New(db)
-	lib := model.Library{Name: "旧夸克云盘", Path: service.BuildCloudLibraryPath(service.LegacyQuarkProvider, "archive", "archive"), Type: "movie", Enabled: true}
-	if err := repos.Library.Create(t.Context(), &lib); err != nil {
-		t.Fatal(err)
-	}
-	log := zap.NewNop()
-	svc := &service.Container{
-		Log:  log,
-		Repo: repos,
-		Scan: service.NewScannerService(&config.Config{}, log, repos, service.NewHub(log), nil, nil),
-	}
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Params = gin.Params{{Key: "id", Value: lib.ID}}
-	c.Request = httptest.NewRequest(http.MethodPost, "/api/libraries/"+lib.ID+"/scan", nil)
-
-	scanLibraryHandler(svc)(c)
-
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("status=%d body=%s, want bad request", w.Code, w.Body.String())
-	}
-	if !strings.Contains(w.Body.String(), "deprecated") {
-		t.Fatalf("body=%s, want cloud queue start error", w.Body.String())
 	}
 }
 

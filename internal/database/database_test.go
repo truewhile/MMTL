@@ -4,7 +4,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -51,106 +50,6 @@ func TestOpenSQLiteWithNilLoggerConfiguresPool(t *testing.T) {
 	stats := sqlDB.Stats()
 	if stats.MaxOpenConnections != 3 {
 		t.Fatalf("MaxOpenConnections = %d, want 3", stats.MaxOpenConnections)
-	}
-}
-
-func TestEnforceTelegramBindingOneToOneCleansDuplicatesAndAddsIndex(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AutoMigrate(&model.TelegramBinding{}); err != nil {
-		t.Fatal(err)
-	}
-	createdAt := time.Now().Add(-time.Hour)
-	rows := []model.TelegramBinding{
-		{TelegramUserID: 10001, ChatID: 10001, UserID: "user-1"},
-		{TelegramUserID: 10002, ChatID: 10002, UserID: "user-1"},
-	}
-	for i := range rows {
-		rows[i].CreatedAt = createdAt.Add(time.Duration(i) * time.Minute)
-		if err := db.Create(&rows[i]).Error; err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	if err := enforceTelegramBindingOneToOne(db); err != nil {
-		t.Fatal(err)
-	}
-
-	var count int64
-	if err := db.Model(&model.TelegramBinding{}).Where("user_id = ?", "user-1").Count(&count).Error; err != nil {
-		t.Fatal(err)
-	}
-	if count != 1 {
-		t.Fatalf("active bindings for user-1 = %d, want 1", count)
-	}
-	var kept model.TelegramBinding
-	if err := db.First(&kept, "user_id = ?", "user-1").Error; err != nil {
-		t.Fatal(err)
-	}
-	if kept.TelegramUserID != 10002 {
-		t.Fatalf("kept telegram binding = %d, want newest 10002", kept.TelegramUserID)
-	}
-	if err := db.Create(&model.TelegramBinding{TelegramUserID: 10003, ChatID: 10003, UserID: "user-1"}).Error; err == nil {
-		t.Fatal("expected unique index to reject another active binding for the same user")
-	}
-}
-
-func TestEnsureSubscriptionIdentityUniquenessArchivesDuplicatesAndAddsIndex(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AutoMigrate(&model.Subscription{}); err != nil {
-		t.Fatal(err)
-	}
-	createdAt := time.Now().Add(-time.Hour)
-	rows := []model.Subscription{
-		{UserID: "user-1", Name: "Example", FeedURL: "site-search://search?keyword=Example", Filter: "Example", Resolution: "1080p", Priority: 50},
-		{UserID: "user-1", Name: "Example", FeedURL: "site-search://search?keyword=Example", Filter: "Example", Resolution: "1080p", Priority: 50},
-	}
-	for i := range rows {
-		rows[i].CreatedAt = createdAt.Add(time.Duration(i) * time.Minute)
-		if err := db.Select("*").Omit("DeletedAt").Create(&rows[i]).Error; err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	if err := ensureSubscriptionIdentityUniqueness(db); err != nil {
-		t.Fatal(err)
-	}
-	var active []model.Subscription
-	if err := db.Where("archived_at IS NULL").Order("created_at asc").Find(&active).Error; err != nil {
-		t.Fatal(err)
-	}
-	if len(active) != 1 || active[0].ID != rows[0].ID {
-		t.Fatalf("active subscriptions = %#v, want earliest row only", active)
-	}
-	var archived model.Subscription
-	if err := db.First(&archived, "id = ?", rows[1].ID).Error; err != nil {
-		t.Fatal(err)
-	}
-	if archived.ArchivedAt == nil || archived.ArchiveReason != duplicateSubscriptionMigrationReason {
-		t.Fatalf("duplicate was not archived by migration: %#v", archived)
-	}
-
-	duplicate := rows[0]
-	duplicate.ID = ""
-	duplicate.CreatedAt = time.Time{}
-	duplicate.UpdatedAt = time.Time{}
-	model.RefreshSubscriptionIdentity(&duplicate)
-	if err := db.Select("*").Omit("DeletedAt").Create(&duplicate).Error; err == nil {
-		t.Fatal("expected active identity index to reject a duplicate rule")
-	}
-	different := rows[0]
-	different.ID = ""
-	different.CreatedAt = time.Time{}
-	different.UpdatedAt = time.Time{}
-	different.Resolution = "2160p"
-	model.RefreshSubscriptionIdentity(&different)
-	if err := db.Select("*").Omit("DeletedAt").Create(&different).Error; err != nil {
-		t.Fatalf("different rule should be allowed: %v", err)
 	}
 }
 

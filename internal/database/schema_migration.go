@@ -14,12 +14,6 @@ func AutoMigrate(db *gorm.DB) error {
 	if err := ensurePostgresColumnCompatibility(db); err != nil {
 		return err
 	}
-	if err := enforceTelegramBindingOneToOne(db); err != nil {
-		return err
-	}
-	if err := ensureSubscriptionIdentityUniqueness(db); err != nil {
-		return err
-	}
 	if err := ensurePerformanceIndexes(db); err != nil {
 		return err
 	}
@@ -44,7 +38,6 @@ func ensurePostgresColumnCompatibility(db *gorm.DB) error {
 		`ALTER TABLE playback_histories ALTER COLUMN media_id TYPE varchar(128)`,
 		`ALTER TABLE favorites ALTER COLUMN media_id TYPE varchar(128)`,
 		`ALTER TABLE playlist_items ALTER COLUMN media_id TYPE varchar(128)`,
-		`ALTER TABLE strm_records ALTER COLUMN media_id TYPE varchar(128)`,
 	}
 	for _, stmt := range statements {
 		if err := db.Exec(stmt).Error; err != nil {
@@ -83,40 +76,4 @@ func ensurePerformanceIndexes(db *gorm.DB) error {
 		}
 	}
 	return nil
-}
-
-func enforceTelegramBindingOneToOne(db *gorm.DB) error {
-	if !db.Migrator().HasTable(&model.TelegramBinding{}) {
-		return nil
-	}
-	return db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec(`
-DELETE FROM telegram_bindings
-WHERE deleted_at IS NULL
-  AND user_id IN (
-    SELECT user_id
-    FROM telegram_bindings
-    WHERE deleted_at IS NULL
-    GROUP BY user_id
-    HAVING COUNT(*) > 1
-  )
-  AND id NOT IN (
-    SELECT id
-    FROM (
-      SELECT id,
-             ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY updated_at DESC, created_at DESC, id DESC) AS rn
-      FROM telegram_bindings
-      WHERE deleted_at IS NULL
-    ) AS ranked_bindings
-    WHERE rn = 1
-  )
-`).Error; err != nil {
-			return err
-		}
-		return tx.Exec(`
-CREATE UNIQUE INDEX IF NOT EXISTS idx_telegram_bindings_user_id_active
-ON telegram_bindings(user_id)
-WHERE deleted_at IS NULL
-`).Error
-	})
 }

@@ -1,8 +1,4 @@
-import { cloudLibraryLabel, cloudLibraryProvider, TYPE_LABEL } from './storageConfigModel'
-
 export function libraryDisplayPath(path: string): string {
-  const provider = cloudLibraryProvider(path)
-  if (!provider) return path
-  const providerLabel = TYPE_LABEL[provider] || provider
-  return `${providerLabel} / ${cloudLibraryLabel(path)}`
+  // 网盘标识已随「存储配置」功能移除；直接展示媒体库路径。
+  return path
 }

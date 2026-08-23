@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -21,7 +20,7 @@ import (
 
 func newAuthTestServices(t *testing.T) (*repository.Container, *AuthService, *ProfileService, *PermissionService) {
 	t.Helper()
-	db := newServiceTestDB(t, &model.User{}, &model.UserPermission{}, &model.RefreshToken{}, &model.TelegramBinding{}, &model.Setting{})
+	db := newServiceTestDB(t, &model.User{}, &model.UserPermission{}, &model.RefreshToken{}, &model.Setting{})
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatal(err)
@@ -58,44 +57,6 @@ func TestRegisterRejectsMoreThanTwentyUsers(t *testing.T) {
 	}
 }
 
-func TestRegisterUsesLicensedUserLimit(t *testing.T) {
-	ctx := context.Background()
-	repos, auth, _, _ := newAuthTestServices(t)
-	maxUsers := 25
-	state := LicenseActivationState{Valid: true, LicenseType: "plus", MaxUsers: &maxUsers}
-	raw, _ := json.Marshal(state)
-	if err := repos.Setting.Set(ctx, LicenseSettingActivation, string(raw)); err != nil {
-		t.Fatal(err)
-	}
-	for i := 0; i < OpenSourceUserLimit; i++ {
-		if err := repos.User.Create(ctx, &model.User{
-			Username:     fmt.Sprintf("licensed-%02d", i),
-			PasswordHash: "hash",
-			Role:         "user",
-			Tier:         "free",
-		}); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	if _, _, err := auth.Register(ctx, "extra", "password"); err != nil {
-		t.Fatalf("licensed user limit should allow user 21: %v", err)
-	}
-}
-
-func TestLicensedMaxUsersCanBeUnlimited(t *testing.T) {
-	ctx := context.Background()
-	repos, _, _, _ := newAuthTestServices(t)
-	state := LicenseActivationState{Valid: true, LicenseType: "enterprise", UnlimitedUsers: true}
-	raw, _ := json.Marshal(state)
-	if err := repos.Setting.Set(ctx, LicenseSettingActivation, string(raw)); err != nil {
-		t.Fatal(err)
-	}
-	if got := LicensedMaxUsers(ctx, repos); got <= 1_000_000 {
-		t.Fatalf("unlimited license should return a very high limit, got %d", got)
-	}
-}
-
 func TestRegisterDefaultsAdultLibrariesHidden(t *testing.T) {
 	_, auth, _, _ := newAuthTestServices(t)
 	user, _, err := auth.Register(context.Background(), "viewer", "password")
@@ -114,14 +75,6 @@ func TestDeletedUserCanBeRecreatedWithSameUsername(t *testing.T) {
 	if err != nil {
 		t.Fatalf("register old user: %v", err)
 	}
-	if err := repos.DB.Create(&model.TelegramBinding{
-		TelegramUserID: 10001,
-		TelegramName:   "@viewer",
-		ChatID:         10001,
-		UserID:         user.ID,
-	}).Error; err != nil {
-		t.Fatalf("create telegram binding: %v", err)
-	}
 	if err := repos.User.Delete(ctx, user.ID); err != nil {
 		t.Fatalf("delete user: %v", err)
 	}
@@ -135,13 +88,6 @@ func TestDeletedUserCanBeRecreatedWithSameUsername(t *testing.T) {
 	}
 	if _, err := auth.Login(ctx, "viewer", "new-password"); err != nil {
 		t.Fatalf("login recreated user: %v", err)
-	}
-	var bindings int64
-	if err := repos.DB.Model(&model.TelegramBinding{}).Where("telegram_user_id = ?", 10001).Count(&bindings).Error; err != nil {
-		t.Fatalf("count bindings: %v", err)
-	}
-	if bindings != 0 {
-		t.Fatalf("deleted user telegram bindings should be removed, got %d", bindings)
 	}
 }
 

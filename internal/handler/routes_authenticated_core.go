@@ -14,10 +14,6 @@ func registerAuthedUserAndLicenseRoutes(authed *gin.RouterGroup, svc *service.Co
 	authed.POST("/me/logout", logoutHandler(svc))
 
 	authed.GET("/auth/permissions", getMyPermissionsHandler(svc))
-
-	authed.GET("/license/status", middleware.AdminRequired(), licenseStatusHandler(svc))
-	authed.POST("/license/activate", middleware.AdminRequired(), licenseActivateHandler(svc))
-	authed.POST("/license/heartbeat", middleware.AdminRequired(), licenseHeartbeatHandler(svc))
 }
 
 func registerAuthedLibraryRoutes(authed *gin.RouterGroup, svc *service.Container) {
@@ -65,11 +61,6 @@ func registerAuthedPlaybackAndProxyRoutes(authed *gin.RouterGroup, svc *service.
 	authed.GET("/hls/:id/:seg", hlsSegmentHandler(svc))
 	authed.DELETE("/hls/:id", stopTranscodeHandler(svc))
 
-	authed.GET("/cloud/play/:type", cloudPlayHandler(svc))
-	authed.HEAD("/cloud/play/:type", cloudPlayHandler(svc))
-
-	authed.GET("/img/cloud/:type", cloudArtworkProxyHandler(svc))
-	authed.HEAD("/img/cloud/:type", cloudArtworkProxyHandler(svc))
 	authed.GET("/img", imageProxyHandler(svc))
 }
 

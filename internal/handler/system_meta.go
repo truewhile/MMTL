@@ -63,11 +63,3 @@ func systemStatusHandler(svc *service.Container) gin.HandlerFunc {
 		c.JSON(http.StatusOK, out)
 	}
 }
-
-// systemSchedulerHandler is the read-only (non-admin) variant of
-// /admin/scheduler — handy on user-facing dashboards.
-func systemSchedulerHandler(svc *service.Container) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"jobs": svc.Scheduler.Status()})
-	}
-}

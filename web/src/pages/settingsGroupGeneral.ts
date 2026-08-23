@@ -6,13 +6,6 @@ export const generalSettingsGroup: SettingGroup = {
   description: '语言 / 转码引擎参数（API 密钥请在管理后台 → 外部API 配置）',
   items: [
     {
-      key: 'ui.hide_community_links_for_users',
-      label: '对普通用户隐藏社区页脚链接',
-      type: 'toggle',
-      hint: '开启后，登录页及普通用户登录后的页脚不显示 TG 群组、开源仓库和作者主页；管理员仍可见。',
-      defaultValue: 'false',
-    },
-    {
       key: 'tmdb.language',
       label: 'TMDb 元数据语言',
       type: 'select',
@@ -22,13 +15,6 @@ export const generalSettingsGroup: SettingGroup = {
         { value: 'en-US', label: 'English' },
         { value: 'ja-JP', label: '日本語' },
       ],
-    },
-    {
-      key: 'app.server_url',
-      label: '公开访问域名 / STRM 域名',
-      type: 'text',
-      hint: '例如 http://NAS-IP:18080 或 https://media.example.com。填写后网盘媒体扫描会自动生成完整 STRM/302 播放入口；不填则使用同源相对路径。',
-      placeholder: 'http://192.168.1.125:18080',
     },
     {
       key: 'playback.direct_only',
@@ -110,33 +96,6 @@ export const generalSettingsGroup: SettingGroup = {
       type: 'number',
       hint: 'NAS 建议 1；用于扫描、整理洗版和手动探测，避免同时启动多个 ffprobe 进程',
       defaultValue: '1',
-    },
-  ],
-}
-
-export const licenseSettingsGroup: SettingGroup = {
-  key: 'license',
-  label: '授权服务',
-  description: '连接私有 MediaStationGo 授权服务；开源版默认最多 20 个用户，激活后按授权策略提升额度。',
-  items: [
-    {
-      key: 'license.server_url',
-      label: 'License Server 地址',
-      type: 'text',
-      placeholder: 'https://mgosever.3jzs.com',
-    },
-    {
-      key: 'license.public_key',
-      label: 'Ed25519 验签公钥',
-      type: 'text',
-      hint: '优先使用。客户端只保存公钥，无法伪造授权服务响应；自建 MgoSever 时填写私钥对应的公钥。',
-      placeholder: 'MCowBQYDK2VwAyEA...',
-    },
-    {
-      key: 'license.hmac_secret',
-      label: 'HMAC 签名密钥（旧版兼容）',
-      type: 'text',
-      hint: '仅兼容旧版授权服务。新版本应使用 Ed25519 公钥，避免把共享密钥编译进客户端。',
     },
   ],
 }

@@ -107,9 +107,6 @@ func (o *OrganizerService) reclassifyScannedMedia(ctx context.Context, media mod
 	if res == nil || !lib.Enabled || strings.TrimSpace(media.Path) == "" {
 		return false, nil
 	}
-	if mount, ok := ParseCloudLibraryMount(lib.Path); ok {
-		return o.reclassifyCloudScannedMedia(ctx, media, lib, mount, mediaTypeHint, dryRun, res)
-	}
 	if !organizeFileExists(media.Path) {
 		return false, nil
 	}

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { adminAPI } from '../api/admin'
-import { schedulerAPI } from '../api/scheduler'
 import {
   AUTO_ORGANIZE_DEFAULTS,
   AUTO_ORGANIZE_KEYS,
@@ -72,10 +71,9 @@ export function useAutoOrganizeSettings({ onScrapeAfterChange }: UseAutoOrganize
     }
     setRunning(true)
     try {
-      await schedulerAPI.run('organize_source')
-      toast.success('已触发自动整理任务，请稍后刷新媒体库查看入库结果')
-    } catch (err: unknown) {
-      toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? '触发自动整理失败')
+      // 定时任务/调度管理入口已随「低频维护」功能移除；保存设置后由后台
+      // 周期任务或手动扫描自动整理，不再提供手动触发。
+      toast.success('整理设置已保存，后台周期任务会自动处理')
     } finally {
       setRunning(false)
     }

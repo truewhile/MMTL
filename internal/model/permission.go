@@ -28,9 +28,8 @@ type UserPermission struct {
 	CanRescrape              bool `gorm:"default:false" json:"can_rescrape"`
 	CanUseAI                 bool `gorm:"default:false" json:"can_use_ai"`
 	CanCaptureFrames         bool `gorm:"default:false" json:"can_capture_frames"`
-	CanManageDownloads       bool `gorm:"default:false" json:"can_manage_downloads"`
-	CanViewDiscover          bool `gorm:"default:false" json:"can_view_discover"`
-	CanManageSubscriptions   bool `gorm:"default:false" json:"can_manage_subscriptions"`
+		CanManageDownloads       bool `gorm:"default:false" json:"can_manage_downloads"`
+		CanManageSubscriptions   bool `gorm:"default:false" json:"can_manage_subscriptions"`
 	CanManageSites           bool `gorm:"default:false" json:"can_manage_sites"`
 	CanUseAIAssistant        bool `gorm:"default:false" json:"can_use_ai_assistant"`
 	CanManageUsers           bool `gorm:"default:false" json:"can_manage_users"`
@@ -65,9 +64,8 @@ func NewDefaultPermission(userID string) *UserPermission {
 		CanRescrape:           false,
 		CanUseAI:              false,
 		CanCaptureFrames:      false,
-		CanManageDownloads:    false,
-		CanViewDiscover:       false,
-		CanManageSubscriptions: false,
+			CanManageDownloads:    false,
+			CanManageSubscriptions: false,
 		CanManageSites:        false,
 		CanUseAIAssistant:     false,
 		CanManageUsers:        false,
@@ -90,9 +88,8 @@ func (p *UserPermission) PermissionMap() map[string]bool {
 		"can_rescrape":             p.CanRescrape,
 		"can_use_ai":               p.CanUseAI,
 		"can_capture_frames":       p.CanCaptureFrames,
-		"can_manage_downloads":     p.CanManageDownloads,
-		"can_view_discover":        p.CanViewDiscover,
-		"can_manage_subscriptions":  p.CanManageSubscriptions,
+			"can_manage_downloads":     p.CanManageDownloads,
+			"can_manage_subscriptions":  p.CanManageSubscriptions,
 		"can_manage_sites":         p.CanManageSites,
 		"can_use_ai_assistant":      p.CanUseAIAssistant,
 		"can_manage_users":         p.CanManageUsers,

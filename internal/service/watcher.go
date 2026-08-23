@@ -108,9 +108,6 @@ func (w *WatcherService) Refresh(ctx context.Context) error {
 			if !root.Enabled {
 				continue
 			}
-			if _, _, ok := parseCloudLibraryPath(root.Path); ok {
-				continue
-			}
 			watchRoot, info, err := resolveAccessibleMappedPath(root.Path)
 			if err != nil || !info.IsDir() {
 				w.log.Warn("watch path inaccessible",

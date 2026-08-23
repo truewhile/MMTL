@@ -6,9 +6,10 @@ import { ArrowRight, Film, FolderOpen, Library as LibraryIcon, Music, PlayCircle
 import { imageURL } from '../api/client'
 import { EpisodeArtworkToggle } from '../components/EpisodeArtworkToggle'
 import { MediaCard } from '../components/MediaCard'
-import { artworkScore, seriesCardLink, type SeriesCard } from '../utils/groupSeries'
+import { openManageLibrariesDialog } from '../components/manageLibrariesDialog'
+import { seriesCardLink } from '../utils/groupSeries'
 import { libraryDisplayPath } from './libraryDisplayModel'
-import { mediaTime, type LibraryPreview } from './librariesPageModel'
+import { libraryArtworkItems, type LibraryPreview } from './librariesPageModel'
 
 const TYPE_ICONS: Record<string, ReactNode> = {
   movie: <Film size={18} />,
@@ -71,10 +72,9 @@ export function LibrariesHeader({
           <RefreshCw size={14} className={repairing ? 'animate-spin' : ''} />
           {repairing ? '正在启动…' : '全库修复+重刮'}
         </button>
-        <Link to="/admin" className="btn-outline">
+        <button type="button" onClick={() => openManageLibrariesDialog()} className="btn-outline">
           管理媒体库
-          <ArrowRight size={14} />
-        </Link>
+        </button>
       </div>
     </div>
   )
@@ -222,15 +222,4 @@ function LibraryShelf({ preview }: { preview: LibraryPreview }) {
       )}
     </section>
   )
-}
-
-function libraryArtworkItems(cards: SeriesCard[]): Array<{ src: string; version?: string }> {
-  return [...cards]
-    .sort((a, b) => artworkScore(b.rep) - artworkScore(a.rep) || mediaTime(b.rep) - mediaTime(a.rep))
-    .map((card) => ({
-      src: card.rep.poster_url || card.rep.backdrop_url || '',
-      version: card.rep.updated_at,
-    }))
-    .filter((item) => Boolean(item.src))
-    .slice(0, 4)
 }

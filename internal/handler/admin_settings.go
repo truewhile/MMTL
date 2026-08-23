@@ -59,9 +59,6 @@ func updateSettingHandler(svc *service.Container) gin.HandlerFunc {
 		if req.Key == "transcode.hw_enabled" || req.Key == "transcode.hw_accel" || req.Key == "transcoder.hardware_accel" || req.Key == "transcoder.encoder" {
 			svc.Transcoder.StopAll()
 		}
-		if req.Key == "cloud.auto_sync_enabled" && !service.ParseBoolSetting(req.Value, false) && svc.Scan != nil {
-			_ = svc.Scan.CancelAllCloudScans()
-		}
 		c.Status(http.StatusNoContent)
 	}
 }

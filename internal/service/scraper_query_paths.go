@@ -67,6 +67,15 @@ func cleanSlashPath(value string) string {
 	return strings.TrimRight(value, "/")
 }
 
+func pathBaseSlash(value string) string {
+	value = strings.Trim(strings.ReplaceAll(strings.TrimSpace(value), "\\", "/"), "/")
+	if value == "" {
+		return ""
+	}
+	parts := strings.Split(value, "/")
+	return parts[len(parts)-1]
+}
+
 func comparableLibraryRoot(libraryRoot string) string {
 	if info, ok := ParseCloudLibraryMount(libraryRoot); ok {
 		if strings.TrimSpace(info.DisplayDir) == "" {

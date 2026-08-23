@@ -31,13 +31,6 @@ func (s *SchedulerService) jobScanLibraries(ctx context.Context) error {
 		if !l.Enabled {
 			continue
 		}
-		if _, ok := ParseCloudLibraryMount(l.Path); ok {
-			// 云盘库由 cloud_sync 任务在夜间窗口低频同步；周期性整库
-			// 重扫只面向本地磁盘库。否则十几个云盘库每小时全量遍历
-			// 会把 CPU/网络长期吃满，还会占住唯一的云扫描槽位，让
-			// 手动扫描看起来一直"卡死"在排队。
-			continue
-		}
 		if _, err := s.scanner.ScanLibrary(ctx, l.ID); err != nil {
 			s.log.Warn("scheduled scan failed",
 				zap.String("library", l.ID), zap.Error(err))
@@ -74,14 +67,14 @@ func (s *SchedulerService) periodicScanDue(ctx context.Context, now time.Time) b
 	if err != nil {
 		return true
 	}
-	return strings.TrimSpace(last) != now.In(time.Local).Format(cloudAutoSyncCompletedDateForm)
+	return strings.TrimSpace(last) != now.In(time.Local).Format("2006-01-02")
 }
 
 func (s *SchedulerService) markPeriodicScanCompleted(ctx context.Context, now time.Time) error {
 	if s.repo == nil || s.repo.Setting == nil {
 		return nil
 	}
-	return s.repo.Setting.Set(ctx, localLastPeriodicScanDateKey, now.In(time.Local).Format(cloudAutoSyncCompletedDateForm))
+	return s.repo.Setting.Set(ctx, localLastPeriodicScanDateKey, now.In(time.Local).Format("2006-01-02"))
 }
 
 // jobOrganizeSource periodically organizes the configured staging/download

@@ -68,8 +68,6 @@ func targetLooksLikeBootstrapOnly(target *gorm.DB) (bool, error) {
 		&model.Favorite{},
 		&model.Playlist{},
 		&model.PlaylistItem{},
-		&model.DownloadTask{},
-		&model.Subscription{},
 	} {
 		if !target.Migrator().HasTable(m) {
 			continue

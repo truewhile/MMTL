@@ -23,22 +23,16 @@ func TestAuthenticatedRouteSurfacesAreRegistered(t *testing.T) {
 		routes[route.Method+" "+route.Path] = true
 	}
 
-	for _, want := range []string{
-		"GET /api/me",
-		"GET /api/auth/permissions",
-		"GET /api/libraries",
-		"GET /api/media",
-		"GET /api/stream/:id",
-		"GET /api/storage",
-		"GET /api/downloads",
-		"GET /api/subscriptions",
-		"GET /api/sites/search",
-		"GET /api/watch-history",
-		"GET /api/discover/feed",
-		"GET /api/playback/:id/info",
-		"GET /api/download/tasks",
-		"GET /api/admin/assistant/history",
-	} {
+		for _, want := range []string{
+			"GET /api/me",
+			"GET /api/auth/permissions",
+			"GET /api/libraries",
+			"GET /api/media",
+			"GET /api/stream/:id",
+			"GET /api/storage",
+			"GET /api/watch-history",
+			"GET /api/playback/:id/info",
+		} {
 		if !routes[want] {
 			t.Fatalf("%s route is not registered", want)
 		}

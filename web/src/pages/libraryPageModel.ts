@@ -1,4 +1,3 @@
-import type { CloudScanStatus } from '../api/storage_config'
 import type { Media } from '../types'
 
 export function formatDuration(seconds: number): string {
@@ -9,20 +8,6 @@ export function formatDuration(seconds: number): string {
   if (minutes < 60) return `${minutes}分${rest}秒`
   const hours = Math.floor(minutes / 60)
   return `${hours}小时${minutes % 60}分`
-}
-
-export function formatCloudScanStatus(status: CloudScanStatus): string {
-  const stage =
-    status.state === 'queued' ? '扫描已排队'
-      : status.state === 'canceling' ? '正在中断扫描'
-        : status.state === 'finished' ? '扫描完成'
-          : status.stage === 'importing' ? '正在入库'
-            : '正在遍历目录'
-  const speed = Number(status.files_per_second ?? 0)
-  const speedText = speed > 0 && status.state !== 'finished'
-    ? ` · ${speed.toFixed(speed >= 10 ? 0 : 1)} 个/秒`
-    : ''
-  return `${stage}：目录 ${status.dirs ?? 0} · 已发现 ${status.discovered ?? 0} · 已入库 ${status.visited ?? 0} · 新增 ${status.added ?? 0} · 更新 ${status.updated ?? 0}${speedText}`
 }
 
 export function seriesSourceRoot(episodes: Media[]): string {

@@ -6,7 +6,7 @@ import { imageURL } from '../api/client'
 import type { Media } from '../types'
 
 export const MediaCard = ({
-  media, progress, count, rating, linkTo, onClick, actions,
+  media, progress, count, rating, linkTo, onClick, actions, compact,
 }: {
   media: Media
   progress?: number
@@ -15,6 +15,7 @@ export const MediaCard = ({
   linkTo?: string
   onClick?: () => void
   actions?: ReactNode
+  compact?: boolean
 }) => {
   const ref = useRef<HTMLDivElement>(null)
   const href = linkTo ?? `/media/${media.id}`
@@ -95,20 +96,26 @@ export const MediaCard = ({
           )}
 
           {/* Premium Hover Overlay */}
-          <div className="absolute inset-0 bg-gradient-to-t from-[#111827]/90 via-[#111827]/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4">
+          <div className={`absolute inset-0 bg-gradient-to-t from-[#111827]/90 via-[#111827]/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end ${
+            compact ? 'p-3' : 'p-4'
+          }`}>
             <motion.div
               initial={{ y: 15, opacity: 0 }}
               whileHover={{ y: 0, opacity: 1 }}
               transition={{ duration: 0.2 }}
               className="space-y-2"
             >
-              <span className="inline-flex items-center gap-1.5 rounded-xl bg-brand-500 px-4 py-2 text-xs font-bold text-white shadow-md shadow-brand-500/20">
-                <Play size={10} fill="currentColor" className="text-white" />
+              <span className={`inline-flex items-center gap-1.5 rounded-xl bg-brand-500 px-4 py-2 font-bold text-white shadow-md shadow-brand-500/20 ${
+                compact ? 'py-1.5 text-[11px]' : 'text-xs py-2'
+              }`}>
+                <Play size={compact ? 8 : 10} fill="currentColor" className="text-white" />
                 <span>立即观影</span>
               </span>
-              <p className="text-[10px] text-gray-200 font-semibold line-clamp-2 leading-relaxed">
-                {media.overview || "暂无简介内容"}
-              </p>
+              {!compact && (
+                <p className="text-[10px] text-gray-200 font-semibold line-clamp-2 leading-relaxed">
+                  {media.overview || "暂无简介内容"}
+                </p>
+              )}
             </motion.div>
           </div>
 
@@ -124,8 +131,12 @@ export const MediaCard = ({
         </div>
 
         {/* Media Metadata Info */}
-        <div className="space-y-1 border-t border-[var(--app-border)] bg-[var(--app-panel)] p-4">
-          <p className="truncate text-sm font-bold text-[var(--app-text)] transition-colors duration-200 group-hover:text-brand-500">
+        <div className={`space-y-1 border-t border-[var(--app-border)] bg-[var(--app-panel)] ${
+          compact ? 'p-2' : 'p-4'
+        }`}>
+          <p className={`truncate font-bold text-[var(--app-text)] transition-colors duration-200 group-hover:text-brand-500 ${
+            compact ? 'text-xs' : 'text-sm'
+          }`}>
             {media.title}
           </p>
           <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-[var(--app-muted)]">
