@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 
 import { mediaAPI } from '../api/library'
 import { api, hlsURL, streamURL } from '../api/client'
+import { danmakuAPI, type DanmakuAnime } from '../api/danmaku'
 import { playbackAPI } from '../api/playback'
 import { subtitlesAPI, type SubtitleTrack } from '../api/subtitles'
 import { systemAPI } from '../api/system'
@@ -13,6 +14,7 @@ import { getSeriesKey, isEpisodeLike } from '../utils/groupSeries'
 import { pickPlayerMode, needsTranscodeForBrowser, type PlayerMode } from './playerPageModel'
 import { PlayerTopBar } from './PlayerTopBar'
 import { PlayerVideoStage } from './PlayerVideoStage'
+import { PlayerDanmakuPanel } from '../components/PlayerDanmakuPanel'
 
 // Fullscreen, dark-themed video page.
 //
@@ -42,6 +44,21 @@ export function PlayerPage() {
   const [playerError, setPlayerError] = useState('')
   // 「客户端直连解码」模式：宿主机不转码，播放器强制 direct play、隐藏 HLS 切换。
   const [directOnly, setDirectOnly] = useState(false)
+
+  // 弹幕控制：状态来自 /api/danmaku/config 初始值，用户在面板里实时调整。
+  const [danmakuOpen, setDanmakuOpen] = useState(false)
+  const [danmakuEnabled, setDanmakuEnabled] = useState(true)
+  const [danmakuSearch, setDanmakuSearch] = useState<string | null>(null)
+  const [danmakuSearching, setDanmakuSearching] = useState(false)
+  // 用户从候选列表选定的弹幕库；null = 自动匹配。
+  const [danmakuEpisodeId, setDanmakuEpisodeId] = useState<number | string | null>(null)
+  // 自动匹配歧义（多番剧命中）时的候选列表。
+  const [danmakuCandidates, setDanmakuCandidates] = useState<DanmakuAnime[]>([])
+  // 用户当前选定的弹幕来源描述（面板中展示）。
+  const [danmakuSelectedSource, setDanmakuSelectedSource] = useState('')
+  const [danmakuOpacity, setDanmakuOpacity] = useState(1)
+  const [danmakuFontSize, setDanmakuFontSize] = useState(24)
+  const [danmakuArea, setDanmakuArea] = useState(1)
 
   const teardownHls = useCallback((mediaId?: string, stopServer = false) => {
     if (hlsRef.current) {
@@ -73,6 +90,57 @@ export function PlayerPage() {
       .info()
       .then((info) => setDirectOnly(Boolean(info.direct_play_only)))
       .catch(() => setDirectOnly(false))
+  }, [])
+
+  // 读取宿主机已保存的弹幕参数作为面板初始值（无 admin 权限也可读）。
+  useEffect(() => {
+    danmakuAPI
+      .config()
+      .then((cfg) => {
+        setDanmakuEnabled(cfg.enabled)
+        setDanmakuOpacity(Number(cfg.opacity) || 1)
+        setDanmakuFontSize(Number(cfg.font_size) || 24)
+        setDanmakuArea(Number(cfg.area) || 1)
+      })
+      .catch(() => undefined)
+  }, [])
+
+  // 用户手动搜索：带关键词重新拉取（search=null 时按视频名）。
+  // loading 状态由 DanmakuStage 拉取完成回调（onLoaded）驱动。
+  const searchDanmaku = useCallback((kw: string) => {
+    setDanmakuSearching(true)
+    setDanmakuCandidates([])
+    setDanmakuEpisodeId(null)
+    setDanmakuSearch(kw || null)
+  }, [])
+
+  const danmakuLoaded = useCallback(() => {
+    setDanmakuSearching(false)
+  }, [])
+
+  // 多番剧命中（disambiguation）：展示候选让用户选择。
+  const danmakuGotCandidates = useCallback((candidates: DanmakuAnime[]) => {
+    setDanmakuCandidates(candidates)
+    setDanmakuSearching(false)
+    // 候选是静默返回的（此时没有任何弹幕）；自动打开面板提示用户选择来源。
+    if (candidates.length > 0) setDanmakuOpen(true)
+  }, [])
+
+  // 用户选定某个弹幕库：显式 episodeId 重新拉取。
+  const danmakuSelectEpisode = useCallback((episodeId: number, animeTitle: string, episodeTitle: string) => {
+    setDanmakuEpisodeId(episodeId)
+    setDanmakuCandidates([])
+    setDanmakuSearching(true)
+    // 展示当前所选来源（面板标题处可见）。
+    setDanmakuSelectedSource(`${animeTitle}・${episodeTitle}`)
+  }, [])
+
+  // 回到自动匹配（清除用户手动选择）。
+  const danmakuResetAuto = useCallback(() => {
+    setDanmakuEpisodeId(null)
+    setDanmakuCandidates([])
+    setDanmakuSearching(true)
+    setDanmakuSearch(null)
   }, [])
 
   // Load metadata and pick a default mode.
@@ -215,6 +283,37 @@ export function PlayerPage() {
         subs={subs}
         videoRef={ref}
         onVideoError={handleVideoError}
+        danmakuEnabled={danmakuEnabled}
+        danmakuOpacity={danmakuOpacity}
+        danmakuFontSize={danmakuFontSize}
+        danmakuArea={danmakuArea}
+        danmakuSearch={danmakuSearch}
+        danmakuEpisodeId={danmakuEpisodeId}
+        danmakuOpen={danmakuOpen}
+        onToggleDanmaku={() => setDanmakuOpen((v) => !v)}
+        onDanmakuLoaded={danmakuLoaded}
+        onDanmakuCandidates={danmakuGotCandidates}
+        danmakuPanel={
+          <PlayerDanmakuPanel
+            open={danmakuOpen}
+            onClose={() => setDanmakuOpen(false)}
+            enabled={danmakuEnabled}
+            onToggleEnabled={setDanmakuEnabled}
+            search={danmakuSearch ?? ''}
+            onSearch={searchDanmaku}
+            searching={danmakuSearching}
+            area={danmakuArea}
+            onAreaChange={setDanmakuArea}
+            opacity={danmakuOpacity}
+            onOpacityChange={setDanmakuOpacity}
+            fontSize={danmakuFontSize}
+            onFontSizeChange={setDanmakuFontSize}
+            candidates={danmakuCandidates}
+            selectedSource={danmakuSelectedSource}
+            onSelectEpisode={danmakuSelectEpisode}
+            onResetAuto={danmakuResetAuto}
+          />
+        }
       />
     </div>
   )

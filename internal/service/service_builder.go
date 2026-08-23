@@ -65,6 +65,7 @@ func (b *serviceContainerBuilder) initProviderServices() {
 	b.c.Douban = NewDoubanProvider(b.cfg, b.log)
 	b.c.Fanart = NewFanartProvider(b.cfg, b.log)
 	b.c.RecognitionWords = NewRecognitionWordsService(b.log, b.repos)
+	b.c.Danmaku = NewDanmakuService(b.log, b.repos)
 
 		adult := NewAdultProvider(b.log, b.c.APIConfig, b.repos)
 	b.c.Scraper = NewScraperService(

@@ -1,5 +1,6 @@
 import { adultSettingsGroup } from './settingsGroupAccess'
 import { apiConfigsSettingsGroup } from './settingsGroupAPIConfigs'
+import { danmakuSettingsGroup } from './settingsGroupDanmaku'
 import { generalSettingsGroup } from './settingsGroupGeneral'
 import { librarySettingsGroup } from './settingsGroupLibrary'
 import { recognitionWordsSettingsGroup } from './settingsGroupRecognitionWords'
@@ -12,6 +13,7 @@ export const GROUPS: SettingGroup[] = [
   librarySettingsGroup,
   apiConfigsSettingsGroup,
   recognitionWordsSettingsGroup,
+  danmakuSettingsGroup,
   adultSettingsGroup,
 ]
 

@@ -59,6 +59,7 @@ type Container struct {
 	Cache            *RuntimeCacheService
 	Sessions         *SessionTrackerService
 	RecognitionWords *RecognitionWordsService
+	Danmaku          *DanmakuService
 
 	stopCtx    context.Context
 	stopCancel context.CancelFunc
