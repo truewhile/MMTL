@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  Captions,
+  CaptionsOff,
   Maximize,
   MessageSquareText,
   Minimize,
@@ -9,6 +11,7 @@ import {
   Volume2,
   VolumeX,
 } from 'lucide-react'
+import type { SubtitleTrack } from '../api/subtitles'
 
 // PlayerControls — custom bottom control bar replacing the native <video
 // controls> (which cannot host custom buttons). The danmaku toggle sits right
@@ -17,8 +20,7 @@ import {
 //
 // Native keyboard shortcuts (space / arrows) still work because they are
 // element-level defaults on <video>. Subtitles from <track> elements keep
-// rendering (the default track shows as before); only the track picker UI is
-// not re-implemented here.
+// rendering; the CC button opens a track picker (关闭 / 各轨道).
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) s = 0
@@ -29,6 +31,10 @@ function formatTime(s: number): string {
 
 type PlayerControlsProps = {
   videoRef: React.RefObject<HTMLVideoElement>
+  subs: SubtitleTrack[]
+  /** 当前激活字幕轨道：-1=关闭，0..n-1=对应轨道。 */
+  subtitleIndex: number
+  onSelectSubtitle: (index: number) => void
   danmakuOpen: boolean
   danmakuEnabled: boolean
   onToggleDanmaku: () => void
@@ -36,6 +42,9 @@ type PlayerControlsProps = {
 
 export function PlayerControls({
   videoRef,
+  subs,
+  subtitleIndex,
+  onSelectSubtitle,
   danmakuOpen,
   danmakuEnabled,
   onToggleDanmaku,
@@ -51,7 +60,21 @@ export function PlayerControls({
   const [fullscreen, setFullscreen] = useState(false)
   const [pip, setPip] = useState(false)
   const [uiVisible, setUiVisible] = useState(true)
+  const [subtitleMenuOpen, setSubtitleMenuOpen] = useState(false)
+  const subtitleMenuRef = useRef<HTMLDivElement | null>(null)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // 点击控制栏外部时关闭字幕菜单
+  useEffect(() => {
+    if (!subtitleMenuOpen) return
+    const onDocClick = (e: MouseEvent) => {
+      if (subtitleMenuRef.current && !subtitleMenuRef.current.contains(e.target as Node)) {
+        setSubtitleMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [subtitleMenuOpen])
 
   // 播放时 3 秒无操作自动隐藏控制栏；暂停时保持显示。监听挂在视频容器上，
   // 控制栏隐藏（pointer-events-none）后移动鼠标仍能重新唤起。
@@ -215,6 +238,55 @@ export function PlayerControls({
           >
             <PictureInPicture size={18} className={pip ? 'text-rose-400' : ''} />
           </button>
+        )}
+
+        {subs.length > 0 && (
+          <div className="relative" ref={subtitleMenuRef}>
+            <button
+              onClick={() => setSubtitleMenuOpen((v) => !v)}
+              className="rounded-full p-1.5 transition hover:bg-white/15"
+              title="字幕"
+            >
+              {subtitleIndex >= 0 ? (
+                <Captions size={18} className="text-rose-400" />
+              ) : (
+                <CaptionsOff size={18} className="text-white/70" />
+              )}
+            </button>
+            {subtitleMenuOpen && (
+              <div className="absolute bottom-11 right-0 z-30 min-w-36 rounded-xl border border-white/15 bg-black/85 p-1 shadow-2xl backdrop-blur">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectSubtitle(-1)
+                    setSubtitleMenuOpen(false)
+                  }}
+                  className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs transition hover:bg-white/10 ${
+                    subtitleIndex < 0 ? 'text-rose-400' : 'text-white/85'
+                  }`}
+                >
+                  关闭字幕
+                </button>
+                {subs.map((track, index) => (
+                  <button
+                    key={track.path}
+                    type="button"
+                    onClick={() => {
+                      onSelectSubtitle(index)
+                      setSubtitleMenuOpen(false)
+                    }}
+                    className={`flex w-full items-center gap-2 truncate rounded-lg px-3 py-1.5 text-left text-xs transition hover:bg-white/10 ${
+                      subtitleIndex === index ? 'text-rose-400' : 'text-white/85'
+                    }`}
+                    title={track.label || track.lang}
+                  >
+                    <span className="truncate">{track.label || track.lang || `字幕 ${index + 1}`}</span>
+                    {subtitleIndex === index && <span className="ml-auto text-rose-400">●</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         <button

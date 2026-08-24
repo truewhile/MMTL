@@ -27,6 +27,23 @@ import { PlayerDanmakuPanel } from '../components/PlayerDanmakuPanel'
 //
 // External subtitles next to the source file are auto-discovered and
 // attached as <track> elements.
+const SUBTITLE_STORAGE_KEY = 'mmtl.subtitle'
+
+// 初始字幕偏好：localStorage 记录上次选择的轨道（-1=关闭）；没有偏好时
+// 默认 0（自动加载第一条字幕）。
+function initialSubtitleIndex(): number {
+  try {
+    const saved = localStorage.getItem(SUBTITLE_STORAGE_KEY)
+    if (saved !== null && saved !== '') {
+      const n = parseInt(saved, 10)
+      if (Number.isFinite(n)) return n
+    }
+  } catch {
+    // ignore
+  }
+  return 0
+}
+
 export function PlayerPage() {
   const { id = '' } = useParams()
   const [params, setParams] = useSearchParams()
@@ -40,6 +57,7 @@ export function PlayerPage() {
   const [media, setMedia] = useState<Media | null>(null)
   const [mode, setMode] = useState<PlayerMode>('direct')
   const [subs, setSubs] = useState<SubtitleTrack[]>([])
+  const [subtitleIndex, setSubtitleIndex] = useState<number>(initialSubtitleIndex)
   const [hlsUnavailable, setHlsUnavailable] = useState(false)
   const [playerError, setPlayerError] = useState('')
   // 「客户端直连解码」模式：宿主机不转码，播放器强制 direct play、隐藏 HLS 切换。
@@ -156,7 +174,13 @@ export function PlayerPage() {
     })
     subtitlesAPI
       .list(id)
-      .then((tracks) => setSubs(tracks ?? []))
+      .then((tracks) => {
+        const list = tracks ?? []
+        setSubs(list)
+        // 记忆的轨道下标可能超出当前媒体的轨道数（不同媒体字幕数量不同），
+        // 越界时回退到第一条；无字幕则关闭。
+        setSubtitleIndex((cur) => (cur >= list.length ? (list.length > 0 ? 0 : -1) : cur))
+      })
       .catch(() => setSubs([]))
   }, [id, params, directOnly])
 
@@ -246,6 +270,16 @@ export function PlayerPage() {
     setParams(params, { replace: true })
   }, [mode, params, setParams])
 
+  // 用户切换字幕轨道：-1=关闭；记忆偏好，下次播放默认沿用。
+  const selectSubtitle = useCallback((index: number) => {
+    setSubtitleIndex(index)
+    try {
+      localStorage.setItem(SUBTITLE_STORAGE_KEY, String(index))
+    } catch {
+      // ignore
+    }
+  }, [])
+
   const handleVideoError = useCallback(() => {
     // 浏览器对 <video src> 的错误描述非常有限，把详细原因
     // 转给开发者控制台 + 一条 toast；常见原因是 codec 不支持。
@@ -281,6 +315,8 @@ export function PlayerPage() {
         media={media}
         playerError={playerError}
         subs={subs}
+        subtitleIndex={subtitleIndex}
+        onSelectSubtitle={selectSubtitle}
         videoRef={ref}
         onVideoError={handleVideoError}
         danmakuEnabled={danmakuEnabled}

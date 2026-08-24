@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import type { ReactNode, RefObject } from 'react'
 
 import { subtitlesAPI, type SubtitleTrack } from '../api/subtitles'
@@ -10,6 +11,9 @@ type PlayerVideoStageProps = {
   media: Media | null
   playerError: string
   subs: SubtitleTrack[]
+  /** 当前激活字幕轨道：-1=关闭，0..n-1=对应轨道。 */
+  subtitleIndex: number
+  onSelectSubtitle: (index: number) => void
   videoRef: RefObject<HTMLVideoElement>
   onVideoError: () => void
   danmakuEnabled: boolean
@@ -30,6 +34,8 @@ export function PlayerVideoStage({
   media,
   playerError,
   subs,
+  subtitleIndex,
+  onSelectSubtitle,
   videoRef,
   onVideoError,
   danmakuEnabled,
@@ -58,6 +64,23 @@ export function PlayerVideoStage({
     else void stage.requestFullscreen?.()
   }
 
+  // 把用户选择的字幕轨道应用到 <video> 的 textTracks（跨浏览器显式设置
+  // mode；<track default> 只影响初始值，部分浏览器不会自动显示）。
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video || subs.length === 0) return
+    const apply = () => {
+      const tracks = video.textTracks
+      for (let i = 0; i < tracks.length; i++) {
+        tracks[i].mode = i === subtitleIndex ? 'showing' : 'disabled'
+      }
+    }
+    apply()
+    // 轨道元数据就绪后再应用一次，确保字幕真正可见
+    video.addEventListener('loadedmetadata', apply)
+    return () => video.removeEventListener('loadedmetadata', apply)
+  }, [subtitleIndex, subs, videoRef])
+
   return (
     <div
       className="relative flex flex-1 items-center justify-center overflow-hidden bg-black"
@@ -73,14 +96,13 @@ export function PlayerVideoStage({
             className="relative z-0 max-h-screen w-full max-w-[1600px] bg-black"
             onError={onVideoError}
           >
-            {subs.map((track, index) => (
+            {subs.map((track) => (
               <track
                 key={track.path}
                 kind="subtitles"
                 src={subtitlesAPI.url(media.id, track.path)}
                 srcLang={track.lang}
                 label={track.label || track.lang}
-                default={index === 0}
               />
             ))}
           </video>
@@ -98,6 +120,9 @@ export function PlayerVideoStage({
           />
           <PlayerControls
             videoRef={videoRef}
+            subs={subs}
+            subtitleIndex={subtitleIndex}
+            onSelectSubtitle={onSelectSubtitle}
             danmakuOpen={danmakuOpen}
             danmakuEnabled={danmakuEnabled}
             onToggleDanmaku={onToggleDanmaku}
