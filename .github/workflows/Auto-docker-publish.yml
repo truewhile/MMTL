@@ -82,11 +82,8 @@ jobs:
           
           NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-<<<<<<< HEAD
           echo "tag=MMTL-v${NEW_VERSION}" >> $GITHUB_OUTPUT
-=======
           echo "tag=mmtl-v${NEW_VERSION}" >> $GITHUB_OUTPUT
->>>>>>> 94057ef3e7ddaa4ea374931f4e577fd2e7ab3d96
 
       # 3. 更新 VERSION 文件
       - name: Update version file
