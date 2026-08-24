@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -21,6 +22,10 @@ type OpenClient struct {
 	AccessToken     string
 	RefreshTokenStr string
 	executor        *QueueExecutor
+
+	// tokenMu 保护令牌刷新：业务请求中途 access_token 失效时自动刷新重试，
+	// 多 goroutine（同步列表 + 下载队列）并发下只允许一次刷新进行。
+	tokenMu sync.Mutex
 }
 
 // default115HTTPClient 创建带有防 405 重定向保护的 http.Client。
@@ -175,9 +180,18 @@ func (c *OpenClient) doJSON(ctx context.Context, method, rawURL string, form map
 			return &base, lastErr
 		}
 
-		// Token 失效不重试
+		// Token 失效（access_token 过期，如长时间同步中途过期）：自动用
+		// refresh_token 刷新后重试一次。刷新失败或重试后仍失败才返回，
+		// 避免长时间同步因 token 过期而整体失败。
 		if isTokenCode(base.Code) {
-			return &base, nil
+			if access && c.tryRefreshTokenLocked() {
+				continue
+			}
+			if access {
+				// 刷新失败（或已刷新仍失败）时返回明确错误
+				lastErr = NewOpenAPIResponseError(base.Code, base.Errno, base.Message, base.Error, "115: access_token 校验失败且刷新未成功")
+			}
+			return &base, lastErr
 		}
 
 		lastErr = NewOpenAPIResponseError(base.Code, base.Errno, base.Message, base.Error, "115 接口调用失败")
@@ -241,6 +255,22 @@ func (c *OpenClient) doAuthJSON(ctx context.Context, method, rawURL string, form
 // doAuthJSONWithUA 带自定义 User-Agent 的业务请求（换取直链等防盗链接口使用）。
 func (c *OpenClient) doAuthJSONWithUA(ctx context.Context, method, rawURL string, form map[string]string, retries int, ua string) (*RespBase, error) {
 	return c.doJSON(ctx, method, rawURL, form, true, retries, ua)
+}
+
+// tryRefreshTokenLocked 并发安全地刷新 access_token；成功返回 true（调用方
+// 应使用内存中的新 token 重试原请求）。refresh_token 已失效时也会清空内存 token。
+func (c *OpenClient) tryRefreshTokenLocked() bool {
+	c.tokenMu.Lock()
+	defer c.tokenMu.Unlock()
+	token, err := c.RefreshToken(c.RefreshTokenStr)
+	if err != nil {
+		if IsRefreshTokenDead(err) {
+			c.SetAuthToken("", "")
+		}
+		return false
+	}
+	c.SetAuthToken(token.AccessToken, token.RefreshToken)
+	return true
 }
 
 // IsThrottleCode 判断是否为限流错误码。

@@ -17,6 +17,7 @@ import (
 	"github.com/ShukeBta/MMTL/internal/config"
 	"github.com/ShukeBta/MMTL/internal/model"
 	"github.com/ShukeBta/MMTL/internal/repository"
+	"github.com/ShukeBta/MMTL/internal/service/cloud"
 )
 
 // testStrmService 构建带内存库的 StrmService。
@@ -338,5 +339,110 @@ func TestScanLocalMetaForUpload(t *testing.T) {
 	}
 	if len(tasks) != 1 {
 		t.Fatalf("expected still 1 upload task after dedup, got %d", len(tasks))
+	}
+}
+
+// fakeRemoteProvider 是 walkRemote 并发遍历的假提供方：返回一棵固定目录树，
+// 并记录每个目录被 List 的次数，用于验证并发遍历无漏目录、无重复目录。
+type fakeRemoteProvider struct {
+	listed map[string]int
+}
+
+func (f *fakeRemoteProvider) Type() string               { return "fake" }
+func (f *fakeRemoteProvider) Ping(context.Context) error { return nil }
+func (f *fakeRemoteProvider) Resolve(context.Context, string) (*cloud.DirectLink, error) {
+	return &cloud.DirectLink{URL: "http://cdn/x.mkv"}, nil
+}
+
+func (f *fakeRemoteProvider) List(_ context.Context, dirID string) ([]cloud.FileEntry, error) {
+	if f.listed == nil {
+		f.listed = map[string]int{}
+	}
+	f.listed[dirID]++
+	switch dirID {
+	case "root":
+		return []cloud.FileEntry{
+			{ID: "a", Name: "动漫", IsDir: true},
+			{ID: "b", Name: "电影", IsDir: true},
+			{ID: "f1", Name: "孤儿视频.mkv", Size: 100},
+		}, nil
+	case "a":
+		return []cloud.FileEntry{
+			{ID: "a1", Name: "番剧", IsDir: true},
+			{ID: "fa1", Name: "第01集.mkv", Size: 200},
+		}, nil
+	case "a1":
+		return []cloud.FileEntry{
+			{ID: "fa11", Name: "第01集.mkv", Size: 300},
+			{ID: "fa12", Name: "第02集.mkv", Size: 300},
+		}, nil
+	case "b":
+		return []cloud.FileEntry{
+			{ID: "fb1", Name: "电影A.mkv", Size: 400},
+		}, nil
+	default:
+		return nil, nil
+	}
+}
+
+// TestWalkRemoteConcurrent 验证并发目录遍历：所有目录均被列出、所有文件
+// 均被处理（strm 生成 / 元数据入队），且不重复。
+func TestWalkRemoteConcurrent(t *testing.T) {
+	svc := testStrmService(t)
+	localDir := t.TempDir()
+
+	acct := &model.StrmAccount{
+		Name:     "fake",
+		Provider: "cloud115",
+		Config:   "{}",
+		Enabled:  true,
+	}
+	if err := svc.repo.StrmAccount.Create(context.Background(), acct); err != nil {
+		t.Fatal(err)
+	}
+	p := &model.StrmSyncPath{
+		Base:       model.Base{ID: "walk-path"},
+		AccountID:  acct.ID,
+		Provider:   model.StrmProvider115,
+		RemotePath: "root",
+		LocalPath:  localDir,
+	}
+
+	provider := &fakeRemoteProvider{listed: map[string]int{}}
+	st := &strmSyncState{
+		s:          svc,
+		ctx:        context.Background(),
+		p:          p,
+		provider:   provider,
+		cfg:        &strmPathConfig{VideoExt: []string{"mkv"}, MetaExt: []string{"nfo"}, AddPath: 1, DownloadMeta: false},
+		rec:        &model.StrmSyncRecord{},
+		seenVideo:  map[string]bool{},
+		seenMeta:   map[string]bool{},
+		remoteMeta: map[string]int64{},
+	}
+	if err := st.walkRemote(); err != nil {
+		t.Fatalf("walkRemote failed: %v", err)
+	}
+
+	for _, dir := range []string{"root", "a", "a1", "b"} {
+		if provider.listed[dir] != 1 {
+			t.Errorf("目录 %s 被列出 %d 次，期望 1 次", dir, provider.listed[dir])
+		}
+	}
+
+	// 5 个视频文件应生成 5 个 .strm：孤儿视频.mkv / a目录第01集 /
+	// 番剧第01集+第02集 / 电影A（递归统计，含子目录）
+	strmCount := 0
+	walkErr := filepath.WalkDir(localDir, func(path string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.HasSuffix(d.Name(), ".strm") {
+			strmCount++
+		}
+		return nil
+	})
+	if walkErr != nil {
+		t.Fatal(walkErr)
+	}
+	if strmCount != 5 {
+		t.Errorf("生成的 .strm 数量 = %d，期望 5", strmCount)
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.uber.org/zap"
@@ -229,7 +230,14 @@ func (st *strmSyncState) run() error {
 	return nil
 }
 
-// walkRemote 广度优先遍历网盘目录树。
+// strmScanWorkers 远端目录树并发遍历的 worker 数。115 开放平台有全局
+// 令牌桶限流（QPS/QPM/QPH），并发请求自动排队，不会触发风控；并发让
+// 多个目录列表请求的网络往返彼此重叠，大幅缩短大目录树同步耗时。
+const strmScanWorkers = 8
+
+// walkRemote 并发广度优先遍历网盘目录树。
+// 多个 worker 并行执行 List（受全局 115 令牌桶限流约束），子目录动态
+// 入队；任一目录失败则取消其余 worker 并返回错误（与旧串行版语义一致）。
 func (st *strmSyncState) walkRemote() error {
 	root := strings.TrimSpace(st.p.RemotePath)
 	if root == "" {
@@ -239,33 +247,78 @@ func (st *strmSyncState) walkRemote() error {
 		id  string
 		rel string
 	}
-	queue := []dirTask{{id: root, rel: ""}}
-	for len(queue) > 0 {
-		select {
-		case <-st.ctx.Done():
-			return st.ctx.Err()
-		default:
-		}
-		task := queue[0]
-		queue = queue[1:]
-		entries, err := st.provider.List(st.ctx, task.id)
-		if err != nil {
-			return fmt.Errorf("列出远端目录 %s 失败：%w", task.id, err)
-		}
-		for _, entry := range entries {
-			cleanName := cleanEntryName(entry.Name, entry.IsDir)
-			rel := cleanName
-			if task.rel != "" {
-				rel = task.rel + "/" + cleanName
+
+	ctx, cancel := context.WithCancel(st.ctx)
+	defer cancel()
+
+	queue := make(chan dirTask, 512)
+	var pending atomic.Int64
+
+	// 根目录入队
+	pending.Add(1)
+	queue <- dirTask{id: root, rel: ""}
+
+	// 当队列中所有目录都被消费（pending 归零）或出错时关闭 channel，
+	// 让 worker 全部退出。
+	go func() {
+		for {
+			if ctx.Err() != nil || pending.Load() == 0 {
+				close(queue)
+				return
 			}
-			if entry.IsDir {
-				queue = append(queue, dirTask{id: entry.ID, rel: rel})
-				continue
-			}
-			st.processRemoteFile(entry, rel)
+			time.Sleep(10 * time.Millisecond)
 		}
+	}()
+
+	var (
+		wg       sync.WaitGroup
+		errMu    sync.Mutex
+		firstErr error
+	)
+	for i := 0; i < strmScanWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for task := range queue {
+				if ctx.Err() != nil {
+					return
+				}
+				entries, err := st.provider.List(ctx, task.id)
+				if err != nil {
+					errMu.Lock()
+					if firstErr == nil {
+						firstErr = fmt.Errorf("列出远端目录 %s 失败：%w", task.id, err)
+					}
+					errMu.Unlock()
+					cancel()
+					return
+				}
+				for _, entry := range entries {
+					cleanName := cleanEntryName(entry.Name, entry.IsDir)
+					rel := cleanName
+					if task.rel != "" {
+						rel = task.rel + "/" + cleanName
+					}
+					if entry.IsDir {
+						pending.Add(1)
+						select {
+						case queue <- dirTask{id: entry.ID, rel: rel}:
+						case <-ctx.Done():
+							pending.Add(-1)
+						}
+					} else {
+						st.processRemoteFile(entry, rel)
+					}
+				}
+				pending.Add(-1)
+			}
+		}()
 	}
-	return nil
+	wg.Wait()
+	if firstErr != nil {
+		return firstErr
+	}
+	return ctx.Err()
 }
 
 // processRemoteFile 分类处理远端文件：视频生成 STRM，元数据入下载队列。
@@ -340,7 +393,8 @@ func (st *strmSyncState) handleVideo(entry cloud.FileEntry, rel, ext string) {
 	}
 	content, err := st.strmContent(entry, rel, ext)
 	if err != nil {
-		st.rec.Message = err.Error()
+		// 并发 worker 下 rec.Message 无锁写会有数据竞争，这里仅记录日志；
+		// 最终同步结果的 message 由 finishSync 统一填充。
 		st.s.log.Warn("build strm content failed", zap.String("file", rel), zap.Error(err))
 		return
 	}
