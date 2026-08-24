@@ -101,6 +101,12 @@ func (t *TranscoderService) EnsureJob(ctx context.Context, mediaID string) (stri
 	if m == nil {
 		return "", ErrMediaNotFound
 	}
+	// .strm 媒体（STRMURL 或 container=strm / *.strm 路径）的内容是远程
+	// 直链文本，ffmpeg 无法读取，转码必然失败且白白消耗资源。直接拒绝
+	// 转码，迫使播放器走 /api/stream 302 直连播放。
+	if isStrmMediaRow(m) {
+		return "", ErrTranscodeDisabled
+	}
 	if _, err := os.Stat(m.Path); err != nil {
 		return "", ErrMediaNotFound
 	}

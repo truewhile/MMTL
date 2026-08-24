@@ -86,6 +86,21 @@ func playableSTRMTarget(ctx context.Context, repo *repository.Container, raw str
 	return STRMPlaybackEnabled(ctx, repo)
 }
 
+// isStrmMediaRow 判断媒体行是否为 .strm（远程直链）媒体：STRMURL 非空、
+// container=strm 或路径以 .strm 结尾。strm 媒体只能直连播放，禁止转码。
+func isStrmMediaRow(m *model.Media) bool {
+	if m == nil {
+		return false
+	}
+	if strings.TrimSpace(m.STRMURL) != "" {
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(m.Container), "strm") {
+		return true
+	}
+	return strings.HasSuffix(strings.ToLower(strings.TrimSpace(m.Path)), ".strm")
+}
+
 func isHTTPPlaybackTarget(raw string) bool {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || u == nil || !u.IsAbs() {
