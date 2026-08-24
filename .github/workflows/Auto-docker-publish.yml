@@ -1,13 +1,11 @@
 name: AuTo Docker Image
 
+
 on:
-  # CI 成功完成后自动触发
-  workflow_run:
-    workflows: ["CI"]  # 对应你的 CI workflow 名称
-    types:
-      - completed
-    branches:
-      - main
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   
   # 保留手动触发作为备选
   workflow_dispatch:
@@ -134,7 +132,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/mediastation-go
+          images: ghcr.io/${{ github.repository_owner }}/mmtl
           tags: |
             type=raw,value=latest
             type=raw,value=${{ steps.bump_version.outputs.tag }}

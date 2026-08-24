@@ -41,54 +41,17 @@ MediaStationGo 是一个自托管媒体管理系统，面向 NAS、小主机、�
 - **订阅下载入库**：连接 qBittorrent 后支持搜索、订阅、下载完成整理、刮削和入库通知。
 - **多用户与权限**：管理员/普通用户、有效期、成人内容开关、设备管理、注册码和 Telegram Bot 绑定。
 - **灵活部署**：单镜像 SQLite 一键起步，或按规模选择 PostgreSQL、Redis、OpenSearch，低配 NAS 到大库检索都能覆盖。
-
-## 社区与友链
-
-- Telegram MediaStationGo交流群：<https://t.me/MediaStationGo>
-- NodeSeek：[https://www.nodeseek.com/](https://www.nodeseek.com/)
-- LINUX DO：[https://linux.do/](https://linux.do/)
-- 
-## 关于MediaStationGo多用户授权码
-
- 获得方式：
-
- 1、通过爱发电获得：[爱发电](https://ifdian.net/a/shuke)
- 
- 2、提交Inssues
- 
- 3、提交PR贡献
- 
- 4、L站积分兑换
-
- 5、公益服向管理申请即可获得
-
- 所有爱发电收益也将会拿来维持Mgo项目的维护与更新迭代以及招募更多想参与Mgo项目的技术大神们来参与
-
- &暂无其他获取方式
-
- 禁止在国内任何平台对Mgo项目进行提起宣传
-
- 如：抖音、快手、B站、其他内网论坛及平台
-
-## 在线演示
-
-- 地址：[http://mgo.3jzs.com](http://mgo.3jzs.com)
-- 账号：`admin`
-- 密码：`admin123`
-
-> 演示站只用于看功能，请不要填写私人 API Key、站点 Cookie 或真实隐私信息。
-
 ## 快速开始
 
 最推荐使用 Docker Compose。仓库提供四份独立完整模板，全部不依赖 `.env`。想最省心就下载单镜像档（SQLite，只有一个镜像）；只需要按需修改访问端口、媒体目录、下载目录和可选硬件设备。需要多用户/高并发再选第一档起的 PostgreSQL 档位。
 
 ```bash
-mkdir -p MediaStationGo
-cd MediaStationGo
+mkdir -p MMTL
+cd MMTL
 # 最省心：单镜像 + SQLite，只启动一个容器
-curl -fsSL https://raw.githubusercontent.com/ShukeBta/MediaStationGo/main/docker-compose.simple.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/truewhile/MMTL/main/docker-compose.simple.yml -o docker-compose.yml
 # 或第一档：PostgreSQL（多用户/高并发更稳）
-# curl -fsSL https://raw.githubusercontent.com/ShukeBta/MediaStationGo/main/docker-compose.yml -o docker-compose.yml
+# curl -fsSL https://raw.githubusercontent.com/truewhile/MMTL/main/docker-compose.yml -o docker-compose.yml
 docker compose up -d
 ```
 
@@ -109,8 +72,7 @@ admin / admin123
 镜像地址：
 
 ```text
-GHCR：ghcr.io/shukebta/mediastation-go:latest
-Docker Hub 备用：shukbet/mediastationgo:latest
+GHCR：ghcr.io/truewhile/mmtl:latest
 ```
 
 ## 部署档位
@@ -119,19 +81,19 @@ MediaStationGo 推荐按机器资源和用户规模选择部署档位。每份 C
 
 | 档位 | 完整配置文件 | 组件 | 适合场景 |
 | --- | --- | --- | --- |
-| 单镜像档 | `docker-compose.simple.yml` | MediaStationGo + 内置 SQLite | 新手、单人使用、只想一个镜像跑起来的低配机器 |
-| 第一档 | `docker-compose.yml` | MediaStationGo + PostgreSQL | 大多数 NAS、个人/家庭使用、低内存机器 |
-| 第二档 | `docker-compose.standard.yml` | MediaStationGo + PostgreSQL + Redis | 多用户、Emby 客户端频繁刷新、首页/媒体列表访问较多 |
-| 第三档 | `docker-compose.search.yml` | MediaStationGo + PostgreSQL + Redis + OpenSearch | 超大媒体库、复杂全文搜索、后续需要独立搜索索引 |
+| 单镜像档 | `docker-compose.simple.yml` | MMTL + 内置 SQLite | 新手、单人使用、只想一个镜像跑起来的低配机器 |
+| 第一档 | `docker-compose.yml` | MMTL + PostgreSQL | 大多数 NAS、个人/家庭使用、低内存机器 |
+| 第二档 | `docker-compose.standard.yml` | MMTL + PostgreSQL + Redis | 多用户、Emby 客户端频繁刷新、首页/媒体列表访问较多 |
+| 第三档 | `docker-compose.search.yml` | MMTL + PostgreSQL + Redis + OpenSearch | 超大媒体库、复杂全文搜索、后续需要独立搜索索引 |
 
 ### 单镜像档：SQLite（最省心）
 
-只启动 MediaStationGo 一个镜像，主数据库用内置 SQLite，不需要 PostgreSQL / Redis / `.env`。变量最少、资源占用最低，适合新手和单人使用。日后需要多用户或更高并发时，保留 `./data` 后切换到第一档的 PostgreSQL 即可。
+只启动 MMTL 一个镜像，主数据库用内置 SQLite，不需要 PostgreSQL / Redis / `.env`。变量最少、资源占用最低，适合新手和单人使用。日后需要多用户或更高并发时，保留 `./data` 后切换到第一档的 PostgreSQL 即可。
 
 ```bash
-mkdir -p MediaStationGo
-cd MediaStationGo
-curl -fsSL https://raw.githubusercontent.com/ShukeBta/MediaStationGo/main/docker-compose.simple.yml -o docker-compose.yml
+mkdir -p MMTL
+cd MMTL
+curl -fsSL https://raw.githubusercontent.com/truewhile/MMTL/main/docker-compose.simple.yml -o docker-compose.yml
 docker compose up -d
 ```
 
@@ -143,7 +105,6 @@ ports:
 volumes:
   - ./data:/data          # 必须备份
   - ./media:/media        # 改左边为你的媒体目录，例如 /vol1/1000/Media:/media
-  - ./downloads:/downloads # 改左边为你的下载目录，例如 /vol1/1000/Downloads:/downloads
   # - /dev/dri:/dev/dri   # Intel 核显硬解需要时取消注释
 ```
 
@@ -155,19 +116,12 @@ volumes:
 /media/电视剧
 ```
 
-下载器保存目录建议也对齐到：
-
-```text
-/downloads
-```
-
 关键数据目录：
 
 ```text
 ./data       JWT 密钥、运行配置、SQLite 主数据库（mediastation.db）——必须备份
 ./cache      海报/临时缓存，可重建
 ./media      媒体库
-./downloads  下载目录
 ```
 
 > 单镜像模式请不要配置 `MEDIASTATION_DATABASE_DSN`；一旦填了 DSN 就会切回 PostgreSQL。
@@ -177,9 +131,9 @@ volumes:
 第一档是默认推荐部署。它只启动主服务和 PostgreSQL，资源占用最低，适合绝大多数 NAS。
 
 ```bash
-mkdir -p MediaStationGo
-cd MediaStationGo
-curl -fsSL https://raw.githubusercontent.com/ShukeBta/MediaStationGo/main/docker-compose.yml -o docker-compose.yml
+mkdir -p MMTL
+cd MMTL
+curl -fsSL https://raw.githubusercontent.com/truewhile/MMTL/main/docker-compose.yml -o docker-compose.yml
 docker compose up -d
 ```
 
@@ -196,9 +150,9 @@ docker compose up -d
 第二档是独立完整文件，包含第一档全部配置并额外启用 Redis。Redis 用作热缓存，能减轻多用户和 Emby 客户端频繁刷新时的数据库压力。
 
 ```bash
-mkdir -p MediaStationGo
-cd MediaStationGo
-curl -fsSL https://raw.githubusercontent.com/ShukeBta/MediaStationGo/main/docker-compose.standard.yml -o docker-compose.yml
+mkdir -p MMTL
+cd MMTL
+curl -fsSL https://raw.githubusercontent.com/truewhile/MMTL/main/docker-compose.standard.yml -o docker-compose.yml
 docker compose up -d
 ```
 
@@ -209,9 +163,9 @@ Redis 数据目录是 `./redis`。它主要保存缓存，通常可重建；真�
 第三档是独立完整文件，包含第二档全部配置并额外启用 OpenSearch，用于大库全文搜索和独立搜索索引。OpenSearch 常驻内存明显更高，低配 NAS 不建议开启。
 
 ```bash
-mkdir -p MediaStationGo
-cd MediaStationGo
-curl -fsSL https://raw.githubusercontent.com/ShukeBta/MediaStationGo/main/docker-compose.search.yml -o docker-compose.yml
+mkdir -p MMTL
+cd MMTL
+curl -fsSL https://raw.githubusercontent.com/truewhile/MMTL/main/docker-compose.search.yml -o docker-compose.yml
 docker compose up -d
 ```
 
@@ -249,7 +203,7 @@ docker compose -f docker-compose.search.yml up -d
 ```yaml
 services:
   mediastation-go:
-    image: ghcr.io/shukebta/mediastation-go:latest
+    image: ghcr.io/truewhile/MMTL:latest
     ports:
       # 左边是宿主机访问端口，右边是容器内端口。
       - "18080:8080"
@@ -262,9 +216,6 @@ services:
 
       # 媒体库目录：自动整理/重命名/入库需要写权限。
       - /vol1/1000/Media:/media
-
-      # 下载目录：qBittorrent 保存目录和自动整理源目录。
-      - /vol1/1000/Downloads:/downloads
     environment:
       TZ: Asia/Shanghai
 
@@ -304,12 +255,9 @@ Windows Docker Desktop 示例：
 ```yaml
 volumes:
   - D:/Media:/media
-  - D:/Downloads:/downloads
 environment:
   MEDIASTATION_MEDIA_DIR: D:/Media
   MEDIASTATION_MEDIA_CONTAINER_DIR: /media
-  MEDIASTATION_DOWNLOAD_DIR: D:/Downloads
-  MEDIASTATION_DOWNLOAD_CONTAINER_DIR: /downloads
 ```
 
 如果后台添加媒体库时填的是 `/vol1/...`，Compose 里也建议把同一个 `/vol1/...` 挂进容器，避免自动整理和下载入库时路径不可访问。
@@ -386,18 +334,6 @@ docker compose -f docker-compose.search.yml up -d --no-deps mediastation-go
 ./opensearch 搜索索引
 ```
 
-## Bot 与通知
-
-MediaStationGo 支持 Telegram Bot 绑定、用户菜单、群组管理菜单和事件通知。常见通知事件包括：
-
-- 订阅命中新资源
-- 下载任务完成
-- 入库完成
-- 刮削失败告警
-- 系统异常通知
-
-管理员可以在后台配置 Bot Token、Chat ID、通知频道和事件类型。群组里管理类命令只允许管理员执行，普通用户只能看到和使用用户命令。
-
 ## 常见问题
 
 **启动后还是反复迁移 SQLite？**
@@ -461,12 +397,6 @@ http://127.0.0.1:8080/api/health
 - Pull Request 请从独立分支或 fork 分支发起，不要直接向 `main` 推送。
 - 分支名建议使用 `fix/...`、`feat/...`、`docs/...` 或 `test/...`，例如 `docs/contribution-guidelines`。
 - 提交前按改动范围运行 `go test ./...`、`npm --prefix web run build` 或定向测试，并在 PR 中说明验证结果。
-
-## 赞赏
-
-如果这个项目节省了你的时间，欢迎请作者吃桶泡面。
-
-<img width="200" height="200" alt="微信赞赏码" src="https://github.com/user-attachments/assets/d6077de5-8305-400d-8b82-470ef05d926e" />
 
 ## Star History
 
