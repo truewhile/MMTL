@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -34,6 +35,12 @@ func (s *StrmService) downloadWorker(ctx context.Context) {
 		case <-s.stopCh:
 			return
 		default:
+		}
+		// 115 风控/限流熔断：冷却期间整体暂停，不给 WAF 续封机会
+		if left := s.wafCooldownLeft(); left > 0 {
+			s.log.Debug("下载队列冷却中", zap.Duration("remaining", left))
+			sleepContext(ctx, left)
+			continue
 		}
 		tasks, err := s.repo.StrmDownload.ClaimPendingDownload(ctx, 1)
 		if err != nil {
@@ -73,10 +80,17 @@ func (s *StrmService) processDownloadTask(ctx context.Context, task *model.StrmD
 	}
 	link, err := provider.Resolve(ctx, task.RemoteRef)
 	if err != nil {
+		if is115Blocked(err) {
+			s.triggerWAFCooldown()
+		}
 		s.downloadTaskFailWithRetry(task, "解析下载地址失败："+err.Error())
 		return
 	}
 	if err := downloadToFile(ctx, link, task.LocalPath, s.http); err != nil {
+		// 直链失效（403/404/410 等）：清掉缓存让下一轮重新换取
+		if isHTTPDownloadFailure(err) && task.Provider == model.StrmProvider115 {
+			cloud115.ClearDownloadURLCache(task.RemoteRef)
+		}
 		s.downloadTaskFailWithRetry(task, "下载失败："+err.Error())
 		return
 	}
@@ -496,4 +510,50 @@ func sleepContext(ctx context.Context, d time.Duration) {
 	case <-ctx.Done():
 	case <-time.After(d):
 	}
+}
+
+// ─── 115 风控/限流熔断 ────────────────────────────────────────────────────────
+
+// triggerWAFCooldown 检测到 115 风控/限流后触发全局冷却，冷却期间下载 worker 暂停。
+// 冷却时间取最大值，避免连续触发时缩短等待。
+func (s *StrmService) triggerWAFCooldown() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	until := time.Now().Add(strmWAFCooldown)
+	if until.After(s.wafUntil) {
+		s.wafUntil = until
+		s.log.Warn("115 风控/限流，下载队列进入冷却", zap.Duration("cooldown", strmWAFCooldown))
+	}
+}
+
+// wafCooldownLeft 返回剩余冷却时间（0 表示无需冷却）。
+func (s *StrmService) wafCooldownLeft() time.Duration {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.wafUntil.After(time.Now()) {
+		return time.Until(s.wafUntil)
+	}
+	return 0
+}
+
+// is115Blocked 判断错误是否来自 115 的风控/限流（WAF 405 拦截页或限流错误码）。
+func is115Blocked(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "115 接口返回 http 405") ||
+		strings.Contains(msg, "访问被阻断") ||
+		strings.Contains(msg, "request has been blocked") ||
+		strings.Contains(msg, "115 接口错误（770004") ||
+		strings.Contains(msg, "115 接口错误（406")
+}
+
+// isHTTPDownloadFailure 判断下载是否因 HTTP 状态码失败（直链失效需清缓存重取）。
+func isHTTPDownloadFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "http 4") || strings.Contains(msg, "http 5")
 }

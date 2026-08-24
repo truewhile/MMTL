@@ -124,8 +124,12 @@ type downloadURLData struct {
 	} `json:"url"`
 }
 
-// GetDownloadURL 获取下载直链（pickcode）。
+// GetDownloadURL 获取下载直链（pickcode）。命中缓存直接返回，
+// 避免对同一文件反复换取直链触发 115 风控。
 func (c *OpenClient) GetDownloadURL(ctx context.Context, pickCode string) (string, error) {
+	if cached := GetDownloadURLCache(pickCode); cached != "" {
+		return cached, nil
+	}
 	params := map[string]string{"pick_code": pickCode}
 	resp, err := c.doAuthJSON(ctx, "POST", ProAPIBase+"/open/ufile/downurl", params, 1)
 	if err != nil {
@@ -139,6 +143,7 @@ func (c *OpenClient) GetDownloadURL(ctx context.Context, pickCode string) (strin
 	if first.URL.URL == "" {
 		return "", fmt.Errorf("115: 下载地址为空（文件可能未上传完成或已被删除）")
 	}
+	SetDownloadURLCache(pickCode, first.URL.URL)
 	return first.URL.URL, nil
 }
 

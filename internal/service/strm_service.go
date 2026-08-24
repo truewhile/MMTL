@@ -89,7 +89,11 @@ type StrmService struct {
 	mu            sync.Mutex
 	running       map[string]context.CancelFunc // sync path id -> cancel
 	oauthSessions map[string]*strm115AuthSession
+	wafUntil      time.Time // 115 风控/限流熔断截止时间（由 mu 保护）
 }
+
+// strmWAFCooldown 检测到 115 风控/限流后下载队列的全局冷却时长。
+const strmWAFCooldown = 3 * time.Minute
 
 // NewStrmService constructs the STRM service.
 func NewStrmService(cfg *config.Config, log *zap.Logger, repos *repository.Container, crypto *CryptoService) *StrmService {
