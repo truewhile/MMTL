@@ -59,8 +59,26 @@ export function HomePage() {
         })
 
         // Fetch media items for all libraries in parallel
+        const isSeriesType = (type?: string) => type === 'tv' || type === 'anime' || type === 'variety'
         const results = await Promise.allSettled(
           libs.map(async (lib) => {
+            // 剧集类媒体库（tv/anime/variety）：后端 /series 已按剧聚合，
+            // 首页若用 episode 级 /media 的前 30 行再 groupSeries，同一部剧的
+            // 多集会折叠成 1 张卡，导致整行只显示 1 个条目。
+            // 改用 /series 分页拉取全部聚合后的剧集卡片。
+            if (isSeriesType(lib.type)) {
+              const cards: SeriesCard[] = []
+              let total = 0
+              const pageSize = 200
+              for (let page = 1; page <= 10; page++) {
+                const data = await libraryAPI.listSeries(lib.id, page, pageSize)
+                const pageItems = asArray<SeriesCard>(data?.items)
+                cards.push(...pageItems)
+                total = data?.total ?? cards.length
+                if (cards.length >= total || pageItems.length < pageSize) break
+              }
+              return { id: lib.id, cards, items: [], total }
+            }
             const page = await libraryAPI.listMedia(lib.id, 1, 30)
             const items = asArray<Media>(page?.items)
             const cards = groupSeries(items)
