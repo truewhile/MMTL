@@ -27,11 +27,6 @@ permissions:
 jobs:
   version-and-publish:
     runs-on: ubuntu-latest
-    # 只在 CI 成功时执行
-    if: |
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
-      (github.event_name == 'workflow_dispatch')
-    
     steps:
       - uses: actions/checkout@v4
         with:
@@ -153,15 +148,3 @@ jobs:
             VERSION=${{ steps.bump_version.outputs.new_version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      # 10. 创建 GitHub Release（可选）
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ steps.bump_version.outputs.tag }}
-          name: ${{ steps.bump_version.outputs.tag }}
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
