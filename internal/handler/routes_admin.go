@@ -19,6 +19,42 @@ func registerAdminRoutes(api *gin.RouterGroup, cfg *config.Config, svc *service.
 	registerAdminOrganizerRoutes(admin, svc)
 	registerAdminAPIConfigRoutes(admin, svc)
 	registerAdminRecognitionWordRoutes(admin, svc)
+	registerAdminStrmRoutes(admin, svc)
+}
+
+func registerAdminStrmRoutes(admin *gin.RouterGroup, svc *service.Container) {
+	admin.GET("/strm/accounts", listStrmAccountsHandler(svc))
+	admin.POST("/strm/accounts", createStrmAccountHandler(svc))
+	admin.PUT("/strm/accounts/:id", updateStrmAccountHandler(svc))
+	admin.DELETE("/strm/accounts/:id", deleteStrmAccountHandler(svc))
+	admin.POST("/strm/accounts/:id/test", testStrmAccountHandler(svc))
+	admin.GET("/strm/accounts/:id/list", listStrmRemoteDirHandler(svc))
+	admin.GET("/strm/115/sources", listStrm115SourcesHandler(svc))
+	admin.POST("/strm/accounts/:id/oauth/start", startStrm115OAuthHandler(svc))
+	admin.POST("/strm/accounts/:id/oauth/poll", pollStrm115OAuthHandler(svc))
+
+	admin.GET("/strm/settings", getStrmSettingsHandler(svc))
+	admin.PUT("/strm/settings", updateStrmSettingsHandler(svc))
+
+	admin.GET("/strm/paths", listStrmSyncPathsHandler(svc))
+	admin.POST("/strm/paths", createStrmSyncPathHandler(svc))
+	admin.PUT("/strm/paths/:id", updateStrmSyncPathHandler(svc))
+	admin.DELETE("/strm/paths/:id", deleteStrmSyncPathHandler(svc))
+	admin.POST("/strm/paths/:id/sync", startStrmSyncHandler(svc))
+	admin.POST("/strm/paths/:id/cancel", cancelStrmSyncHandler(svc))
+	admin.GET("/strm/records", listStrmSyncRecordsHandler(svc))
+	admin.GET("/strm/local-dirs", listStrmLocalDirsHandler(svc))
+
+	admin.GET("/strm/downloads", downloadQueueHandler(svc))
+	admin.POST("/strm/downloads/:id/cancel", cancelStrmDownloadHandler(svc))
+	admin.POST("/strm/downloads/:id/retry", retryStrmDownloadHandler(svc))
+	admin.POST("/strm/downloads/clear-done", clearDoneDownloadsHandler(svc))
+	admin.POST("/strm/downloads/clear-finished", clearFinishedDownloadsHandler(svc))
+	admin.POST("/strm/downloads/retry-failed", retryAllFailedDownloadsHandler(svc))
+	admin.POST("/strm/downloads/cancel-pending", cancelPendingDownloadsHandler(svc))
+	admin.GET("/strm/uploads", uploadQueueHandler(svc))
+	admin.POST("/strm/uploads/:id/cancel", cancelStrmUploadHandler(svc))
+	admin.POST("/strm/uploads/:id/retry", retryStrmUploadHandler(svc))
 }
 
 func registerAdminUserRoutes(admin *gin.RouterGroup, svc *service.Container) {

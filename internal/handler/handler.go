@@ -20,6 +20,12 @@ func Register(r *gin.Engine, cfg *config.Config, log *zap.Logger, svc *service.C
 		api.GET("/version", versionInfo)
 		api.GET("/public/ui-config", publicUIConfigHandler(svc))
 
+		// STRM 播放端点：strm 文件内容指向这里，Emby/Infuse 直接请求（无 JWT）。
+		api.GET("/strm/play/:provider/:file", strmPlayHandler(svc))
+		// 115 中继/CloudDrive 授权回跳（authorization_id 会话 + 共享密钥校验）
+		api.POST("/strm/oauth/callback", strm115OAuthCallbackHandler(svc))
+		api.GET("/strm/oauth/callback", strm115OAuthCallbackHandler(svc))
+
 		registerPublicAuthRoutes(api, svc, log)
 
 		registerAuthenticatedRoutes(api, cfg, svc)

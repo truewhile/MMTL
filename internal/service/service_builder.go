@@ -67,7 +67,7 @@ func (b *serviceContainerBuilder) initProviderServices() {
 	b.c.RecognitionWords = NewRecognitionWordsService(b.log, b.repos)
 	b.c.Danmaku = NewDanmakuService(b.log, b.repos)
 
-		adult := NewAdultProvider(b.log, b.c.APIConfig, b.repos)
+	adult := NewAdultProvider(b.log, b.c.APIConfig, b.repos)
 	b.c.Scraper = NewScraperService(
 		b.cfg, b.log, b.repos,
 		b.c.TMDb, b.c.Bangumi, b.c.TheTVDB, b.c.Fanart,
@@ -110,6 +110,7 @@ func (b *serviceContainerBuilder) initContentServices() {
 	b.c.Subtitle = NewSubtitleService(b.log, b.repos)
 	b.c.Profile = NewProfileService(b.log, b.repos)
 	b.c.Audit = NewAuditService(b.log, b.repos)
+	b.c.Strm = NewStrmService(b.cfg, b.log, b.repos, b.c.Crypto)
 }
 
 func (b *serviceContainerBuilder) initAccessAndStorageServices() {

@@ -51,5 +51,10 @@ func AllModels() []interface{} {
 		&RegistrationCode{},
 		&SignIn{},
 		&UserDevice{},
+		&StrmAccount{},
+		&StrmSyncPath{},
+		&StrmSyncRecord{},
+		&StrmDownloadTask{},
+		&StrmUploadTask{},
 	}
 }

@@ -31,8 +31,8 @@ type Container struct {
 	Bangumi          *BangumiProvider
 	TheTVDB          *TheTVDBProvider
 	Fanart           *FanartProvider
-		Scraper          *ScraperService
-		Playback         *PlaybackService
+	Scraper          *ScraperService
+	Playback         *PlaybackService
 	ImageProxy       *ImageProxy
 	Watcher          *WatcherService
 	Subtitle         *SubtitleService
@@ -60,6 +60,7 @@ type Container struct {
 	Sessions         *SessionTrackerService
 	RecognitionWords *RecognitionWordsService
 	Danmaku          *DanmakuService
+	Strm             *StrmService
 
 	stopCtx    context.Context
 	stopCancel context.CancelFunc
@@ -91,6 +92,11 @@ func (c *Container) Boot() {
 
 	// 启动调度器定时任务
 	c.Scheduler.Start(c.stopCtx)
+
+	// STRM 元数据下载/上传队列与定时同步巡检
+	if c.Strm != nil {
+		c.Strm.Start(c.stopCtx)
+	}
 
 	// Mgo 保号规则巡检：默认关闭，由管理员通过 Telegram Bot 命令开启。
 	// 每天触发一次评估；规则里的窗口可随机，不固定。
@@ -133,6 +139,9 @@ func (c *Container) Close() {
 	}
 	if c.Scheduler != nil {
 		c.Scheduler.Stop()
+	}
+	if c.Strm != nil {
+		c.Strm.Stop()
 	}
 	if c.Watcher != nil {
 		c.Watcher.Stop()
