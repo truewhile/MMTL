@@ -42,14 +42,14 @@ func EmbyAuthRequired(secret string) gin.HandlerFunc {
 			return []byte(secret), nil
 		})
 
-if err != nil || !parsed.Valid || claims.UserID == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"Code":    40101,
-			"Message": "Invalid token",
-		})
-		c.Abort()
-		return
-	}
+		if err != nil || !parsed.Valid || claims.UserID == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"Code":    40101,
+				"Message": "Invalid token",
+			})
+			c.Abort()
+			return
+		}
 
 		c.Set(EmbyCtxUserID, claims.UserID)
 		c.Set(CtxUserID, claims.UserID)

@@ -127,11 +127,17 @@ type downloadURLData struct {
 // GetDownloadURL 获取下载直链（pickcode）。命中缓存直接返回，
 // 避免对同一文件反复换取直链触发 115 风控。
 func (c *OpenClient) GetDownloadURL(ctx context.Context, pickCode string) (string, error) {
-	if cached := GetDownloadURLCache(pickCode); cached != "" {
+	return c.GetDownloadURLWithUA(ctx, pickCode, "")
+}
+
+// GetDownloadURLWithUA 支持按调用方/播放器 User-Agent 换取对应的 115 CDN 直链（用于 115 防盗链白名单校验）。
+func (c *OpenClient) GetDownloadURLWithUA(ctx context.Context, pickCode, ua string) (string, error) {
+	ua = strings.TrimSpace(ua)
+	if cached := GetDownloadURLCache(pickCode, ua); cached != "" {
 		return cached, nil
 	}
 	params := map[string]string{"pick_code": pickCode}
-	resp, err := c.doAuthJSON(ctx, "POST", ProAPIBase+"/open/ufile/downurl", params, 1)
+	resp, err := c.doAuthJSONWithUA(ctx, "POST", ProAPIBase+"/open/ufile/downurl", params, 1, ua)
 	if err != nil {
 		return "", err
 	}
@@ -143,7 +149,7 @@ func (c *OpenClient) GetDownloadURL(ctx context.Context, pickCode string) (strin
 	if first.URL.URL == "" {
 		return "", fmt.Errorf("115: 下载地址为空（文件可能未上传完成或已被删除）")
 	}
-	SetDownloadURLCache(pickCode, first.URL.URL)
+	SetDownloadURLCache(pickCode, first.URL.URL, ua)
 	return first.URL.URL, nil
 }
 

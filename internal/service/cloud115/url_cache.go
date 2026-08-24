@@ -7,6 +7,7 @@
 package cloud115
 
 import (
+	"strings"
 	"sync"
 	"time"
 )
@@ -28,17 +29,30 @@ var (
 	urlCache   = map[string]urlCacheEntry{}
 )
 
+// urlCacheKey 构造缓存键名（pickCode + UA，实现直链防盗链按客户端 UA 独立缓存）。
+func urlCacheKey(pickCode, ua string) string {
+	if ua == "" {
+		return pickCode
+	}
+	return pickCode + "@" + ua
+}
+
 // GetDownloadURLCache 返回未过期的缓存直链；不存在或已过期返回空串。
-func GetDownloadURLCache(pickCode string) string {
+func GetDownloadURLCache(pickCode string, uas ...string) string {
 	if pickCode == "" {
 		return ""
 	}
+	ua := ""
+	if len(uas) > 0 {
+		ua = uas[0]
+	}
+	key := urlCacheKey(pickCode, ua)
 	urlCacheMu.Lock()
 	defer urlCacheMu.Unlock()
-	entry, ok := urlCache[pickCode]
+	entry, ok := urlCache[key]
 	if !ok || time.Now().After(entry.expiresAt) {
 		if ok {
-			delete(urlCache, pickCode)
+			delete(urlCache, key)
 		}
 		return ""
 	}
@@ -46,9 +60,13 @@ func GetDownloadURLCache(pickCode string) string {
 }
 
 // SetDownloadURLCache 写入直链缓存。
-func SetDownloadURLCache(pickCode, url string) {
+func SetDownloadURLCache(pickCode string, url string, uas ...string) {
 	if pickCode == "" || url == "" {
 		return
+	}
+	ua := ""
+	if len(uas) > 0 {
+		ua = uas[0]
 	}
 	urlCacheMu.Lock()
 	defer urlCacheMu.Unlock()
@@ -60,15 +78,20 @@ func SetDownloadURLCache(pickCode, url string) {
 			}
 		}
 	}
-	urlCache[pickCode] = urlCacheEntry{url: url, expiresAt: time.Now().Add(downloadURLCacheTTL)}
+	key := urlCacheKey(pickCode, ua)
+	urlCache[key] = urlCacheEntry{url: url, expiresAt: time.Now().Add(downloadURLCacheTTL)}
 }
 
-// ClearDownloadURLCache 删除指定 pickcode 的缓存（下载得到非 2xx 时调用）。
+// ClearDownloadURLCache 删除指定 pickcode 的所有缓存（下载得到非 2xx 时调用）。
 func ClearDownloadURLCache(pickCode string) {
 	if pickCode == "" {
 		return
 	}
 	urlCacheMu.Lock()
 	defer urlCacheMu.Unlock()
-	delete(urlCache, pickCode)
+	for k := range urlCache {
+		if k == pickCode || strings.HasPrefix(k, pickCode+"@") {
+			delete(urlCache, k)
+		}
+	}
 }

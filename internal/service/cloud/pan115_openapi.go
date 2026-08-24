@@ -77,7 +77,11 @@ func (p *openAPI115Provider) List(ctx context.Context, dirID string) ([]FileEntr
 }
 
 func (p *openAPI115Provider) Resolve(ctx context.Context, fileRef string) (*DirectLink, error) {
-	url, err := p.c.GetDownloadURL(ctx, fileRef)
+	return p.ResolveWithUA(ctx, fileRef, "")
+}
+
+func (p *openAPI115Provider) ResolveWithUA(ctx context.Context, fileRef, ua string) (*DirectLink, error) {
+	url, err := p.c.GetDownloadURLWithUA(ctx, fileRef, ua)
 	if err != nil {
 		return nil, err
 	}

@@ -66,7 +66,6 @@ func (r *StorageConfigRepository) Upsert(ctx context.Context, c *model.StorageCo
 	}).Error
 }
 
-
 // Delete removes a storage config by ID.
 func (r *StorageConfigRepository) Delete(ctx context.Context, id string) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&model.StorageConfig{}).Error

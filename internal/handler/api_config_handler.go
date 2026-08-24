@@ -177,7 +177,7 @@ func (h *ApiConfigHandler) TestApiConfig(c *gin.Context) {
 	_ = h.svc.ApiConfig.UpdateTestResult(c.Request.Context(), provider, result)
 
 	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
+		"code":    0,
 		"message": "ok",
 		"data": gin.H{
 			"result": result,

@@ -26,9 +26,9 @@ func statsUserHandler(svc *service.Container) gin.HandlerFunc {
 		_ = svc.Repo.DB.Model(&model.PlaybackHistory{}).
 			Where("user_id = ?", uid).Count(&total).Error
 		c.JSON(http.StatusOK, gin.H{
-			"user_id":      uid,
-			"watched_ms":   watched,
-			"plays":        total,
+			"user_id":       uid,
+			"watched_ms":    watched,
+			"plays":         total,
 			"watched_hours": float64(watched) / 1000.0 / 3600.0,
 		})
 	}

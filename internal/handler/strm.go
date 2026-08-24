@@ -410,7 +410,11 @@ func cancelPendingDownloadsHandler(svc *service.Container) gin.HandlerFunc {
 func strmPlayHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		provider := strings.TrimSpace(c.Param("provider"))
-		result, err := svc.Strm.ResolvePlay(c.Request.Context(), provider, url.Values(c.Request.URL.Query()))
+		q := url.Values(c.Request.URL.Query())
+		if userAgent := c.GetHeader("User-Agent"); userAgent != "" {
+			q.Set("__ua", userAgent)
+		}
+		result, err := svc.Strm.ResolvePlay(c.Request.Context(), provider, q)
 		if err != nil {
 			if errors.Is(err, service.ErrStrmPlayNotFound) {
 				c.Status(http.StatusNotFound)

@@ -58,12 +58,12 @@ func schemaHandler(_ *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"groups": []gin.H{
-					{
-						"key":   "general",
-						"label": "常规",
-						"items": []gin.H{
-							{"key": "tmdb.language", "type": "select", "label": "TMDb 元数据语言"},
-							{"key": "transcode.enabled", "type": "toggle", "label": "启用转码"},
+				{
+					"key":   "general",
+					"label": "常规",
+					"items": []gin.H{
+						{"key": "tmdb.language", "type": "select", "label": "TMDb 元数据语言"},
+						{"key": "transcode.enabled", "type": "toggle", "label": "启用转码"},
 						{"key": "transcode.hw_accel", "type": "select", "label": "硬件编码器"},
 						{"key": "transcode.hw_enabled", "type": "toggle", "label": "启用硬件加速"},
 						{"key": "transcode.max_jobs", "type": "number", "label": "最大并发"},
@@ -120,10 +120,10 @@ func schemaHandler(_ *service.Container) gin.HandlerFunc {
 						{"key": "qbittorrent.password", "type": "text"},
 						{"key": "qbittorrent.savepath", "type": "text"},
 					},
-},
-					{
-						"key":   "system-update",
-						"label": "系统更新",
+				},
+				{
+					"key":   "system-update",
+					"label": "系统更新",
 					"items": []gin.H{
 						{"key": "system.update.image", "type": "text", "label": "应用镜像"},
 						{"key": "system.update.compose_dir", "type": "text", "label": "Docker Compose 安装目录"},

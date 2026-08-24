@@ -90,10 +90,14 @@ type RespBase struct {
 }
 
 // doJSON 执行 HTTP 请求并解析为统一响应；带 AccessToken（access=true 时）。
-func (c *OpenClient) doJSON(ctx context.Context, method, rawURL string, form map[string]string, access bool, retries int) (*RespBase, error) {
+func (c *OpenClient) doJSON(ctx context.Context, method, rawURL string, form map[string]string, access bool, retries int, uas ...string) (*RespBase, error) {
 	executor := c.executor
 	if executor == nil {
 		executor = GetGlobalExecutor()
+	}
+	ua := ""
+	if len(uas) > 0 {
+		ua = uas[0]
 	}
 
 	var lastErr error
@@ -103,7 +107,7 @@ func (c *OpenClient) doJSON(ctx context.Context, method, rawURL string, form map
 			return nil, err
 		}
 
-		req, err := c.buildRequest(ctx, method, rawURL, form, access)
+		req, err := c.buildRequestWithUA(ctx, method, rawURL, form, access, ua)
 		if err != nil {
 			return nil, err
 		}
@@ -187,6 +191,10 @@ func (c *OpenClient) doJSON(ctx context.Context, method, rawURL string, form map
 }
 
 func (c *OpenClient) buildRequest(ctx context.Context, method, rawURL string, form map[string]string, access bool) (*http.Request, error) {
+	return c.buildRequestWithUA(ctx, method, rawURL, form, access, "")
+}
+
+func (c *OpenClient) buildRequestWithUA(ctx context.Context, method, rawURL string, form map[string]string, access bool, ua string) (*http.Request, error) {
 	method = strings.ToUpper(method)
 	var body io.Reader
 	if method == http.MethodPost && len(form) > 0 {
@@ -211,7 +219,11 @@ func (c *OpenClient) buildRequest(ctx context.Context, method, rawURL string, fo
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", DefaultUA)
+	targetUA := DefaultUA
+	if strings.TrimSpace(ua) != "" {
+		targetUA = strings.TrimSpace(ua)
+	}
+	req.Header.Set("User-Agent", targetUA)
 	if method == http.MethodPost && len(form) > 0 {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}
@@ -224,6 +236,11 @@ func (c *OpenClient) buildRequest(ctx context.Context, method, rawURL string, fo
 // doAuthJSON 带 AccessToken 的业务请求。
 func (c *OpenClient) doAuthJSON(ctx context.Context, method, rawURL string, form map[string]string, retries int) (*RespBase, error) {
 	return c.doJSON(ctx, method, rawURL, form, true, retries)
+}
+
+// doAuthJSONWithUA 带自定义 User-Agent 的业务请求（换取直链等防盗链接口使用）。
+func (c *OpenClient) doAuthJSONWithUA(ctx context.Context, method, rawURL string, form map[string]string, retries int, ua string) (*RespBase, error) {
+	return c.doJSON(ctx, method, rawURL, form, true, retries, ua)
 }
 
 // IsThrottleCode 判断是否为限流错误码。

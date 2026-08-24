@@ -106,13 +106,13 @@ func TestAuthRequiredSyncsAccessTokenCookieFromBearer(t *testing.T) {
 		},
 	})
 
-		router := gin.New()
-		router.Use(AuthRequired(secret))
-		router.GET("/api/test-auth-cookie", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"ok": true})
-		})
+	router := gin.New()
+	router.Use(AuthRequired(secret))
+	router.GET("/api/test-auth-cookie", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
 
-		req := httptest.NewRequest(http.MethodGet, "/api/test-auth-cookie", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/test-auth-cookie", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)

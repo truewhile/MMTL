@@ -40,15 +40,15 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Database.MaxOpenConns != defaultDatabaseMaxOpenConns {
 		t.Fatalf("expected default MaxOpenConns %d, got %d", defaultDatabaseMaxOpenConns, cfg.Database.MaxOpenConns)
 	}
-		if cfg.Cache.RedisPrefix != "mmtl" {
-			t.Fatalf("expected default redis prefix, got %q", cfg.Cache.RedisPrefix)
-		}
-		if cfg.Cache.MediaTTLSeconds != 15 {
-			t.Fatalf("expected default media cache ttl 15, got %d", cfg.Cache.MediaTTLSeconds)
-		}
-		if cfg.Search.Index != "mmtl_media" {
-			t.Fatalf("expected default search index, got %q", cfg.Search.Index)
-		}
+	if cfg.Cache.RedisPrefix != "mmtl" {
+		t.Fatalf("expected default redis prefix, got %q", cfg.Cache.RedisPrefix)
+	}
+	if cfg.Cache.MediaTTLSeconds != 15 {
+		t.Fatalf("expected default media cache ttl 15, got %d", cfg.Cache.MediaTTLSeconds)
+	}
+	if cfg.Search.Index != "mmtl_media" {
+		t.Fatalf("expected default search index, got %q", cfg.Search.Index)
+	}
 	if cfg.Database.MaxIdleConns != defaultDatabaseMaxIdleConns {
 		t.Fatalf("expected default MaxIdleConns %d, got %d", defaultDatabaseMaxIdleConns, cfg.Database.MaxIdleConns)
 	}

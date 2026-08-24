@@ -66,7 +66,15 @@ func (s *StrmService) resolveCloudPlay(ctx context.Context, provider string, q u
 	if err != nil {
 		return nil, err
 	}
-	link, err := p.Resolve(ctx, ref)
+	var link *cloud.DirectLink
+	ua := q.Get("__ua")
+	if uaProvider, ok := p.(interface {
+		ResolveWithUA(ctx context.Context, fileRef, ua string) (*cloud.DirectLink, error)
+	}); ok && ua != "" {
+		link, err = uaProvider.ResolveWithUA(ctx, ref, ua)
+	} else {
+		link, err = p.Resolve(ctx, ref)
+	}
 	if err != nil {
 		return nil, err
 	}
