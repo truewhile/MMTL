@@ -1,6 +1,7 @@
-import type { MouseEvent, ReactNode } from 'react'
-import { Image, MoreVertical, Plus, Power, PowerOff, RefreshCw, Save, Trash2 } from 'lucide-react'
+import { useState, type MouseEvent, type ReactNode } from 'react'
+import { Folder, Image, MoreVertical, Plus, Power, PowerOff, RefreshCw, Save, Trash2 } from 'lucide-react'
 
+import { LocalDirBrowserDialog } from '../components/LocalDirBrowserDialog'
 import type { Library, LibraryRoot } from '../types'
 import type { RootDraft } from './adminLibraryPanelModel'
 import { displayLibraryRootName, displayLibraryRootPath, fallbackLibraryRoot } from './adminLibraryPanelModel'
@@ -15,34 +16,80 @@ type LibraryTableProps = {
   onRemoveRoot: (library: Library, root: LibraryRoot) => void
   onScanLibrary: (library: Library) => void
   onRemoveLibrary: (library: Library) => void
-  onAddLibraryRoot: (library: Library) => void
+  onAddLibraryRoot: (library: Library, path?: string, name?: string) => void
   onEditLibraryCover: (library: Library) => void
 }
 
 export function AdminLibraryTable({ libs, ...actions }: LibraryTableProps) {
+  const [browsingRoot, setBrowsingRoot] = useState<{ libraryID: string; root: LibraryRoot; initialPath?: string } | null>(null)
+  const [addingRootLib, setAddingRootLib] = useState<Library | null>(null)
+
+  const handleSelectRootPath = (selectedPath: string) => {
+    if (browsingRoot) {
+      actions.onEditableRootChange(browsingRoot.libraryID, browsingRoot.root, { path: selectedPath })
+      setBrowsingRoot(null)
+    }
+  }
+
+  const handleSelectAddRoot = (selectedPath: string) => {
+    if (addingRootLib) {
+      const segments = selectedPath.split(/[/\\]/).filter(Boolean)
+      const baseName = segments.length > 0 ? segments[segments.length - 1] : ''
+      actions.onAddLibraryRoot(addingRootLib, selectedPath, baseName)
+      setAddingRootLib(null)
+    }
+  }
+
   return (
-    <div className="glass-panel overflow-x-auto !p-3">
-      <table className="w-full min-w-[900px] text-left text-sm">
-        <thead className="text-xs uppercase tracking-wider text-sand-500">
-          <tr>
-            <th className="w-28 py-2">名称</th>
-            <th>路径</th>
-            <th className="w-20">类型</th>
-            <th className="w-12 text-right">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {libs.map((library) => (
-            <LibraryTableRow key={library.id} library={library} {...actions} />
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <>
+      <div className="glass-panel overflow-x-auto !p-3">
+        <table className="w-full min-w-[900px] text-left text-sm">
+          <thead className="text-xs uppercase tracking-wider text-sand-500">
+            <tr>
+              <th className="w-28 py-2">名称</th>
+              <th>路径</th>
+              <th className="w-20">类型</th>
+              <th className="w-12 text-right">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {libs.map((library) => (
+              <LibraryTableRow
+                key={library.id}
+                library={library}
+                onBrowseRoot={(root) => setBrowsingRoot({ libraryID: library.id, root, initialPath: root.path })}
+                onOpenAddRoot={() => setAddingRootLib(library)}
+                {...actions}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {browsingRoot && (
+        <LocalDirBrowserDialog
+          initialDir={browsingRoot.initialPath || undefined}
+          title="选择媒体库路径"
+          onSelect={handleSelectRootPath}
+          onClose={() => setBrowsingRoot(null)}
+        />
+      )}
+
+      {addingRootLib && (
+        <LocalDirBrowserDialog
+          title={`为「${addingRootLib.name}」选择来源目录`}
+          onSelect={handleSelectAddRoot}
+          onClose={() => setAddingRootLib(null)}
+        />
+      )}
+    </>
   )
 }
 
 type LibraryTableRowProps = Omit<LibraryTableProps, 'libs'> & {
   library: Library
+  onBrowseRoot: (root: LibraryRoot) => void
+  onOpenAddRoot: () => void
 }
 
 function LibraryTableRow({ library, ...actions }: LibraryTableRowProps) {
@@ -103,7 +150,7 @@ function ReadonlyRootFields({ root }: { root: LibraryRoot }) {
   )
 }
 
-function EditableRootFields({ library, root, draft, onEditableRootChange }: RootEditorProps & { draft: RootDraft }) {
+function EditableRootFields({ library, root, draft, onEditableRootChange, onBrowseRoot }: RootEditorProps & { draft: RootDraft }) {
   return (
     <>
       <input
@@ -112,12 +159,23 @@ function EditableRootFields({ library, root, draft, onEditableRootChange }: Root
         value={draft.name ?? ''}
         onChange={(e) => onEditableRootChange(library.id, root, { name: e.target.value })}
       />
-      <input
-        className="h-9 w-full rounded-lg border border-gray-200 bg-white/80 px-3 text-xs text-gray-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100/60"
-        placeholder="真实路径"
-        value={draft.path}
-        onChange={(e) => onEditableRootChange(library.id, root, { path: e.target.value })}
-      />
+      <div className="flex items-center gap-1">
+        <input
+          className="h-9 flex-1 min-w-0 rounded-lg border border-gray-200 bg-white/80 px-3 text-xs text-gray-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100/60"
+          placeholder="真实路径"
+          value={draft.path}
+          onChange={(e) => onEditableRootChange(library.id, root, { path: e.target.value })}
+        />
+        <button
+          type="button"
+          onClick={() => onBrowseRoot(root)}
+          className="inline-flex h-9 items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 text-xs font-semibold text-ink-100 transition hover:bg-gray-50"
+          title="点选浏览本地目录"
+        >
+          <Folder size={13} className="text-brand-400" />
+          浏览
+        </button>
+      </div>
     </>
   )
 }
@@ -177,13 +235,13 @@ function RootActionButtons({ library, root, draft, ...actions }: RootEditorProps
   )
 }
 
-function LibraryActionsCell({ library, onScanLibrary, onRemoveLibrary, onAddLibraryRoot, onEditLibraryCover }: LibraryTableRowProps) {
+function LibraryActionsCell({ library, onScanLibrary, onRemoveLibrary, onOpenAddRoot, onEditLibraryCover }: LibraryTableRowProps) {
   return (
     <ActionMenu label="媒体库操作">
       <MenuButton icon={<RefreshCw size={14} />} label="扫描" onClick={() => onScanLibrary(library)}>
         扫描
       </MenuButton>
-      <MenuButton icon={<Plus size={14} />} label="添加来源" onClick={() => onAddLibraryRoot(library)}>
+      <MenuButton icon={<Plus size={14} />} label="添加来源" onClick={onOpenAddRoot}>
         添加来源
       </MenuButton>
       <MenuButton icon={<Image size={14} />} label="自定义封面" onClick={() => onEditLibraryCover(library)}>

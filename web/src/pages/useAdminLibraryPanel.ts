@@ -157,11 +157,14 @@ function useLibraryActions(refresh: () => Promise<void>) {
     await refresh()
   }
 
-  const addLibraryRoot = async (library: Library) => {
-    const path = window.prompt(`为「${library.name}」添加来源目录：`)
-    if (!path?.trim()) return
-    const name = window.prompt('来源名称（可选）：') ?? ''
-    await libraryAPI.addRoot(library.id, { path: path.trim(), name: name.trim(), enabled: true })
+  const addLibraryRoot = async (library: Library, path?: string, name?: string) => {
+    if (!path) {
+      const p = window.prompt(`为「${library.name}」添加来源目录：`)
+      if (!p?.trim()) return
+      path = p.trim()
+      name = (window.prompt('来源名称（可选）：') ?? '').trim()
+    }
+    await libraryAPI.addRoot(library.id, { path: path.trim(), name: (name ?? '').trim(), enabled: true })
     toast.success('来源目录已添加')
     await refresh()
   }
