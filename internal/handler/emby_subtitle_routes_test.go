@@ -75,7 +75,7 @@ func TestEmbySubtitleOfficialRouteServesRawASS(t *testing.T) {
 	registerEmbyRoutes(router, secret, &service.Container{
 		Repo: repos,
 		Emby: service.NewEmbyService(&config.Config{}, zap.NewNop(), repos).SetSubtitleService(
-			service.NewSubtitleService(zap.NewNop(), repos),
+			service.NewSubtitleService(&config.Config{}, zap.NewNop(), repos),
 		),
 	})
 
@@ -150,7 +150,7 @@ func TestEmbySubtitleDeliveryUrlGetsToken(t *testing.T) {
 	registerEmbyRoutes(router, secret, &service.Container{
 		Repo: repos,
 		Emby: service.NewEmbyService(&config.Config{}, zap.NewNop(), repos).SetSubtitleService(
-			service.NewSubtitleService(zap.NewNop(), repos),
+			service.NewSubtitleService(&config.Config{}, zap.NewNop(), repos),
 		),
 	})
 

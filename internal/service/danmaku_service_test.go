@@ -205,6 +205,13 @@ func TestDanmakuFetchHandlesSearch404(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
+	// 配置源 404 会回退官方，官方同样 404 才能稳定复现错误。
+	official := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer official.Close()
+	overrideDanmakuOfficialBase(t, official.URL)
+
 	svc := newDanmakuTestService(t)
 	ctx := context.Background()
 	require.NoError(t, svc.repo.Setting.Set(ctx, DanmakuSourceKey, srv.URL))

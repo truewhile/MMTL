@@ -326,3 +326,21 @@ body {
   background-color: var(--app-brand-emphasis) !important;
   color: var(--app-brand-text) !important;
 }
+
+/* ── 播放器字幕（WebVTT <track>）──
+   去掉浏览器默认黑底，用文字阴影保证亮画面下的可读性；
+   font 简写携带 line-height 收紧两行字幕的行距（默认行距偏大）。 */
+video::cue {
+  background-color: transparent;
+  color: #fff;
+  font:
+    500 1.15em/1.35 "PingFang SC",
+    "Microsoft YaHei",
+    "Noto Sans CJK SC",
+    "Source Han Sans SC",
+    sans-serif;
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.9),
+    0 0 8px rgba(0, 0, 0, 0.55),
+    0 0 16px rgba(0, 0, 0, 0.35);
+}

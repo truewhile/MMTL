@@ -9,6 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/ShukeBta/MMTL/internal/config"
 	"github.com/ShukeBta/MMTL/internal/model"
 )
 
@@ -50,7 +51,7 @@ func writeTempVideoWithSubtitle(t *testing.T, svc *EmbyService, lib *model.Libra
 
 func newTestSubtitleService(t *testing.T, svc *EmbyService) *SubtitleService {
 	t.Helper()
-	return NewSubtitleService(zap.NewNop(), svc.repo)
+	return NewSubtitleService(&config.Config{}, zap.NewNop(), svc.repo)
 }
 
 func TestEmbyMediaStreamsAttachSameNameSubtitle(t *testing.T) {

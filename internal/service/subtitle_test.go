@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
+	"github.com/ShukeBta/MMTL/internal/config"
 	"github.com/ShukeBta/MMTL/internal/model"
 	"github.com/ShukeBta/MMTL/internal/repository"
 )
@@ -32,7 +33,7 @@ func TestSubtitleDiscoverNoTracksReturnsEmptySlice(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc := NewSubtitleService(zap.NewNop(), repository.New(db))
+	svc := NewSubtitleService(&config.Config{}, zap.NewNop(), repository.New(db))
 	tracks, err := svc.Discover(t.Context(), media.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -85,7 +86,7 @@ func TestSubtitleServeRawWritesSourceBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc := NewSubtitleService(zap.NewNop(), repository.New(db))
+	svc := NewSubtitleService(&config.Config{}, zap.NewNop(), repository.New(db))
 	var buf bytes.Buffer
 	if err := svc.ServeRaw(t.Context(), media.ID, subPath, &buf); err != nil {
 		t.Fatal(err)

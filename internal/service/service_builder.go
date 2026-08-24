@@ -107,10 +107,12 @@ func (b *serviceContainerBuilder) initContentServices() {
 	b.c.Media = NewMediaService(b.cfg, b.log, b.repos).SetRuntimeCache(b.c.Cache)
 	b.c.Stream = NewStreamService(b.cfg, b.log, b.repos, b.c.Transcoder)
 	b.c.Playback = NewPlaybackService(b.log, b.repos)
-	b.c.Subtitle = NewSubtitleService(b.log, b.repos)
+	b.c.Subtitle = NewSubtitleService(b.cfg, b.log, b.repos)
 	b.c.Profile = NewProfileService(b.log, b.repos)
 	b.c.Audit = NewAuditService(b.log, b.repos)
 	b.c.Strm = NewStrmService(b.cfg, b.log, b.repos, b.c.Crypto)
+	// 弹幕 hash 识别需要把 strm 指向解析成可拉取的直链/本地路径。
+	b.c.Danmaku.SetStrmResolver(b.c.Strm.ResolvePlay)
 }
 
 func (b *serviceContainerBuilder) initAccessAndStorageServices() {

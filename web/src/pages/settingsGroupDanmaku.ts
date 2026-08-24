@@ -23,6 +23,20 @@ export const danmakuSettingsGroup: SettingGroup = {
       placeholder: 'https://api.dandanplay.net',
     },
     {
+      key: 'danmaku.app_id',
+      label: 'AppId（弹弹play 开放 API）',
+      type: 'text',
+      hint: '弹弹play DevCenter 申请的应用 ID（https://doc.dandanplay.com/open/）。官方接口要求应用认证，留空使用内置凭据（签名认证，开箱即用）；填写自己的 AppId/AppKey 可覆盖内置凭据。仅对官方 api.dandanplay.net 生效，第三方协议源不会携带凭据。',
+      placeholder: '在 DevCenter 申请的应用 ID',
+    },
+    {
+      key: 'danmaku.app_key',
+      label: 'AppKey（弹弹play 应用密钥）',
+      type: 'text',
+      hint: '与 AppId 配套的 AppSecret，只保存在服务器上用于计算请求签名（base64(sha256(AppId+Timestamp+Path+Secret))），不会下发到播放器。',
+      placeholder: '在 DevCenter 申请的应用密钥',
+    },
+    {
       key: 'danmaku.opacity',
       label: '弹幕透明度',
       type: 'number',
