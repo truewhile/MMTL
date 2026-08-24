@@ -10,7 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MediaStationGo/internal/repository"
+	"github.com/ShukeBta/MMTL/internal/repository"
 )
 
 // StorageService is the read-only aggregator.

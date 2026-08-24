@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MediaStationGo/internal/model"
+	"github.com/ShukeBta/MMTL/internal/model"
 )
 
 func (s *ScannerService) localLibraryScanRoots(ctx context.Context, lib *model.Library) ([]model.LibraryRoot, error) {

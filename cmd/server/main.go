@@ -1,6 +1,6 @@
-// Package main is the MediaStationGo HTTP server entry point.
+// Package main is the MMTL HTTP server entry point.
 //
-// MediaStationGo is a Go rewrite of the legacy Python implementation,
+// MMTL is a Go rewrite of the legacy Python implementation,
 // adopting the same tech stack as cropflre/nowen-video:
 //
 //	Backend:  Go 1.25 + Gin + GORM + PostgreSQL/SQLite + Viper + Zap + JWT
@@ -24,10 +24,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MediaStationGo/internal/config"
-	"github.com/ShukeBta/MediaStationGo/internal/database"
-	"github.com/ShukeBta/MediaStationGo/internal/repository"
-	"github.com/ShukeBta/MediaStationGo/internal/service"
+	"github.com/ShukeBta/MMTL/internal/config"
+	"github.com/ShukeBta/MMTL/internal/database"
+	"github.com/ShukeBta/MMTL/internal/repository"
+	"github.com/ShukeBta/MMTL/internal/service"
 )
 
 // version is overwritten at build time via -ldflags="-X main.version=...".
@@ -38,7 +38,7 @@ func effectiveVersion(buildVersion string) string {
 	if buildVersion != "" && buildVersion != "dev" {
 		return buildVersion
 	}
-	if envVersion := strings.TrimSpace(os.Getenv("MEDIASTATION_VERSION")); envVersion != "" {
+	if envVersion := strings.TrimSpace(os.Getenv("MMTL_VERSION")); envVersion != "" {
 		return envVersion
 	}
 	if buildVersion == "" {

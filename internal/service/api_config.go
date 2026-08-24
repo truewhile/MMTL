@@ -5,7 +5,7 @@
 // read so values stored on disk are useless without the JWT secret.
 //
 // On first read it seeds the table with the providers supported by
-// MediaStationGo today (TMDb / Bangumi / TheTVDB / Fanart / OpenAI / Douban).
+// MMTL today (TMDb / Bangumi / TheTVDB / Fanart / OpenAI / Douban).
 package service
 
 import (
@@ -17,8 +17,8 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MediaStationGo/internal/model"
-	"github.com/ShukeBta/MediaStationGo/internal/repository"
+	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/ShukeBta/MMTL/internal/repository"
 )
 
 // APIConfigService coordinates third-party API key storage.

@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ShukeBta/MediaStationGo/internal/model"
+	"github.com/ShukeBta/MMTL/internal/model"
 )
 
 func (e *EmbyService) mediaSourcesForItem(ctx context.Context, m *model.Media, asEmbedded, directOnly bool) []map[string]any {

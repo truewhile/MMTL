@@ -22,8 +22,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MediaStationGo/internal/model"
-	"github.com/ShukeBta/MediaStationGo/internal/repository"
+	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/ShukeBta/MMTL/internal/repository"
 )
 
 // NFOService is the entry point used by the admin "导出 NFO" action.

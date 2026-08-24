@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MediaStationGo/internal/config"
+	"github.com/ShukeBta/MMTL/internal/config"
 )
 
 func TestOrganizeDirectoryUsesConfiguredSourceWhenRequestSourceEmpty(t *testing.T) {
@@ -42,10 +42,10 @@ func TestOrganizeDirectoryMapsConfiguredHostPathsToContainerPaths(t *testing.T) 
 	containerSource := filepath.Join(containerDownloads, "国产剧")
 	writeOrgFile(t, filepath.Join(containerSource, "Some Show S01E01 2024 1080p.mkv"), "show-e01")
 
-	t.Setenv("MEDIASTATION_DOWNLOAD_DIR", hostDownloads)
-	t.Setenv("MEDIASTATION_DOWNLOAD_CONTAINER_DIR", containerDownloads)
-	t.Setenv("MEDIASTATION_MEDIA_DIR", hostMedia)
-	t.Setenv("MEDIASTATION_MEDIA_CONTAINER_DIR", containerMedia)
+	t.Setenv("MMTL_DOWNLOAD_DIR", hostDownloads)
+	t.Setenv("MMTL_DOWNLOAD_CONTAINER_DIR", containerDownloads)
+	t.Setenv("MMTL_MEDIA_DIR", hostMedia)
+	t.Setenv("MMTL_MEDIA_CONTAINER_DIR", containerMedia)
 
 	repos := newOrganizerTestRepo(t)
 	for key, value := range map[string]string{
@@ -106,8 +106,8 @@ func TestOrganizeSourceCandidatesOnlyReturnAccessibleDirectories(t *testing.T) {
 	if err := os.MkdirAll(downloadDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("MEDIASTATION_DOWNLOAD_CONTAINER_DIR", downloadDir)
-	t.Setenv("MEDIASTATION_MEDIA_CONTAINER_DIR", filepath.Join(root, "missing-media"))
+	t.Setenv("MMTL_DOWNLOAD_CONTAINER_DIR", downloadDir)
+	t.Setenv("MMTL_MEDIA_CONTAINER_DIR", filepath.Join(root, "missing-media"))
 
 	repos := newOrganizerTestRepo(t)
 	if err := repos.Setting.Set(t.Context(), "organize.source_dir", configuredDir); err != nil {
@@ -128,7 +128,7 @@ func TestOrganizeSourceCandidatesOnlyReturnAccessibleDirectories(t *testing.T) {
 	if err := os.MkdirAll(mediaDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("MEDIASTATION_MEDIA_CONTAINER_DIR", mediaDir)
+	t.Setenv("MMTL_MEDIA_CONTAINER_DIR", mediaDir)
 	candidates = org.OrganizeSourceCandidates(t.Context())
 	if len(candidates) != 3 {
 		t.Fatalf("candidates = %#v, want configured source, download and media dirs", candidates)

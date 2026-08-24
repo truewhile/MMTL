@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MediaStationGo/internal/service"
+	"github.com/ShukeBta/MMTL/internal/service"
 )
 
 // ApiConfigHandler API 配置 HTTP 处理。

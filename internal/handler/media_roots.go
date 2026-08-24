@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ShukeBta/MediaStationGo/internal/service"
+	"github.com/ShukeBta/MMTL/internal/service"
 )
 
 func listLibraryRootsHandler(svc *service.Container) gin.HandlerFunc {

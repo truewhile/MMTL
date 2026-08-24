@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MediaStationGo/internal/config"
+	"github.com/ShukeBta/MMTL/internal/config"
 )
 
 func TestApplyTMDbChineseTitlePrefersMainlandAlternative(t *testing.T) {

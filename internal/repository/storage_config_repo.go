@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MediaStationGo/internal/model"
+	"github.com/ShukeBta/MMTL/internal/model"
 )
 
 // StorageConfigRepository persists model.StorageConfig records.

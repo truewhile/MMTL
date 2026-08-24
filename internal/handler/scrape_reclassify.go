@@ -3,7 +3,7 @@ package handler
 import (
 	"context"
 
-	"github.com/ShukeBta/MediaStationGo/internal/service"
+	"github.com/ShukeBta/MMTL/internal/service"
 )
 
 // 刮削元数据时不再自动跨库纠偏或自动创建新媒体库，保持在当前媒体库内仅更新元数据

@@ -1,6 +1,6 @@
 package service
 
-import "github.com/ShukeBta/MediaStationGo/internal/model"
+import "github.com/ShukeBta/MMTL/internal/model"
 
 func applyLocalMetadata(m *model.Media, local *LocalMetadata) {
 	applyLocalIdentityMetadata(m, local)

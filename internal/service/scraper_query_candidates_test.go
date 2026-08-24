@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ShukeBta/MediaStationGo/internal/model"
+	"github.com/ShukeBta/MMTL/internal/model"
 )
 
 func TestScrapeQueryCandidatesPreferSeriesFolderAndCJKTitle(t *testing.T) {

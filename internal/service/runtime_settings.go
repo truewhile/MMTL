@@ -7,8 +7,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MediaStationGo/internal/config"
-	"github.com/ShukeBta/MediaStationGo/internal/repository"
+	"github.com/ShukeBta/MMTL/internal/config"
+	"github.com/ShukeBta/MMTL/internal/repository"
 )
 
 func ApplyRuntimeSettings(ctx context.Context, cfg *config.Config, repos *repository.Container, log *zap.Logger) {

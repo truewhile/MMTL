@@ -10,7 +10,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MediaStationGo/internal/config"
+	"github.com/ShukeBta/MMTL/internal/config"
 )
 
 type RuntimeCacheService struct {
@@ -35,7 +35,7 @@ func NewRuntimeCacheService(cfg *config.Config, log *zap.Logger) *RuntimeCacheSe
 	}
 	c.prefix = strings.Trim(strings.TrimSpace(cfg.Cache.RedisPrefix), ":")
 	if c.prefix == "" {
-		c.prefix = "mediastationgo"
+		c.prefix = "mmtl"
 	}
 	rawURL := strings.TrimSpace(cfg.Cache.RedisURL)
 	if rawURL == "" {

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ShukeBta/MediaStationGo/internal/model"
-	"github.com/ShukeBta/MediaStationGo/internal/repository"
+	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/ShukeBta/MMTL/internal/repository"
 )
 
 // ImageURL returns artwork for a media/series/season item id.

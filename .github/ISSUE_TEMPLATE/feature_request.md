@@ -12,7 +12,7 @@ assignees: ""
 
 ## 期望方案
 
-请描述你希望 MediaStationGo 如何工作。
+请描述你希望 MMTL 如何工作。
 
 ## 使用场景
 

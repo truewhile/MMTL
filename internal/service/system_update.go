@@ -10,8 +10,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MediaStationGo/internal/config"
-	"github.com/ShukeBta/MediaStationGo/internal/repository"
+	"github.com/ShukeBta/MMTL/internal/config"
+	"github.com/ShukeBta/MMTL/internal/repository"
 )
 
 const (
@@ -20,7 +20,7 @@ const (
 	SystemUpdateCommandSettingKey         = "system.update.command"
 	SystemUpdateComposeDirSettingKey      = "system.update.compose_dir"
 
-	DefaultSystemUpdateImage           = "ghcr.io/shukebta/mediastation-go:latest"
+	DefaultSystemUpdateImage           = "ghcr.io/shukebta/mmtl:latest"
 	DefaultSystemUpdateWatchtowerImage = "containrrr/watchtower:latest"
 )
 
@@ -198,11 +198,11 @@ func (s *SystemUpdateService) startUpdateTask(status SystemUpdateStatus) *TaskHa
 }
 
 func (s *SystemUpdateService) baseStatus(ctx context.Context) SystemUpdateStatus {
-	image := s.setting(ctx, SystemUpdateImageSettingKey, os.Getenv("MEDIASTATION_UPDATE_IMAGE"))
+	image := s.setting(ctx, SystemUpdateImageSettingKey, os.Getenv("MMTL_UPDATE_IMAGE"))
 	if image == "" {
 		image = DefaultSystemUpdateImage
 	}
-	watchtowerImage := s.setting(ctx, SystemUpdateWatchtowerImageSettingKey, os.Getenv("MEDIASTATION_UPDATE_WATCHTOWER_IMAGE"))
+	watchtowerImage := s.setting(ctx, SystemUpdateWatchtowerImageSettingKey, os.Getenv("MMTL_UPDATE_WATCHTOWER_IMAGE"))
 	if watchtowerImage == "" {
 		watchtowerImage = DefaultSystemUpdateWatchtowerImage
 	}

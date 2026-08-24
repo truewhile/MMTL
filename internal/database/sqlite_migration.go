@@ -7,7 +7,7 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MediaStationGo/internal/config"
+	"github.com/ShukeBta/MMTL/internal/config"
 )
 
 // MigrateSQLiteToCurrentIfNeeded copies an existing SQLite database into

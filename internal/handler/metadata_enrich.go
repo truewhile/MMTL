@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ShukeBta/MediaStationGo/internal/service"
+	"github.com/ShukeBta/MMTL/internal/service"
 )
 
 var metadataNoiseRE = regexp.MustCompile(`(?i)(自动订阅|订阅|全集|合集|complete|batch|season\s*\d+|s\d{1,2}|s\d{1,2}e\d{1,3}|第\s*\d+\s*季|第\s*\d+\s*[集话話期]|2160p|1080p|720p|4k|uhd|bluray|blu-ray|web-?dl|hdtv|remux|x26[45]|h\.?26[45]|hevc|avc|hdr10?\+?|dovi|dv|atmos|aac|ddp?5\.1|truehd|flac)`)

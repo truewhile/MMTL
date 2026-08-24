@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ShukeBta/MediaStationGo/internal/model"
+	"github.com/ShukeBta/MMTL/internal/model"
 )
 
 // TestConnection 测试 API 连接。

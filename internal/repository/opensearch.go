@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ShukeBta/MediaStationGo/internal/config"
-	"github.com/ShukeBta/MediaStationGo/internal/model"
+	"github.com/ShukeBta/MMTL/internal/config"
+	"github.com/ShukeBta/MMTL/internal/model"
 )
 
 type OpenSearchMediaBackend struct {
@@ -29,7 +29,7 @@ func NewOpenSearchMediaBackend(cfg config.SearchConfig) *OpenSearchMediaBackend 
 	}
 	index := strings.TrimSpace(cfg.Index)
 	if index == "" {
-		index = "mediastation_media"
+		index = "mmtl_media"
 	}
 	return &OpenSearchMediaBackend{
 		baseURL:  strings.TrimRight(strings.TrimSpace(cfg.OpenSearchURL), "/"),

@@ -12,10 +12,10 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MediaStationGo/internal/config"
-	"github.com/ShukeBta/MediaStationGo/internal/model"
-	"github.com/ShukeBta/MediaStationGo/internal/repository"
-	"github.com/ShukeBta/MediaStationGo/internal/service"
+	"github.com/ShukeBta/MMTL/internal/config"
+	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/ShukeBta/MMTL/internal/repository"
+	"github.com/ShukeBta/MMTL/internal/service"
 )
 
 func TestEmbyWithRequestAddressUsesHost(t *testing.T) {
@@ -24,7 +24,7 @@ func TestEmbyWithRequestAddressUsesHost(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodGet, "http://192.168.1.4:18080/System/Info/Public", nil)
 
-	payload := embyWithRequestAddress(c, map[string]any{"Id": "mediastation-go-001"})
+	payload := embyWithRequestAddress(c, map[string]any{"Id": "mmtl-001"})
 
 	if payload["LocalAddress"] != "http://192.168.1.4:18080" {
 		t.Fatalf("unexpected LocalAddress: %#v", payload["LocalAddress"])
@@ -42,7 +42,7 @@ func TestEmbyWithRequestAddressHonorsForwardedHeaders(t *testing.T) {
 	c.Request.Header.Set("X-Forwarded-Proto", "https")
 	c.Request.Header.Set("X-Forwarded-Host", "media.example.test")
 
-	payload := embyWithRequestAddress(c, map[string]any{"Id": "mediastation-go-001"})
+	payload := embyWithRequestAddress(c, map[string]any{"Id": "mmtl-001"})
 
 	if payload["LocalAddress"] != "https://media.example.test" {
 		t.Fatalf("unexpected LocalAddress: %#v", payload["LocalAddress"])

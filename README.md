@@ -31,7 +31,7 @@
 
 ## 项目简介
 
-MediaStationGo 是一个自托管媒体管理系统，面向 NAS、小主机、家庭影音和多用户共享场景。它把媒体库、刮削、下载整理、订阅、网盘播放、Emby 协议兼容、用户权限和 Bot 通知放在一个后台里，目标是让用户只维护一套服务，就能给网页端、手机端、电视端和第三方播放器使用。
+MMTL 是一个自托管媒体管理系统，面向 NAS、小主机、家庭影音和多用户共享场景。它把媒体库、刮削、下载整理、订阅、网盘播放、Emby 协议兼容、用户权限和 Bot 通知放在一个后台里，目标是让用户只维护一套服务，就能给网页端、手机端、电视端和第三方播放器使用。
 
 核心能力：
 
@@ -77,7 +77,7 @@ GHCR：ghcr.io/truewhile/mmtl:latest
 
 ## 部署档位
 
-MediaStationGo 推荐按机器资源和用户规模选择部署档位。每份 Compose 文件都是完整文件，不需要再叠加多个 `-f`。想一个镜像跑起来就选单镜像档（SQLite）；需要多用户 / 高并发时再用 PostgreSQL 三档。Redis 和 OpenSearch 是增强组件，不替代 PostgreSQL。
+MMTL 推荐按机器资源和用户规模选择部署档位。每份 Compose 文件都是完整文件，不需要再叠加多个 `-f`。想一个镜像跑起来就选单镜像档（SQLite）；需要多用户 / 高并发时再用 PostgreSQL 三档。Redis 和 OpenSearch 是增强组件，不替代 PostgreSQL。
 
 | 档位 | 完整配置文件 | 组件 | 适合场景 |
 | --- | --- | --- | --- |
@@ -119,12 +119,12 @@ volumes:
 关键数据目录：
 
 ```text
-./data       JWT 密钥、运行配置、SQLite 主数据库（mediastation.db）——必须备份
+./data       JWT 密钥、运行配置、SQLite 主数据库（mmtl.db）——必须备份
 ./cache      海报/临时缓存，可重建
 ./media      媒体库
 ```
 
-> 单镜像模式请不要配置 `MEDIASTATION_DATABASE_DSN`；一旦填了 DSN 就会切回 PostgreSQL。
+> 单镜像模式请不要配置 `MMTL_DATABASE_DSN`；一旦填了 DSN 就会切回 PostgreSQL。
 
 ### 第一档：PostgreSQL
 
@@ -176,10 +176,10 @@ OpenSearch 数据目录是 `./opensearch`。搜索索引可重建，但重建大
 仓库内提供四份推荐 Compose 文件：
 
 ```text
-docker-compose.simple.yml     单镜像档：MediaStationGo + 内置 SQLite
-docker-compose.yml            第一档：MediaStationGo + PostgreSQL
-docker-compose.standard.yml   第二档：MediaStationGo + PostgreSQL + Redis
-docker-compose.search.yml     第三档：MediaStationGo + PostgreSQL + Redis + OpenSearch
+docker-compose.simple.yml     单镜像档：MMTL + 内置 SQLite
+docker-compose.yml            第一档：MMTL + PostgreSQL
+docker-compose.standard.yml   第二档：MMTL + PostgreSQL + Redis
+docker-compose.search.yml     第三档：MMTL + PostgreSQL + Redis + OpenSearch
 ```
 
 仓库只保留面向用户部署和项目维护的必要文件。旧的本地部署脚本、发包脚本、开发机辅助脚本、`.env` 示例和旧高级 Compose 模板已经移除；Linux / Docker 用户按上面四个 Compose 文件部署即可。开发者本地生成的 `bin/`、`data/`、`cache/`、`logs/`、`.tmp/`、`tools/` 等目录已列入 `.gitignore`，不应提交到仓库。
@@ -202,7 +202,7 @@ docker compose -f docker-compose.search.yml up -d
 
 ```yaml
 services:
-  mediastation-go:
+  mmtl:
     image: ghcr.io/truewhile/MMTL:latest
     ports:
       # 左边是宿主机访问端口，右边是容器内端口。
@@ -220,17 +220,17 @@ services:
       TZ: Asia/Shanghai
 
       # PostgreSQL 主数据库。
-      MEDIASTATION_DATABASE_TYPE: postgres
-      MEDIASTATION_DATABASE_DSN: postgres://mediastation:mediastation@postgres:5432/mediastation?sslmode=disable
+      MMTL_DATABASE_TYPE: postgres
+      MMTL_DATABASE_DSN: postgres://mmtl:mmtl@postgres:5432/mmtl?sslmode=disable
 
-      # 旧 SQLite 迁移源：只在从旧版 data/mediastation.db 导入时使用。
-      MEDIASTATION_DATABASE_DB_PATH: /data/mediastation.db
+      # 旧 SQLite 迁移源：只在从旧版 data/mmtl.db 导入时使用。
+      MMTL_DATABASE_DB_PATH: /data/mmtl.db
 
       # 路径换算：宿主机路径和容器路径必须一一对应。
-      MEDIASTATION_MEDIA_DIR: /vol1/1000/Media
-      MEDIASTATION_MEDIA_CONTAINER_DIR: /media
-      MEDIASTATION_DOWNLOAD_DIR: /vol1/1000/Downloads
-      MEDIASTATION_DOWNLOAD_CONTAINER_DIR: /downloads
+      MMTL_MEDIA_DIR: /vol1/1000/Media
+      MMTL_MEDIA_CONTAINER_DIR: /media
+      MMTL_DOWNLOAD_DIR: /vol1/1000/Downloads
+      MMTL_DOWNLOAD_CONTAINER_DIR: /downloads
 ```
 
 ## 路径映射
@@ -244,10 +244,10 @@ volumes:
   - /vol1/1000/Docker/moviepilot-v2/media:/vol1/1000/Docker/moviepilot-v2/media
   - /vol1/1000/qBittorrent/downloads:/vol1/1000/qBittorrent/downloads
 environment:
-  MEDIASTATION_MEDIA_DIR: /vol1/1000/Docker/moviepilot-v2/media
-  MEDIASTATION_MEDIA_CONTAINER_DIR: /vol1/1000/Docker/moviepilot-v2/media
-  MEDIASTATION_DOWNLOAD_DIR: /vol1/1000/qBittorrent/downloads
-  MEDIASTATION_DOWNLOAD_CONTAINER_DIR: /vol1/1000/qBittorrent/downloads
+  MMTL_MEDIA_DIR: /vol1/1000/Docker/moviepilot-v2/media
+  MMTL_MEDIA_CONTAINER_DIR: /vol1/1000/Docker/moviepilot-v2/media
+  MMTL_DOWNLOAD_DIR: /vol1/1000/qBittorrent/downloads
+  MMTL_DOWNLOAD_CONTAINER_DIR: /vol1/1000/qBittorrent/downloads
 ```
 
 Windows Docker Desktop 示例：
@@ -256,20 +256,20 @@ Windows Docker Desktop 示例：
 volumes:
   - D:/Media:/media
 environment:
-  MEDIASTATION_MEDIA_DIR: D:/Media
-  MEDIASTATION_MEDIA_CONTAINER_DIR: /media
+  MMTL_MEDIA_DIR: D:/Media
+  MMTL_MEDIA_CONTAINER_DIR: /media
 ```
 
 如果后台添加媒体库时填的是 `/vol1/...`，Compose 里也建议把同一个 `/vol1/...` 挂进容器，避免自动整理和下载入库时路径不可访问。
 
 ## 旧 SQLite 迁移
 
-新版推荐 PostgreSQL 作为主数据库。`MEDIASTATION_DATABASE_DB_PATH` 不是主库路径，而是旧 SQLite 数据的迁移源。
+新版推荐 PostgreSQL 作为主数据库。`MMTL_DATABASE_DB_PATH` 不是主库路径，而是旧 SQLite 数据的迁移源。
 
 迁移步骤：
 
-1. 把旧版 `mediastation.db` 放到 `./data/mediastation.db`。
-2. 保持 `MEDIASTATION_DATABASE_DB_PATH: /data/mediastation.db`。
+1. 把旧版 `mmtl.db` 放到 `./data/mmtl.db`。
+2. 保持 `MMTL_DATABASE_DB_PATH: /data/mmtl.db`。
 3. 启动一次，确认日志显示迁移完成，网页数据正常。
 4. 备份 `./postgres` 和 `./data`。
 5. 确认不再需要 SQLite 后，把迁移源改成不存在的路径，例如：
@@ -277,7 +277,7 @@ environment:
 ```yaml
 environment:
   # 已完成 SQLite 迁移后，建议改成不存在的路径，避免下次启动重复检查旧库。
-  MEDIASTATION_DATABASE_DB_PATH: /data/no-sqlite-migration.db
+  MMTL_DATABASE_DB_PATH: /data/no-sqlite-migration.db
 ```
 
 不要删除 `./postgres`。PostgreSQL 已经是主数据库，删除它会丢失账号、媒体库、订阅、配置和历史数据。
@@ -287,36 +287,36 @@ environment:
 Compose 模板默认把完整应用日志写入 `./data/logs/app.log`，同时拆分 `./data/logs/warn.log` 和 `./data/logs/error.log`。Docker 自身日志也会保留 10 个 50MB 文件：
 
 ```bash
-docker compose logs -f mediastation-go
+docker compose logs -f mmtl
 tail -f ./data/logs/app.log
 tail -f ./data/logs/error.log
 ```
 
-如果要排查订阅、站点搜索、自动整理或 STRM 生成问题，保持 `MEDIASTATION_LOGGING_LEVEL: info`；需要更细日志时临时改成 `debug`，确认后再改回 `info`。
+如果要排查订阅、站点搜索、自动整理或 STRM 生成问题，保持 `MMTL_LOGGING_LEVEL: info`；需要更细日志时临时改成 `debug`，确认后再改回 `info`。
 
-STRM 输出目录请使用容器内可写路径，例如 `/data/strm`，或你已经挂载进容器的媒体目录。旧版本保存过 `/app/data/strm` 的部署会在生成时自动迁移到当前 `MEDIASTATION_APP_DATA_DIR`，默认就是 `/data`。
+STRM 输出目录请使用容器内可写路径，例如 `/data/strm`，或你已经挂载进容器的媒体目录。旧版本保存过 `/app/data/strm` 的部署会在生成时自动迁移到当前 `MMTL_APP_DATA_DIR`，默认就是 `/data`。
 
 ## 更新与备份
 
 更新镜像：
 
 ```bash
-docker compose pull mediastation-go
-docker compose up -d --no-deps mediastation-go
+docker compose pull mmtl
+docker compose up -d --no-deps mmtl
 ```
 
-不要执行裸 `docker compose pull` 做日常更新。PostgreSQL / Redis / OpenSearch 是数据与缓存基础组件，compose 已设置为 `pull_policy: missing`，首次部署缺镜像时会拉取，日常更新只建议拉取 `mediastation-go`。需要升级这些基础组件时，请先备份 `./postgres`，再手动修改镜像版本并单独拉取。
+不要执行裸 `docker compose pull` 做日常更新。PostgreSQL / Redis / OpenSearch 是数据与缓存基础组件，compose 已设置为 `pull_policy: missing`，首次部署缺镜像时会拉取，日常更新只建议拉取 `mmtl`。需要升级这些基础组件时，请先备份 `./postgres`，再手动修改镜像版本并单独拉取。
 
 如果第二档或第三档保留了原始文件名，更新时指定对应完整文件：
 
 ```bash
 # 第二档
-docker compose -f docker-compose.standard.yml pull mediastation-go
-docker compose -f docker-compose.standard.yml up -d --no-deps mediastation-go
+docker compose -f docker-compose.standard.yml pull mmtl
+docker compose -f docker-compose.standard.yml up -d --no-deps mmtl
 
 # 第三档
-docker compose -f docker-compose.search.yml pull mediastation-go
-docker compose -f docker-compose.search.yml up -d --no-deps mediastation-go
+docker compose -f docker-compose.search.yml pull mmtl
+docker compose -f docker-compose.search.yml up -d --no-deps mmtl
 ```
 
 必须备份：
@@ -338,7 +338,7 @@ docker compose -f docker-compose.search.yml up -d --no-deps mediastation-go
 
 **启动后还是反复迁移 SQLite？**
 
-确认旧数据已经迁移成功后，把 `MEDIASTATION_DATABASE_DB_PATH` 改成不存在的路径，例如 `/data/no-sqlite-migration.db`，然后重启容器。
+确认旧数据已经迁移成功后，把 `MMTL_DATABASE_DB_PATH` 改成不存在的路径，例如 `/data/no-sqlite-migration.db`，然后重启容器。
 
 **扫库或入库速度很慢？**
 
@@ -346,7 +346,7 @@ docker compose -f docker-compose.search.yml up -d --no-deps mediastation-go
 
 **qBittorrent 下载完成后无法整理？**
 
-确认 qBittorrent 保存路径已经通过 `volumes` 挂载进 MediaStationGo 容器，并且 `MEDIASTATION_DOWNLOAD_DIR` 与 `MEDIASTATION_DOWNLOAD_CONTAINER_DIR` 对应正确。
+确认 qBittorrent 保存路径已经通过 `volumes` 挂载进 MMTL 容器，并且 `MMTL_DOWNLOAD_DIR` 与 `MMTL_DOWNLOAD_CONTAINER_DIR` 对应正确。
 
 **硬链接目录在 Docker / NAS 上看不到内容？**
 
@@ -354,7 +354,7 @@ docker compose -f docker-compose.search.yml up -d --no-deps mediastation-go
 
 **第三方播放器无法连接？**
 
-确认播放器填写的是 `http://服务器IP:18080`，账号密码使用 MediaStationGo 用户账号。反代部署时需要正确设置外部访问地址和 HTTPS 头。
+确认播放器填写的是 `http://服务器IP:18080`，账号密码使用 MMTL 用户账号。反代部署时需要正确设置外部访问地址和 HTTPS 头。
 
 ## 开发构建
 
@@ -400,11 +400,11 @@ http://127.0.0.1:8080/api/health
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=ShukeBta%2FMediaStationGo&type=date&legend=top-left">
+<a href="https://www.star-history.com/?repos=ShukeBta%2FMMTL&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ShukeBta/MediaStationGo&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ShukeBta/MediaStationGo&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=ShukeBta/MediaStationGo&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ShukeBta/MMTL&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ShukeBta/MMTL&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=ShukeBta/MMTL&type=date&legend=top-left" />
  </picture>
 </a>
 

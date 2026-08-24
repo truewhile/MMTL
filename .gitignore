@@ -32,7 +32,7 @@ logs/
 .tmp-deploy-cache/
 .tmp-deploy-server.*
 .tmp-live-server.*
-.mediastation.pid
+.mmtl.pid
 *.log
 *.db
 *.db-journal

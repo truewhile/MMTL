@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/ShukeBta/MediaStationGo/internal/repository"
+	"github.com/ShukeBta/MMTL/internal/repository"
 )
 
 func CloudPlaybackSettings(ctx context.Context, repo *repository.Container) CloudPlaybackOptions {

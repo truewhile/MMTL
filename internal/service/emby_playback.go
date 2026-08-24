@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ShukeBta/MediaStationGo/internal/model"
+	"github.com/ShukeBta/MMTL/internal/model"
 )
 
 // PlaybackInfo returns a PlaybackInfoResponse usable by Emby clients.

@@ -56,7 +56,7 @@ export const useAuthStore = create<AuthState>()(
       },
     }),
     { 
-      name: 'mediastationgo-auth',
+      name: 'mmtl-auth',
       partialize: (state) => ({ 
         token: state.token, 
         refreshToken: state.refreshToken, 

@@ -32,7 +32,7 @@ func (s *SystemUpdateService) resolveComposeTarget(ctx context.Context) (systemU
 }
 
 func (s *SystemUpdateService) composeTargetFromConfiguredDir(ctx context.Context) systemUpdateComposeTarget {
-	configured := s.setting(ctx, SystemUpdateComposeDirSettingKey, firstNonEmpty(os.Getenv("MEDIASTATION_UPDATE_COMPOSE_DIR"), os.Getenv("MEDIASTATION_UPDATE_WORKDIR")))
+	configured := s.setting(ctx, SystemUpdateComposeDirSettingKey, firstNonEmpty(os.Getenv("MMTL_UPDATE_COMPOSE_DIR"), os.Getenv("MMTL_UPDATE_WORKDIR")))
 	return composeTargetInDir(configured)
 }
 
@@ -143,7 +143,7 @@ func composeFileMatches(file string) bool {
 		return false
 	}
 	content := strings.ToLower(string(raw))
-	return strings.Contains(content, "mediastation-go") || strings.Contains(content, strings.ToLower(DefaultSystemUpdateImage))
+	return strings.Contains(content, "mmtl") || strings.Contains(content, strings.ToLower(DefaultSystemUpdateImage))
 }
 
 func preferredComposeCommand() string {

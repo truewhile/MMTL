@@ -25,7 +25,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("app.server_url", "")
 
 	v.SetDefault("database.type", "auto")
-	v.SetDefault("database.db_path", "./data/mediastation.db")
+	v.SetDefault("database.db_path", "./data/mmtl.db")
 	v.SetDefault("database.dsn", "")
 	v.SetDefault("database.wal_mode", true)
 	v.SetDefault("database.busy_timeout", 5000)
@@ -45,12 +45,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("cache.cache_dir", "./cache")
 	v.SetDefault("cache.cleanup_interval_min", 60)
 	v.SetDefault("cache.redis_url", "")
-	v.SetDefault("cache.redis_prefix", "mediastationgo")
+	v.SetDefault("cache.redis_prefix", "mmtl")
 	v.SetDefault("cache.media_ttl_seconds", 15)
 
 	v.SetDefault("search.backend", "")
 	v.SetDefault("search.opensearch_url", "")
-	v.SetDefault("search.index", "mediastation_media")
+	v.SetDefault("search.index", "mmtl_media")
 	v.SetDefault("search.username", "")
 	v.SetDefault("search.password", "")
 
@@ -63,7 +63,7 @@ func setDefaults(v *viper.Viper) {
 
 	v.SetDefault("flaresolverr.enabled", false)
 	v.SetDefault("flaresolverr.url", "http://localhost:8191")
-	v.SetDefault("flaresolverr.session", "mediastation")
+	v.SetDefault("flaresolverr.session", "mmtl")
 	v.SetDefault("flaresolverr.timeout", 60)
 
 	v.SetDefault("downloads.smart_classify", true)

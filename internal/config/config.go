@@ -4,7 +4,7 @@
 //  1. 内置默认值
 //  2. 工作目录中的 config.yaml（嵌套格式）
 //  3. config/*.yaml 分片文件（按模块）
-//  4. 以 MEDIASTATION_ 为前缀的环境变量
+//  4. 以 MMTL_ 为前缀的环境变量
 package config
 
 import (
@@ -17,7 +17,7 @@ import (
 )
 
 // EnvPrefix 是所有环境变量驱动的覆盖使用的前缀。
-const EnvPrefix = "MEDIASTATION"
+const EnvPrefix = "MMTL"
 
 // Load 从默认值 / 文件 / 环境读取配置。
 //

@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ShukeBta/MediaStationGo/internal/service"
+	"github.com/ShukeBta/MMTL/internal/service"
 )
 
 const hideCommunityLinksSettingKey = "ui.hide_community_links_for_users"

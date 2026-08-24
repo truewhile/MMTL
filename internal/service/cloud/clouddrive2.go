@@ -13,7 +13,7 @@ import (
 // cloudDrive2Provider bridges CloudDrive2 through its WebDAV endpoint.
 //
 // CloudDrive2 integrates many cloud disks (115 / 123 / Aliyun and more).
-// Treating it as a WebDAV-backed cloud provider lets MediaStationGo
+// Treating it as a WebDAV-backed cloud provider lets MMTL
 // browse, mount and upload to those disks without carrying every provider's
 // private chunk-upload protocol in this project.
 type cloudDrive2Provider struct {

@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MediaStationGo/internal/model"
+	"github.com/ShukeBta/MMTL/internal/model"
 )
 
 func (p *OrganizePipelineService) syncScrapedOrganizedNames(ctx context.Context, opts OrganizeOptions, res *OrganizeResult, path string) {

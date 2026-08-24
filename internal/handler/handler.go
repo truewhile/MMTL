@@ -8,8 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MediaStationGo/internal/config"
-	"github.com/ShukeBta/MediaStationGo/internal/service"
+	"github.com/ShukeBta/MMTL/internal/config"
+	"github.com/ShukeBta/MMTL/internal/service"
 )
 
 // Register attaches every API route to the engine.
@@ -46,7 +46,7 @@ func healthCheck(c *gin.Context) {
 }
 
 func versionInfo(c *gin.Context) {
-	c.JSON(200, gin.H{"name": "MediaStationGo", "version": "0.1.0"})
+	c.JSON(200, gin.H{"name": "MMTL", "version": "0.1.0"})
 }
 
 // ─── 权限 Handler 包装 ────────────────────────────────────────────────────────

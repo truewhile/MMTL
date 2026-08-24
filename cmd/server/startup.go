@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MediaStationGo/internal/config"
+	"github.com/ShukeBta/MMTL/internal/config"
 )
 
 func applyCPUThreadLimit(cfg *config.Config, logger *zap.Logger) {

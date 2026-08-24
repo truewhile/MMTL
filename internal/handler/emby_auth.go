@@ -7,8 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ShukeBta/MediaStationGo/internal/middleware"
-	"github.com/ShukeBta/MediaStationGo/internal/service"
+	"github.com/ShukeBta/MMTL/internal/middleware"
+	"github.com/ShukeBta/MMTL/internal/service"
 )
 
 // embyError 返回 Emby 风格的错误（顶层 Code/Message）。

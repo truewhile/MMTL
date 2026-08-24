@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ShukeBta/MediaStationGo/internal/model"
+	"github.com/ShukeBta/MMTL/internal/model"
 )
 
 type SeriesCard struct {

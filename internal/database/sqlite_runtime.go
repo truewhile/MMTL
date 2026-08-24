@@ -7,14 +7,14 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MediaStationGo/internal/config"
+	"github.com/ShukeBta/MMTL/internal/config"
 )
 
 func installSQLiteWriteGate(db *gorm.DB) {
 	if db == nil {
 		return
 	}
-	const lockedKey = "mediastation:sqlite_write_locked"
+	const lockedKey = "mmtl:sqlite_write_locked"
 	gate := newSQLiteWriteGate()
 	lock := func(tx *gorm.DB) {
 		ctx := context.Background()
@@ -32,14 +32,14 @@ func installSQLiteWriteGate(db *gorm.DB) {
 			gate.Unlock()
 		}
 	}
-	_ = db.Callback().Create().Before("gorm:create").Register("mediastation:sqlite_write_lock", lock)
-	_ = db.Callback().Create().After("gorm:create").Register("mediastation:sqlite_write_unlock", unlock)
-	_ = db.Callback().Update().Before("gorm:update").Register("mediastation:sqlite_write_lock", lock)
-	_ = db.Callback().Update().After("gorm:update").Register("mediastation:sqlite_write_unlock", unlock)
-	_ = db.Callback().Delete().Before("gorm:delete").Register("mediastation:sqlite_write_lock", lock)
-	_ = db.Callback().Delete().After("gorm:delete").Register("mediastation:sqlite_write_unlock", unlock)
-	_ = db.Callback().Raw().Before("gorm:raw").Register("mediastation:sqlite_write_lock", lock)
-	_ = db.Callback().Raw().After("gorm:raw").Register("mediastation:sqlite_write_unlock", unlock)
+	_ = db.Callback().Create().Before("gorm:create").Register("mmtl:sqlite_write_lock", lock)
+	_ = db.Callback().Create().After("gorm:create").Register("mmtl:sqlite_write_unlock", unlock)
+	_ = db.Callback().Update().Before("gorm:update").Register("mmtl:sqlite_write_lock", lock)
+	_ = db.Callback().Update().After("gorm:update").Register("mmtl:sqlite_write_unlock", unlock)
+	_ = db.Callback().Delete().Before("gorm:delete").Register("mmtl:sqlite_write_lock", lock)
+	_ = db.Callback().Delete().After("gorm:delete").Register("mmtl:sqlite_write_unlock", unlock)
+	_ = db.Callback().Raw().Before("gorm:raw").Register("mmtl:sqlite_write_lock", lock)
+	_ = db.Callback().Raw().After("gorm:raw").Register("mmtl:sqlite_write_unlock", unlock)
 }
 
 // sqliteWriteGate serializes in-process SQLite writes while respecting the

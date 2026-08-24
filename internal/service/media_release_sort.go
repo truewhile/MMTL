@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ShukeBta/MediaStationGo/internal/model"
+	"github.com/ShukeBta/MMTL/internal/model"
 )
 
 func mediaReleaseSortTime(media model.Media) time.Time {

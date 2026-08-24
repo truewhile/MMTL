@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ShukeBta/MediaStationGo/internal/service/cloud115"
+	"github.com/ShukeBta/MMTL/internal/service/cloud115"
 )
 
 // openAPI115Provider 实现 Provider 接口：List 列目录、Resolve 用 pickcode

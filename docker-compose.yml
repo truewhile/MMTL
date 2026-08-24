@@ -1,4 +1,4 @@
-# MediaStationGo 最简单 Docker Compose 部署文件
+# MMTL 最简单 Docker Compose 部署文件
 #
 # 新手建议：
 #   1. 不用 .env。
@@ -15,12 +15,12 @@
 #   admin / admin123
 
 services:
-  mediastation-go:
+  mmtl:
     # 镜像二选一：
     # 方式一：GitHub 仓库镜像 GHCR（默认，推荐）
-    image: ghcr.io/shukebta/mediastation-go:latest
+    image: ghcr.io/shukebta/mmtl:latest
     # 方式二：Docker Hub 备用（GHCR 拉取慢或不可用时使用）
-    # image: shukbet/mediastationgo:latest
+    # image: shukbet/mmtl:latest
 
     restart: unless-stopped
     init: true
@@ -87,52 +87,52 @@ services:
       PGID: "1000"
 
       # 程序基础配置，通常不用改。
-      MEDIASTATION_APP_HOST: 0.0.0.0
-      MEDIASTATION_APP_PORT: 8080
-      MEDIASTATION_APP_WEB_DIR: /app/web/dist
-      MEDIASTATION_APP_DATA_DIR: /data
+      MMTL_APP_HOST: 0.0.0.0
+      MMTL_APP_PORT: 8080
+      MMTL_APP_WEB_DIR: /app/web/dist
+      MMTL_APP_DATA_DIR: /data
       # 详细应用日志会保存在 ./data/logs/app.log，warn/error 也会拆分保存。
       # 排查复杂问题时可临时改成 debug。
-      MEDIASTATION_LOGGING_LEVEL: info
-      MEDIASTATION_LOGGING_FORMAT: console
-      MEDIASTATION_LOGGING_OUTPUT_PATH: /data/logs
-      MEDIASTATION_LOGGING_MAX_SIZE_MB: "50"
-      MEDIASTATION_LOGGING_MAX_BACKUPS: "20"
-      MEDIASTATION_LOGGING_MAX_AGE_DAYS: "30"
+      MMTL_LOGGING_LEVEL: info
+      MMTL_LOGGING_FORMAT: console
+      MMTL_LOGGING_OUTPUT_PATH: /data/logs
+      MMTL_LOGGING_MAX_SIZE_MB: "50"
+      MMTL_LOGGING_MAX_BACKUPS: "20"
+      MMTL_LOGGING_MAX_AGE_DAYS: "30"
 
       # 轻量模式默认只使用 PostgreSQL，适合大多数 NAS。
-      # 旧版 ./data/mediastation.db 存在时，首次启动会自动迁移到 PostgreSQL。
-      MEDIASTATION_DATABASE_TYPE: postgres
-      MEDIASTATION_DATABASE_DSN: postgres://mediastation:mediastation@postgres:5432/mediastation?sslmode=disable
+      # 旧版 ./data/mmtl.db 存在时，首次启动会自动迁移到 PostgreSQL。
+      MMTL_DATABASE_TYPE: postgres
+      MMTL_DATABASE_DSN: postgres://mmtl:mmtl@postgres:5432/mmtl?sslmode=disable
 
       # SQLite 旧库迁移源：
-      # - 首次从旧版 ./data/mediastation.db 导入时保持此路径。
+      # - 首次从旧版 ./data/mmtl.db 导入时保持此路径。
       # - 确认迁移完成后，建议改成 /data/no-sqlite-migration.db 这类不存在的路径。
-      MEDIASTATION_DATABASE_DB_PATH: /data/mediastation.db
-      MEDIASTATION_CACHE_CACHE_DIR: /cache
+      MMTL_DATABASE_DB_PATH: /data/mmtl.db
+      MMTL_CACHE_CACHE_DIR: /cache
 
       # 管理面板热更新默认拉取此镜像，并用 Watchtower 一次性重建当前容器。
-      MEDIASTATION_UPDATE_IMAGE: ghcr.io/shukebta/mediastation-go:latest
+      MMTL_UPDATE_IMAGE: ghcr.io/shukebta/mmtl:latest
 
       # 路径换算配置。
       # 默认推荐在网页里使用容器路径 /media。
       # 如果旧媒体库已经保存了宿主机路径 /vol1/1000/Media，
       # 再把这里改成同一个宿主机真实路径用于旧路径换算。
-      MEDIASTATION_MEDIA_DIR: /media
-      MEDIASTATION_MEDIA_CONTAINER_DIR: /media
+      MMTL_MEDIA_DIR: /media
+      MMTL_MEDIA_CONTAINER_DIR: /media
 
       # 默认推荐下载器保存路径使用 /downloads。
       # 如果下载器只能返回宿主机路径，再改成同一个宿主机真实路径。
-      MEDIASTATION_DOWNLOAD_DIR: /downloads
-      MEDIASTATION_DOWNLOAD_CONTAINER_DIR: /downloads
+      MMTL_DOWNLOAD_DIR: /downloads
+      MMTL_DOWNLOAD_CONTAINER_DIR: /downloads
 
       # NAS 友好的低负载默认值。
-      MEDIASTATION_TRANSCODER_ENABLED: "true"
-      MEDIASTATION_TRANSCODER_HARDWARE_ACCEL: "false"
-      MEDIASTATION_TRANSCODER_REALTIME: "true"
-      MEDIASTATION_TRANSCODER_THREADS: "2"
-      MEDIASTATION_TRANSCODER_MAX_CONCURRENT: "1"
-      MEDIASTATION_TRANSCODER_IDLE_TIMEOUT_SECONDS: "120"
+      MMTL_TRANSCODER_ENABLED: "true"
+      MMTL_TRANSCODER_HARDWARE_ACCEL: "false"
+      MMTL_TRANSCODER_REALTIME: "true"
+      MMTL_TRANSCODER_THREADS: "2"
+      MMTL_TRANSCODER_MAX_CONCURRENT: "1"
+      MMTL_TRANSCODER_IDLE_TIMEOUT_SECONDS: "120"
 
     healthcheck:
       test: ["CMD-SHELL", "busybox wget -qO- http://127.0.0.1:8080/api/health || exit 1"]
@@ -150,20 +150,20 @@ services:
 
   postgres:
     image: postgres:16-alpine
-    # 首次部署允许拉取；日常更新请只 pull mediastation-go。
+    # 首次部署允许拉取；日常更新请只 pull mmtl。
     # 如需升级 PostgreSQL，请先备份 ./postgres 后再手动调整镜像版本并拉取。
     pull_policy: missing
     restart: unless-stopped
     environment:
-      POSTGRES_DB: mediastation
-      POSTGRES_USER: mediastation
-      POSTGRES_PASSWORD: mediastation
+      POSTGRES_DB: mmtl
+      POSTGRES_USER: mmtl
+      POSTGRES_PASSWORD: mmtl
       TZ: Asia/Shanghai
     volumes:
       # PostgreSQL 主数据目录。升级/重建容器时必须保留。
       - ./postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U mediastation -d mediastation"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U mmtl -d mmtl"]
       interval: 10s
       timeout: 5s
       retries: 10

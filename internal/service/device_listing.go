@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ShukeBta/MediaStationGo/internal/model"
+	"github.com/ShukeBta/MMTL/internal/model"
 )
 
 // KickDevice marks a device as kicked so the next request from it is rejected

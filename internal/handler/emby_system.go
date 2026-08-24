@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ShukeBta/MediaStationGo/internal/service"
+	"github.com/ShukeBta/MMTL/internal/service"
 )
 
 func embySystemInfoHandler(svc *service.Container) gin.HandlerFunc {
@@ -84,9 +84,9 @@ func embyPublicSystemInfoPayload(c *gin.Context, svc *service.Container) map[str
 		return embyWithRequestAddress(c, svc.Emby.SystemInfoPublic())
 	}
 	return embyWithRequestAddress(c, map[string]any{
-		"Id":                     "mediastation-go-001",
-		"ServerId":               "mediastation-go-001",
-		"ServerName":             "MediaStationGo",
+		"Id":                     "mmtl-001",
+		"ServerId":               "mmtl-001",
+		"ServerName":             "MMTL",
 		"Version":                "4.8.10.0",
 		"ServerVersion":          "4.8.10.0",
 		"ProductName":            "Emby Server",

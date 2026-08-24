@@ -11,10 +11,10 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/ShukeBta/MediaStationGo/internal/config"
-	"github.com/ShukeBta/MediaStationGo/internal/model"
-	"github.com/ShukeBta/MediaStationGo/internal/repository"
-	"github.com/ShukeBta/MediaStationGo/internal/service"
+	"github.com/ShukeBta/MMTL/internal/config"
+	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/ShukeBta/MMTL/internal/repository"
+	"github.com/ShukeBta/MMTL/internal/service"
 )
 
 // TestStrmAdminRoutes 冒烟测试 STRM 管理端点注册与 401 拦截。
@@ -36,8 +36,8 @@ func TestStrmAdminRoutesAreRegistered(t *testing.T) {
 		"DELETE /api/admin/strm/accounts/:id",
 		"POST /api/admin/strm/accounts/:id/test",
 		"GET /api/admin/strm/accounts/:id/list",
-		"POST /api/admin/strm/accounts/115-qr/start",
-		"POST /api/admin/strm/accounts/115-qr/poll",
+		"POST /api/admin/strm/accounts/:id/oauth/start",
+		"POST /api/admin/strm/accounts/:id/oauth/poll",
 		"GET /api/admin/strm/settings",
 		"PUT /api/admin/strm/settings",
 		"GET /api/admin/strm/paths",

@@ -1,4 +1,4 @@
-// Package service 包含 MediaStationGo 的业务逻辑。
+// Package service 包含 MMTL 的业务逻辑。
 // Handler 反序列化 HTTP 请求，调用 Service 方法，然后序列化响应。
 // Services 拥有所有横切策略（认证、扫描、转码等）且不直接处理 HTTP 类型。
 package service
@@ -9,8 +9,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MediaStationGo/internal/config"
-	"github.com/ShukeBta/MediaStationGo/internal/repository"
+	"github.com/ShukeBta/MMTL/internal/config"
+	"github.com/ShukeBta/MMTL/internal/repository"
 )
 
 // Container 持有在启动时初始化的每个服务。Handler 接收指向它的指针并选择相关字段。

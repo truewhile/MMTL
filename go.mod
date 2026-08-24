@@ -1,4 +1,4 @@
-module github.com/ShukeBta/MediaStationGo
+module github.com/ShukeBta/MMTL
 
 go 1.25.0
 

@@ -10,9 +10,9 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MediaStationGo/internal/config"
-	"github.com/ShukeBta/MediaStationGo/internal/model"
-	"github.com/ShukeBta/MediaStationGo/internal/repository"
+	"github.com/ShukeBta/MMTL/internal/config"
+	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/ShukeBta/MMTL/internal/repository"
 )
 
 func newScannerTestEnv(t *testing.T) (*ScannerService, *repository.Container) {
@@ -425,8 +425,8 @@ func TestScanLibraryMapsPersistedHostLibraryPath(t *testing.T) {
 	if err := os.WriteFile(file, []byte("episode"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("MEDIASTATION_MEDIA_DIR", `Q:\media`)
-	t.Setenv("MEDIASTATION_MEDIA_CONTAINER_DIR", containerRoot)
+	t.Setenv("MMTL_MEDIA_DIR", `Q:\media`)
+	t.Setenv("MMTL_MEDIA_CONTAINER_DIR", containerRoot)
 
 	lib := model.Library{Name: "国产剧", Path: `Q:\media\电视剧\国产剧`, Type: "tv", Enabled: true}
 	if err := repos.Library.Create(t.Context(), &lib); err != nil {

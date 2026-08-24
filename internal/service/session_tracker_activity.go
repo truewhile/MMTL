@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ShukeBta/MediaStationGo/internal/model"
+	"github.com/ShukeBta/MMTL/internal/model"
 )
 
 func (s *SessionTrackerService) ApplyToUsers(ctx context.Context, users []model.User) {

@@ -19,7 +19,7 @@ func (s *SystemUpdateService) updateCommand(ctx context.Context, status SystemUp
 }
 
 func (s *SystemUpdateService) rawUpdateCommand(ctx context.Context) string {
-	return s.setting(ctx, SystemUpdateCommandSettingKey, os.Getenv("MEDIASTATION_UPDATE_COMMAND"))
+	return s.setting(ctx, SystemUpdateCommandSettingKey, os.Getenv("MMTL_UPDATE_COMMAND"))
 }
 
 func defaultSystemUpdateCommand() string {
@@ -33,7 +33,7 @@ func renderSystemUpdateCommand(template string, status SystemUpdateStatus) strin
 		"{{compose_dir}}":      shellQuote(status.ComposeDir),
 		"{{compose_file}}":     shellQuote(status.ComposeFile),
 		"{{compose_command}}":  firstNonEmpty(status.ComposeCommand, "docker compose"),
-		"{{container}}":        shellQuote(firstNonEmpty(status.ContainerName, status.ContainerID, "mediastation-go")),
+		"{{container}}":        shellQuote(firstNonEmpty(status.ContainerName, status.ContainerID, "mmtl")),
 		"{{container_id}}":     shellQuote(status.ContainerID),
 		"{{container_name}}":   shellQuote(status.ContainerName),
 	}

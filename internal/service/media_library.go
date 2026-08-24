@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	"github.com/ShukeBta/MediaStationGo/internal/model"
+	"github.com/ShukeBta/MMTL/internal/model"
 	"gorm.io/gorm"
 )
 

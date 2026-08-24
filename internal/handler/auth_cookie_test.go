@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ShukeBta/MediaStationGo/internal/middleware"
+	"github.com/ShukeBta/MMTL/internal/middleware"
 )
 
 func TestSetAccessTokenCookie(t *testing.T) {

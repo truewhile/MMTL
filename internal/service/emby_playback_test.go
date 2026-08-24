@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ShukeBta/MediaStationGo/internal/model"
+	"github.com/ShukeBta/MMTL/internal/model"
 )
 
 func TestEmbyRootItemsExposeLibraries(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/ShukeBta/MediaStationGo/internal/middleware"
+	"github.com/ShukeBta/MMTL/internal/middleware"
 )
 
 func signedTestToken(t *testing.T, secret string) string {
@@ -23,7 +23,7 @@ func signedTestTokenWithPurpose(t *testing.T, secret, purpose string) string {
 		Purpose: purpose,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
-			Issuer:    "mediastationgo-test",
+			Issuer:    "mmtl-test",
 			Subject:   "user-1",
 		},
 	}

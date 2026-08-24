@@ -22,7 +22,7 @@ export const usePlayProfileStore = create<PlayProfileState>()(
         })),
     }),
     {
-      name: 'mediastationgo-play-profile',
+      name: 'mmtl-play-profile',
       storage: createJSONStorage(() => sessionStorage),
     },
   ),

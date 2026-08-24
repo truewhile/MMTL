@@ -15,7 +15,7 @@ import (
 	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/shirou/gopsutil/v3/mem"
 
-	"github.com/ShukeBta/MediaStationGo/internal/service"
+	"github.com/ShukeBta/MMTL/internal/service"
 )
 
 // startedAt is captured at first call so /system/status can report uptime
@@ -31,7 +31,7 @@ func systemInfoHandler(svc *service.Container) gin.HandlerFunc {
 			}
 		}
 		c.JSON(http.StatusOK, gin.H{
-			"name":             "MediaStationGo",
+			"name":             "MMTL",
 			"version":          "0.1.0",
 			"go":               runtime.Version(),
 			"os":               runtime.GOOS,

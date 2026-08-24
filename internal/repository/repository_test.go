@@ -9,8 +9,8 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MediaStationGo/internal/database"
-	"github.com/ShukeBta/MediaStationGo/internal/model"
+	"github.com/ShukeBta/MMTL/internal/database"
+	"github.com/ShukeBta/MMTL/internal/model"
 )
 
 func TestMediaUpsertSkipsUnchangedExistingRow(t *testing.T) {

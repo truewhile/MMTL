@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ShukeBta/MediaStationGo/internal/config"
+	"github.com/ShukeBta/MMTL/internal/config"
 )
 
 const defaultLogMaxSizeMB = 20

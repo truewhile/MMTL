@@ -29,14 +29,14 @@
 
 ## What is it?
 
-MediaStationGo is a self-hosted media center for personal libraries, home NAS, and home-theater users.
+MMTL is a self-hosted media center for personal libraries, home NAS, and home-theater users.
 
 It helps you:
 
 - Manage movies, TV shows, anime, variety shows, music, and adult libraries.
 - Create multiple user accounts for family members, friends, or different devices.
 - Scan files and enrich posters, summaries, years, seasons, and episodes.
-- Play in the web UI, or log in with a MediaStationGo account from Emby-protocol apps such as Infuse, VidHub, SenPlayer, and Emby clients.
+- Play in the web UI, or log in with a MMTL account from Emby-protocol apps such as Infuse, VidHub, SenPlayer, and Emby clients.
 - Connect qBittorrent for search, subscriptions, downloads, and post-download organization.
 - Connect OpenList, CloudDrive2, WebDAV, and other storage backends with STRMURL or 302 redirect playback.
 - Run on NAS, mini PCs, VPS, Linux, Windows Docker Desktop, or any Docker-friendly host.
@@ -47,8 +47,8 @@ It helps you:
 
 ## Key Highlights
 
-- **One server, many clients**: deploy MediaStationGo once; you do not need to run a separate Emby server.
-- **Emby-protocol compatibility**: add the server in third-party players as an Emby/Jellyfin-compatible server, then log in with your MediaStationGo username and password.
+- **One server, many clients**: deploy MMTL once; you do not need to run a separate Emby server.
+- **Emby-protocol compatibility**: add the server in third-party players as an Emby/Jellyfin-compatible server, then log in with your MMTL username and password.
 - **Multi-user management**: supports admins, regular users, account enable/disable, expiry dates, device management, Bot registration, and redeem codes.
 - **Local + cloud media in one place**: manage local disks, download folders, OpenList, CloudDrive2, WebDAV, and other storage backends from one panel.
 - **Download-to-library workflow**: connect qBittorrent for search, subscriptions, download completion organization, and metadata matching.
@@ -61,7 +61,7 @@ It helps you:
 - **Beginners** who want to edit one `docker-compose.yml` and start the service.
 - **NAS users** who want a low-resource media center for local disks and cloud storage.
 - **PT/download users** who want downloads, organization, metadata, and playback in one panel.
-- **External-player users** who want to log in to Emby-protocol third-party apps with one MediaStationGo account.
+- **External-player users** who want to log in to Emby-protocol third-party apps with one MMTL account.
 - **Family-sharing users** who want separate user accounts without deploying a separate media server for each person.
 - **Developers** who want to study or extend a Go + React self-hosted media app.
 
@@ -82,12 +82,12 @@ It helps you:
 Docker Compose is the recommended path. Beginners do not need `.env`, bare-metal binaries, or source builds. Use the single-image SQLite template if you want the smallest possible setup.
 
 ```bash
-mkdir -p MediaStationGo
-cd MediaStationGo
-# Simplest option: one MediaStationGo container + SQLite
-curl -fsSL https://raw.githubusercontent.com/ShukeBta/MediaStationGo/main/docker-compose.simple.yml -o docker-compose.yml
-# Or tier 1: MediaStationGo + PostgreSQL
-# curl -fsSL https://raw.githubusercontent.com/ShukeBta/MediaStationGo/main/docker-compose.yml -o docker-compose.yml
+mkdir -p MMTL
+cd MMTL
+# Simplest option: one MMTL container + SQLite
+curl -fsSL https://raw.githubusercontent.com/ShukeBta/MMTL/main/docker-compose.simple.yml -o docker-compose.yml
+# Or tier 1: MMTL + PostgreSQL
+# curl -fsSL https://raw.githubusercontent.com/ShukeBta/MMTL/main/docker-compose.yml -o docker-compose.yml
 ```
 
 Edit `docker-compose.yml`:
@@ -119,9 +119,9 @@ Password: admin123
 
 ## Docker Compose Recommended
 
-The repository `docker-compose.yml` is the lightweight recommended template: no `.env` required, and by default it only starts `MediaStationGo + PostgreSQL`. This is the best starting point for most NAS users.
+The repository `docker-compose.yml` is the lightweight recommended template: no `.env` required, and by default it only starts `MMTL + PostgreSQL`. This is the best starting point for most NAS users.
 
-If you already have an older `./data/mediastation.db`, the first start with the new compose file automatically imports it into PostgreSQL. Keep `./data`; it still stores the JWT secret, runtime data, and the old SQLite migration source.
+If you already have an older `./data/mmtl.db`, the first start with the new compose file automatically imports it into PostgreSQL. Keep `./data`; it still stores the JWT secret, runtime data, and the old SQLite migration source.
 
 ### Deployment modes
 
@@ -134,7 +134,7 @@ If you already have an older `./data/mediastation.db`, the first start with the 
 
 Each compose file is standalone. Do not stack multiple `-f` files together.
 
-The single-image `docker-compose.simple.yml` runs only MediaStationGo with a built-in SQLite database — the simplest starting point. Do not set `MEDIASTATION_DATABASE_DSN` there, or it switches back to PostgreSQL. Move up to the PostgreSQL modes for multi-user or high-concurrency use (keep `./data` when you switch). Redis and OpenSearch are enhancement layers, not source databases. Do not enable OpenSearch by default on low-memory NAS devices.
+The single-image `docker-compose.simple.yml` runs only MMTL with a built-in SQLite database — the simplest starting point. Do not set `MMTL_DATABASE_DSN` there, or it switches back to PostgreSQL. Move up to the PostgreSQL modes for multi-user or high-concurrency use (keep `./data` when you switch). Redis and OpenSearch are enhancement layers, not source databases. Do not enable OpenSearch by default on low-memory NAS devices.
 
 ### Database Choice And Disabling SQLite
 
@@ -142,14 +142,14 @@ The current Docker Compose setup uses PostgreSQL by default. SQLite is no longer
 
 ```yaml
 environment:
-  MEDIASTATION_DATABASE_TYPE: postgres
-  MEDIASTATION_DATABASE_DSN: postgres://mediastation:mediastation@postgres:5432/mediastation?sslmode=disable
+  MMTL_DATABASE_TYPE: postgres
+  MMTL_DATABASE_DSN: postgres://mmtl:mmtl@postgres:5432/mmtl?sslmode=disable
 ```
 
-`MEDIASTATION_DATABASE_DB_PATH` is only used as a one-time migration source for old SQLite data:
+`MMTL_DATABASE_DB_PATH` is only used as a one-time migration source for old SQLite data:
 
 - Fresh installs: `docker compose up -d` uses PostgreSQL and does not create a new SQLite primary database.
-- Upgrades: if `./data/mediastation.db` exists, the first start with the new compose file imports it into PostgreSQL.
+- Upgrades: if `./data/mmtl.db` exists, the first start with the new compose file imports it into PostgreSQL.
 - Migration fills missing rows by primary key and skips rows that already exist. If it fails partway through, a later start continues the remaining tables.
 - After a successful import, PostgreSQL gets a completion marker in the `settings` table, so the old SQLite file is not imported again.
 - Redis is a hot cache and OpenSearch is a search index; neither is a source database.
@@ -157,9 +157,9 @@ environment:
 Recommended SQLite to PostgreSQL upgrade flow:
 
 ```bash
-docker compose pull mediastation-go
-docker compose up -d --no-deps mediastation-go
-docker compose logs -f mediastation-go
+docker compose pull mmtl
+docker compose up -d --no-deps mmtl
+docker compose logs -f mmtl
 ```
 
 After you see `sqlite data migrated to postgres`, or after the web UI shows your users, libraries, and settings correctly, you can stop using the old SQLite file as a migration source.
@@ -170,15 +170,15 @@ To make the deployment PostgreSQL-only after migration, keep PostgreSQL selected
 
 ```yaml
 environment:
-  MEDIASTATION_DATABASE_TYPE: postgres
-  MEDIASTATION_DATABASE_DSN: postgres://mediastation:mediastation@postgres:5432/mediastation?sslmode=disable
-  MEDIASTATION_DATABASE_DB_PATH: /data/disabled-sqlite-migration.db
+  MMTL_DATABASE_TYPE: postgres
+  MMTL_DATABASE_DSN: postgres://mmtl:mmtl@postgres:5432/mmtl?sslmode=disable
+  MMTL_DATABASE_DB_PATH: /data/disabled-sqlite-migration.db
 ```
 
 Then rename or move the old host-side SQLite file as an offline backup:
 
 ```bash
-mv data/mediastation.db data/mediastation.sqlite.bak
+mv data/mmtl.db data/mmtl.sqlite.bak
 ```
 
 For bare-metal or custom `config.yaml` deployments, use the same idea:
@@ -186,7 +186,7 @@ For bare-metal or custom `config.yaml` deployments, use the same idea:
 ```yaml
 database:
   type: postgres
-  dsn: postgres://mediastation:mediastation@127.0.0.1:5432/mediastation?sslmode=disable
+  dsn: postgres://mmtl:mmtl@127.0.0.1:5432/mmtl?sslmode=disable
   db_path: ""
 ```
 
@@ -198,15 +198,15 @@ Both image sources are supported. Pick one and put it in `image:`:
 
 | Source | Image | Best for |
 | --- | --- | --- |
-| GitHub Container Registry (GHCR) | `ghcr.io/shukebta/mediastation-go:latest` | Recommended default, follows repository releases |
-| Docker Hub | `shukbet/mediastationgo:latest` | Backup source when GHCR is slow or unavailable |
+| GitHub Container Registry (GHCR) | `ghcr.io/shukebta/mmtl:latest` | Recommended default, follows repository releases |
+| Docker Hub | `shukbet/mmtl:latest` | Backup source when GHCR is slow or unavailable |
 
 To pin a version, first confirm the tag exists on the repository Packages page. Use this format:
 
 ```yaml
-image: ghcr.io/shukebta/mediastation-go:<version-tag>
+image: ghcr.io/shukebta/mmtl:<version-tag>
 # If GHCR does not have that tag, use Docker Hub as the backup:
-# image: shukbet/mediastationgo:MediaStationGo-v0.0.72
+# image: shukbet/mmtl:MMTL-v0.0.72
 ```
 
 For the simplest setup, keep GHCR `latest`.
@@ -215,10 +215,10 @@ Manual pull examples:
 
 ```bash
 # GitHub Container Registry
-docker pull ghcr.io/shukebta/mediastation-go:latest
+docker pull ghcr.io/shukebta/mmtl:latest
 
 # Docker Hub backup
-docker pull shukbet/mediastationgo:latest
+docker pull shukbet/mmtl:latest
 ```
 
 Focus on this part:
@@ -260,8 +260,8 @@ volumes:
   - /vol1/1000/Downloads:/downloads
 
 environment:
-  MEDIASTATION_MEDIA_DIR: /vol1/1000/Media
-  MEDIASTATION_DOWNLOAD_DIR: /vol1/1000/Downloads
+  MMTL_MEDIA_DIR: /vol1/1000/Media
+  MMTL_DOWNLOAD_DIR: /vol1/1000/Downloads
 ```
 
 Rules:
@@ -279,12 +279,12 @@ The root `docker-compose.yml` follows this style:
 
 ```yaml
 services:
-  mediastation-go:
+  mmtl:
     # Pick one image source:
     # GitHub Container Registry (GHCR):
-    image: ghcr.io/shukebta/mediastation-go:latest
+    image: ghcr.io/shukebta/mmtl:latest
     # Docker Hub backup:
-    # image: shukbet/mediastationgo:latest
+    # image: shukbet/mmtl:latest
 
     restart: unless-stopped
     init: true
@@ -326,38 +326,38 @@ services:
       PUID: "1000"
       PGID: "1000"
 
-      MEDIASTATION_APP_HOST: 0.0.0.0
-      MEDIASTATION_APP_PORT: 8080
-      MEDIASTATION_APP_WEB_DIR: /app/web/dist
-      MEDIASTATION_APP_DATA_DIR: /data
+      MMTL_APP_HOST: 0.0.0.0
+      MMTL_APP_PORT: 8080
+      MMTL_APP_WEB_DIR: /app/web/dist
+      MMTL_APP_DATA_DIR: /data
 
       # Lightweight mode uses PostgreSQL by default.
       # Old SQLite data migrates from this path on first start.
-      MEDIASTATION_DATABASE_TYPE: postgres
-      MEDIASTATION_DATABASE_DSN: postgres://mediastation:mediastation@postgres:5432/mediastation?sslmode=disable
+      MMTL_DATABASE_TYPE: postgres
+      MMTL_DATABASE_DSN: postgres://mmtl:mmtl@postgres:5432/mmtl?sslmode=disable
       # After migration, change this to /data/disabled-sqlite-migration.db to disable the SQLite migration source.
-      MEDIASTATION_DATABASE_DB_PATH: /data/mediastation.db
-      MEDIASTATION_CACHE_CACHE_DIR: /cache
+      MMTL_DATABASE_DB_PATH: /data/mmtl.db
+      MMTL_CACHE_CACHE_DIR: /cache
 
       # Use /media and /downloads in the web UI and downloader by default.
-      # Only set MEDIASTATION_*_DIR to real host paths when migrating old
+      # Only set MMTL_*_DIR to real host paths when migrating old
       # libraries/tasks that already stored host paths.
-      MEDIASTATION_MEDIA_DIR: /media
-      MEDIASTATION_MEDIA_CONTAINER_DIR: /media
-      MEDIASTATION_DOWNLOAD_DIR: /downloads
-      MEDIASTATION_DOWNLOAD_CONTAINER_DIR: /downloads
+      MMTL_MEDIA_DIR: /media
+      MMTL_MEDIA_CONTAINER_DIR: /media
+      MMTL_DOWNLOAD_DIR: /downloads
+      MMTL_DOWNLOAD_CONTAINER_DIR: /downloads
 
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: mediastation
-      POSTGRES_USER: mediastation
-      POSTGRES_PASSWORD: mediastation
+      POSTGRES_DB: mmtl
+      POSTGRES_USER: mmtl
+      POSTGRES_PASSWORD: mmtl
     volumes:
       - ./postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U mediastation -d mediastation"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U mmtl -d mmtl"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -386,7 +386,7 @@ services:
 4. **Use external players**
    - Add the server as an Emby/Jellyfin-compatible server.
    - Server URL: `http://SERVER_IP:18080`.
-   - Use the username and password created in MediaStationGo. No separate Emby server is required.
+   - Use the username and password created in MMTL. No separate Emby server is required.
    - Admins can create regular users in the web UI or Bot so each person can log in with their own account.
 
 5. **Use cloud playback**
@@ -401,21 +401,21 @@ services:
 ### Update
 
 ```bash
-docker compose pull mediastation-go
-docker compose up -d --no-deps mediastation-go
+docker compose pull mmtl
+docker compose up -d --no-deps mmtl
 ```
 
 ### Logs
 
 ```bash
-docker compose logs -f mediastation-go
+docker compose logs -f mmtl
 tail -f ./data/logs/app.log
 tail -f ./data/logs/error.log
 ```
 
-The compose templates keep full application logs in `./data/logs/app.log` and split warnings/errors into `warn.log` and `error.log`. Keep `MEDIASTATION_LOGGING_LEVEL=info` while diagnosing subscription, site search, organizer, or STRM generation issues; temporarily switch to `debug` only when deeper tracing is needed.
+The compose templates keep full application logs in `./data/logs/app.log` and split warnings/errors into `warn.log` and `error.log`. Keep `MMTL_LOGGING_LEVEL=info` while diagnosing subscription, site search, organizer, or STRM generation issues; temporarily switch to `debug` only when deeper tracing is needed.
 
-Use a writable container path for STRM output, such as `/data/strm` or a mounted media path. Deployments that previously saved `/app/data/strm` are migrated automatically to the configured `MEDIASTATION_APP_DATA_DIR`, which defaults to `/data`.
+Use a writable container path for STRM output, such as `/data/strm` or a mounted media path. Deployments that previously saved `/app/data/strm` are migrated automatically to the configured `MMTL_APP_DATA_DIR`, which defaults to `/data`.
 
 ### Backup
 
@@ -435,7 +435,7 @@ redis/        # hot cache, safe to rebuild
 opensearch/   # search index, rebuildable; backing it up can save reindex time on huge libraries
 ```
 
-`cache/` is usually not important. If you explicitly still use `database.type=sqlite`, the primary database remains `data/mediastation.db`.
+`cache/` is usually not important. If you explicitly still use `database.type=sqlite`, the primary database remains `data/mmtl.db`.
 
 ### Stop
 
@@ -453,7 +453,7 @@ Check the container:
 
 ```bash
 docker ps
-docker compose logs --tail=100 mediastation-go
+docker compose logs --tail=100 mmtl
 ```
 
 Then open:
@@ -503,7 +503,7 @@ Beginners should not. Editing `docker-compose.yml` directly is easier to underst
 | Libraries | Movies, TV shows, anime, variety, music, adult content |
 | Metadata | NFO, local artwork, TMDb, TheTVDB, Bangumi, Douban, Fanart, JavBus/JavDB |
 | Playback | Web playback, HTTP Range, HLS transcoding, direct links, STRMURL, 302 redirect |
-| External clients | Emby-protocol compatible APIs; MediaStationGo accounts can log in to third-party players |
+| External clients | Emby-protocol compatible APIs; MMTL accounts can log in to third-party players |
 | User management | Multi-user accounts, admin/regular users, expiry dates, device management, Bot registration and redeem codes |
 | Downloads | qBittorrent, site search, subscriptions, post-download organization |
 | File manager | Browse, organize, copy, move, hardlink, symlink |
@@ -543,7 +543,7 @@ cd web && npm run build
 
 ## Community and Friends
 
-- Telegram group: <https://t.me/MediaStationGo>
+- Telegram group: <https://t.me/MMTL>
 - NodeSeek: [https://www.nodeseek.com/](https://www.nodeseek.com/)
 - LINUX DO: [https://linux.do/](https://linux.do/)
 
@@ -551,7 +551,7 @@ cd web && npm run build
 
 ## Donation
 
-If MediaStationGo saves you time, feel free to buy the author a bowl of noodles.
+If MMTL saves you time, feel free to buy the author a bowl of noodles.
 
 <img width="200" height="200" alt="WeChat Donation QR" src="https://github.com/user-attachments/assets/d6077de5-8305-400d-8b82-470ef05d926e" />
 
@@ -559,11 +559,11 @@ If MediaStationGo saves you time, feel free to buy the author a bowl of noodles.
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=ShukeBta%2FMediaStationGo&type=date&legend=top-left">
+<a href="https://www.star-history.com/?repos=ShukeBta%2FMMTL&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ShukeBta/MediaStationGo&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ShukeBta/MediaStationGo&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=ShukeBta/MediaStationGo&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ShukeBta/MMTL&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ShukeBta/MMTL&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=ShukeBta/MMTL&type=date&legend=top-left" />
  </picture>
 </a>
 

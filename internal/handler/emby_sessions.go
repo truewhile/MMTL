@@ -7,8 +7,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/ShukeBta/MediaStationGo/internal/middleware"
-	"github.com/ShukeBta/MediaStationGo/internal/service"
+	"github.com/ShukeBta/MMTL/internal/middleware"
+	"github.com/ShukeBta/MMTL/internal/service"
 )
 
 func embySessionsHandler(svc *service.Container) gin.HandlerFunc {
@@ -29,7 +29,7 @@ func embySessionsHandler(svc *service.Container) gin.HandlerFunc {
 			}
 			row := gin.H{
 				"Id":                    sess.ID,
-				"ServerId":              "mediastation-go-001",
+				"ServerId":              "mmtl-001",
 				"Client":                sess.Client,
 				"DeviceId":              sess.DeviceID,
 				"DeviceName":            sess.DeviceName,

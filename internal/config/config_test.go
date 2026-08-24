@@ -40,15 +40,15 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Database.MaxOpenConns != defaultDatabaseMaxOpenConns {
 		t.Fatalf("expected default MaxOpenConns %d, got %d", defaultDatabaseMaxOpenConns, cfg.Database.MaxOpenConns)
 	}
-	if cfg.Cache.RedisPrefix != "mediastationgo" {
-		t.Fatalf("expected default redis prefix, got %q", cfg.Cache.RedisPrefix)
-	}
-	if cfg.Cache.MediaTTLSeconds != 15 {
-		t.Fatalf("expected default media cache ttl 15, got %d", cfg.Cache.MediaTTLSeconds)
-	}
-	if cfg.Search.Index != "mediastation_media" {
-		t.Fatalf("expected default search index, got %q", cfg.Search.Index)
-	}
+		if cfg.Cache.RedisPrefix != "mmtl" {
+			t.Fatalf("expected default redis prefix, got %q", cfg.Cache.RedisPrefix)
+		}
+		if cfg.Cache.MediaTTLSeconds != 15 {
+			t.Fatalf("expected default media cache ttl 15, got %d", cfg.Cache.MediaTTLSeconds)
+		}
+		if cfg.Search.Index != "mmtl_media" {
+			t.Fatalf("expected default search index, got %q", cfg.Search.Index)
+		}
 	if cfg.Database.MaxIdleConns != defaultDatabaseMaxIdleConns {
 		t.Fatalf("expected default MaxIdleConns %d, got %d", defaultDatabaseMaxIdleConns, cfg.Database.MaxIdleConns)
 	}
@@ -74,7 +74,7 @@ func TestLoadDefaults(t *testing.T) {
 	}
 }
 
-// TestEnvOverride checks that MEDIASTATION_* env vars override the defaults.
+// TestEnvOverride checks that MMTL_* env vars override the defaults.
 func TestEnvOverride(t *testing.T) {
 	dir := t.TempDir()
 	wd, _ := os.Getwd()
@@ -83,16 +83,16 @@ func TestEnvOverride(t *testing.T) {
 		t.Fatalf("chdir: %v", err)
 	}
 
-	t.Setenv("MEDIASTATION_APP_PORT", "9090")
-	t.Setenv("MEDIASTATION_DATABASE_TYPE", "postgres")
-	t.Setenv("MEDIASTATION_DATABASE_DSN", "postgres://msgo:secret@postgres:5432/msgo?sslmode=disable")
-	t.Setenv("MEDIASTATION_CACHE_REDIS_URL", "redis://redis:6379/0")
-	t.Setenv("MEDIASTATION_CACHE_MEDIA_TTL_SECONDS", "30")
-	t.Setenv("MEDIASTATION_SEARCH_BACKEND", "opensearch")
-	t.Setenv("MEDIASTATION_SEARCH_OPENSEARCH_URL", "http://opensearch:9200")
-	t.Setenv("MEDIASTATION_LICENSE_SERVER_URL", "https://license.example.com")
-	t.Setenv("MEDIASTATION_LICENSE_HMAC_SECRET", "override-secret")
-	t.Setenv("MEDIASTATION_LICENSE_PUBLIC_KEY", "override-public-key")
+	t.Setenv("MMTL_APP_PORT", "9090")
+	t.Setenv("MMTL_DATABASE_TYPE", "postgres")
+	t.Setenv("MMTL_DATABASE_DSN", "postgres://mmtl:secret@postgres:5432/mmtl?sslmode=disable")
+	t.Setenv("MMTL_CACHE_REDIS_URL", "redis://redis:6379/0")
+	t.Setenv("MMTL_CACHE_MEDIA_TTL_SECONDS", "30")
+	t.Setenv("MMTL_SEARCH_BACKEND", "opensearch")
+	t.Setenv("MMTL_SEARCH_OPENSEARCH_URL", "http://opensearch:9200")
+	t.Setenv("MMTL_LICENSE_SERVER_URL", "https://license.example.com")
+	t.Setenv("MMTL_LICENSE_HMAC_SECRET", "override-secret")
+	t.Setenv("MMTL_LICENSE_PUBLIC_KEY", "override-public-key")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)

@@ -23,7 +23,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MediaStationGo/internal/config"
+	"github.com/ShukeBta/MMTL/internal/config"
 )
 
 // BangumiProvider talks to https://api.bgm.tv.
@@ -181,7 +181,7 @@ func (b *BangumiProvider) getJSON(ctx context.Context, u string, out any) error 
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "MediaStationGo/0.1 (https://github.com/ShukeBta/MediaStationGo)")
+	req.Header.Set("User-Agent", "MMTL/0.1 (https://github.com/ShukeBta/MMTL)")
 	if t := strings.TrimSpace(b.cfg.Secrets.BangumiToken); t != "" {
 		req.Header.Set("Authorization", "Bearer "+t)
 	}

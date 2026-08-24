@@ -14,9 +14,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ShukeBta/MediaStationGo/internal/middleware"
-	"github.com/ShukeBta/MediaStationGo/internal/model"
-	"github.com/ShukeBta/MediaStationGo/internal/service"
+	"github.com/ShukeBta/MMTL/internal/middleware"
+	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/ShukeBta/MMTL/internal/service"
 )
 
 // playbackInfoHandler returns the media row + a `stream_url` the React
@@ -141,7 +141,7 @@ func externalPlaybackURL(c *gin.Context, svc *service.Container, path string) st
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
 		return path
 	}
-	headerOrigin := sanitizedPublicOrigin(c.GetHeader("X-MediaStation-Public-Origin"))
+	headerOrigin := sanitizedPublicOrigin(c.GetHeader("X-MMTL-Public-Origin"))
 	if headerOrigin != "" && !isLocalPublicOrigin(headerOrigin) {
 		return joinOriginPath(headerOrigin, path)
 	}

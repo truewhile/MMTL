@@ -15,7 +15,7 @@ func (c *Config) normalize() error {
 		c.App.DataDir = "./data"
 	}
 	if c.Database.DBPath == "" {
-		c.Database.DBPath = filepath.Join(c.App.DataDir, "mediastation.db")
+		c.Database.DBPath = filepath.Join(c.App.DataDir, "mmtl.db")
 	}
 	if c.Database.Type == "" {
 		c.Database.Type = "auto"
@@ -45,14 +45,14 @@ func (c *Config) normalize() error {
 		c.Cache.CacheDir = filepath.Join(c.App.DataDir, "cache")
 	}
 	if c.Cache.RedisPrefix == "" {
-		c.Cache.RedisPrefix = "mediastationgo"
+		c.Cache.RedisPrefix = "mmtl"
 	}
 	if c.Cache.MediaTTLSeconds < 1 {
 		c.Cache.MediaTTLSeconds = 15
 	}
 	c.Search.Backend = strings.ToLower(strings.TrimSpace(c.Search.Backend))
 	if c.Search.Index == "" {
-		c.Search.Index = "mediastation_media"
+		c.Search.Index = "mmtl_media"
 	}
 	if c.Secrets.JWTSecret == "" {
 		// 持久化自动生成的密钥以在操作员忘记配置时保持会话稳定。

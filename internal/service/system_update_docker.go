@@ -70,7 +70,7 @@ func (s *SystemUpdateService) check(ctx context.Context) SystemUpdateStatus {
 	status.ContainerID = containerID
 	if containerID == "" {
 		if status.CanApply {
-			status.Message = "已识别 Docker Compose 安装目录；无法识别当前容器 ID，将使用默认容器名 mediastation-go 重启"
+			status.Message = "已识别 Docker Compose 安装目录；无法识别当前容器 ID，将使用默认容器名 mmtl 重启"
 		}
 		return status
 	}

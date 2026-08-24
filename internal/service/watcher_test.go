@@ -8,8 +8,8 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MediaStationGo/internal/model"
-	"github.com/ShukeBta/MediaStationGo/internal/repository"
+	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/ShukeBta/MMTL/internal/repository"
 )
 
 func TestWatcherRefreshMapsHostLibraryPathToContainerPath(t *testing.T) {
@@ -20,8 +20,8 @@ func TestWatcherRefreshMapsHostLibraryPathToContainerPath(t *testing.T) {
 	if err := os.MkdirAll(containerLibrary, 0o755); err != nil {
 		t.Fatalf("mkdir container library: %v", err)
 	}
-	t.Setenv("MEDIASTATION_MEDIA_DIR", hostMedia)
-	t.Setenv("MEDIASTATION_MEDIA_CONTAINER_DIR", containerMedia)
+	t.Setenv("MMTL_MEDIA_DIR", hostMedia)
+	t.Setenv("MMTL_MEDIA_CONTAINER_DIR", containerMedia)
 
 	db := newServiceTestDB(t, &model.Library{})
 	repos := repository.New(db)

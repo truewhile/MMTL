@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"github.com/ShukeBta/MediaStationGo/internal/model"
-	"github.com/ShukeBta/MediaStationGo/internal/repository"
+	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/ShukeBta/MMTL/internal/repository"
 )
 
 func (s *MediaService) attachLibraryMetadata(ctx context.Context, items []model.Media) {

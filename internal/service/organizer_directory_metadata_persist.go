@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MediaStationGo/internal/model"
+	"github.com/ShukeBta/MMTL/internal/model"
 )
 
 func (o *OrganizerService) persistOrganizedSourceMetadata(ctx context.Context, plan organizeSourceFilePlan) {

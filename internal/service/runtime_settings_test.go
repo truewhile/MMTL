@@ -3,7 +3,7 @@ package service
 import (
 	"testing"
 
-	"github.com/ShukeBta/MediaStationGo/internal/config"
+	"github.com/ShukeBta/MMTL/internal/config"
 )
 
 func TestApplyRuntimeSettingTranscodeSwitches(t *testing.T) {

@@ -1,4 +1,4 @@
-# MediaStationGo 单镜像部署模板（SQLite）
+# MMTL 单镜像部署模板（SQLite）
 #
 # 适合：新手、单人使用、低配 NAS / 小主机。
 # 特点：只有一个镜像，不需要 PostgreSQL / Redis / .env。
@@ -12,12 +12,12 @@
 # 首次登录后请立刻修改密码。
 
 services:
-  mediastation-go:
-    image: ghcr.io/shukebta/mediastation-go:latest
+  mmtl:
+    image: ghcr.io/shukebta/mmtl:latest
     # Docker Hub 备用：
-    # image: shukbet/mediastationgo:latest
+    # image: shukbet/mmtl:latest
 
-    container_name: mediastation-go
+    container_name: mmtl
     restart: unless-stopped
     init: true
 
@@ -64,29 +64,29 @@ services:
       PUID: "1000"
       PGID: "1000"
 
-      MEDIASTATION_APP_HOST: 0.0.0.0
-      MEDIASTATION_APP_PORT: 8080
-      MEDIASTATION_APP_WEB_DIR: /app/web/dist
-      MEDIASTATION_APP_DATA_DIR: /data
+      MMTL_APP_HOST: 0.0.0.0
+      MMTL_APP_PORT: 8080
+      MMTL_APP_WEB_DIR: /app/web/dist
+      MMTL_APP_DATA_DIR: /data
 
-      # 单镜像档固定使用 SQLite。主数据库文件：./data/mediastation.db。
-      MEDIASTATION_DATABASE_TYPE: sqlite
-      MEDIASTATION_DATABASE_DB_PATH: /data/mediastation.db
-      MEDIASTATION_CACHE_CACHE_DIR: /cache
+      # 单镜像档固定使用 SQLite。主数据库文件：./data/mmtl.db。
+      MMTL_DATABASE_TYPE: sqlite
+      MMTL_DATABASE_DB_PATH: /data/mmtl.db
+      MMTL_CACHE_CACHE_DIR: /cache
 
       # 路径映射保持容器内统一，网页和下载器里优先使用 /media、/downloads。
-      MEDIASTATION_MEDIA_DIR: /media
-      MEDIASTATION_MEDIA_CONTAINER_DIR: /media
-      MEDIASTATION_DOWNLOAD_DIR: /downloads
-      MEDIASTATION_DOWNLOAD_CONTAINER_DIR: /downloads
+      MMTL_MEDIA_DIR: /media
+      MMTL_MEDIA_CONTAINER_DIR: /media
+      MMTL_DOWNLOAD_DIR: /downloads
+      MMTL_DOWNLOAD_CONTAINER_DIR: /downloads
 
       # 完整应用日志默认写入 ./data/logs/app.log；排查复杂问题时可临时改成 debug。
-      MEDIASTATION_LOGGING_LEVEL: info
-      MEDIASTATION_LOGGING_FORMAT: console
-      MEDIASTATION_LOGGING_OUTPUT_PATH: /data/logs
-      MEDIASTATION_LOGGING_MAX_SIZE_MB: "50"
-      MEDIASTATION_LOGGING_MAX_BACKUPS: "20"
-      MEDIASTATION_LOGGING_MAX_AGE_DAYS: "30"
+      MMTL_LOGGING_LEVEL: info
+      MMTL_LOGGING_FORMAT: console
+      MMTL_LOGGING_OUTPUT_PATH: /data/logs
+      MMTL_LOGGING_MAX_SIZE_MB: "50"
+      MMTL_LOGGING_MAX_BACKUPS: "20"
+      MMTL_LOGGING_MAX_AGE_DAYS: "30"
 
     extra_hosts:
       # 容器访问宿主机服务用，例如 qBittorrent: http://host.docker.internal:8085

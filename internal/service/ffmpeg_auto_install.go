@@ -12,7 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MediaStationGo/internal/config"
+	"github.com/ShukeBta/MMTL/internal/config"
 )
 
 // AutoInstallFFmpeg is only called by the admin tool-install endpoint. The
@@ -91,7 +91,7 @@ func downloadFFmpegWindows(log *zap.Logger, installDir string) (bool, error) {
 		return false, fmt.Errorf("创建安装目录失败: %w", err)
 	}
 
-	tempDir, err := os.MkdirTemp("", "mediastationgo-ffmpeg-*")
+	tempDir, err := os.MkdirTemp("", "mmtl-ffmpeg-*")
 	if err != nil {
 		return false, fmt.Errorf("创建临时目录失败: %w", err)
 	}

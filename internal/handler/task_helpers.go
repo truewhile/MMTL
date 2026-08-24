@@ -1,6 +1,6 @@
 package handler
 
-import "github.com/ShukeBta/MediaStationGo/internal/service"
+import "github.com/ShukeBta/MMTL/internal/service"
 
 func finishHTTPTask(task *service.TaskHandle, err error, stage, message string, metrics map[string]int64, details []string) {
 	if task == nil {

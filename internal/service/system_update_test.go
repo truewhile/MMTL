@@ -10,10 +10,10 @@ import (
 
 func TestRenderSystemUpdateCommand(t *testing.T) {
 	status := SystemUpdateStatus{
-		Image:           "ghcr.io/shukebta/mediastation-go:latest",
+		Image:           "ghcr.io/shukebta/mmtl:latest",
 		WatchtowerImage: "containrrr/watchtower:latest",
 		ContainerID:     "abc123def456",
-		ContainerName:   "mediastation-go",
+		ContainerName:   "mmtl",
 	}
 
 	got := renderSystemUpdateCommand(
@@ -27,8 +27,8 @@ func TestRenderSystemUpdateCommand(t *testing.T) {
 	}
 	for _, want := range []string{
 		"containrrr/watchtower:latest",
-		"mediastation-go",
-		"ghcr.io/shukebta/mediastation-go:latest",
+		"mmtl",
+		"ghcr.io/shukebta/mmtl:latest",
 		"abc123def456",
 	} {
 		if !strings.Contains(got, want) {
@@ -39,17 +39,17 @@ func TestRenderSystemUpdateCommand(t *testing.T) {
 
 func TestDefaultSystemUpdateCommandUsesCompose(t *testing.T) {
 	status := SystemUpdateStatus{
-		ComposeDir:     "/opt/mediastation-go",
+		ComposeDir:     "/opt/mmtl",
 		ComposeCommand: "docker compose",
-		ContainerName:  "mediastation-go",
+		ContainerName:  "mmtl",
 	}
 	got := renderSystemUpdateCommand(defaultSystemUpdateCommand(), status)
 	for _, want := range []string{
-		"cd " + shellQuote("/opt/mediastation-go"),
+		"cd " + shellQuote("/opt/mmtl"),
 		"docker compose pull",
 		"docker compose up -d",
 		"docker image prune -f",
-		"docker restart " + shellQuote("mediastation-go"),
+		"docker restart " + shellQuote("mmtl"),
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("default command %q does not contain %q", got, want)
@@ -60,12 +60,12 @@ func TestDefaultSystemUpdateCommandUsesCompose(t *testing.T) {
 	}
 }
 
-func TestComposeTargetInDirMatchesMediaStationCompose(t *testing.T) {
+func TestComposeTargetInDirMatchesMMTLCompose(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "docker-compose.yml"), []byte(`
 services:
-  mediastation-go:
-    image: ghcr.io/shukebta/mediastation-go:latest
+  mmtl:
+    image: ghcr.io/shukebta/mmtl:latest
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -90,8 +90,8 @@ services:
 }
 
 func TestParseContainerInspectLine(t *testing.T) {
-	name, imageID := parseContainerInspectLine("/mediastation-go|sha256:abc")
-	if name != "mediastation-go" || imageID != "sha256:abc" {
+	name, imageID := parseContainerInspectLine("/mmtl|sha256:abc")
+	if name != "mmtl" || imageID != "sha256:abc" {
 		t.Fatalf("parse inspect line = %q %q", name, imageID)
 	}
 
@@ -155,11 +155,11 @@ func TestSystemUpdateOutputDetailsKeepsTail(t *testing.T) {
 }
 
 func TestSystemUpdateStatusIncludesCurrentVersion(t *testing.T) {
-	svc := NewSystemUpdateService(nil, nil, nil, nil, "MediaStationGo-v0.0.99")
+	svc := NewSystemUpdateService(nil, nil, nil, nil, "MMTL-v0.0.99")
 
 	status := svc.Status(context.Background())
-	if status.CurrentVersion != "MediaStationGo-v0.0.99" {
-		t.Fatalf("current_version = %q, want MediaStationGo-v0.0.99", status.CurrentVersion)
+	if status.CurrentVersion != "MMTL-v0.0.99" {
+		t.Fatalf("current_version = %q, want MMTL-v0.0.99", status.CurrentVersion)
 	}
 }
 

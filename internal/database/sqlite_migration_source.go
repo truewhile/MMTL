@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/ShukeBta/MediaStationGo/internal/config"
+	"github.com/ShukeBta/MMTL/internal/config"
 )
 
 func openSQLiteMigrationSource(cfg *config.Config, sqlitePath string) (*gorm.DB, error) {
@@ -36,7 +36,7 @@ func sqliteMigrationSourcePath(cfg *config.Config, log *zap.Logger) (string, err
 		}
 	}
 
-	fallback := filepath.Join(strings.TrimSpace(cfg.App.DataDir), "mediastation.db")
+	fallback := filepath.Join(strings.TrimSpace(cfg.App.DataDir), "mmtl.db")
 	if fallback == "" || sameCleanPath(configured, fallback) {
 		return "", nil
 	}

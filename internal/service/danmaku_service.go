@@ -15,7 +15,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MediaStationGo/internal/repository"
+	"github.com/ShukeBta/MMTL/internal/repository"
 )
 
 // Danmaku setting keys, managed through the admin settings UI (PUT
@@ -296,7 +296,7 @@ func (s *DanmakuService) fetchBody(ctx context.Context, sourceURL string, follow
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "MediaStationGo/danmaku (+https://github.com/ShukeBta/MediaStationGo)")
+	req.Header.Set("User-Agent", "MMTL/danmaku (+https://github.com/ShukeBta/MMTL)")
 	req.Header.Set("Accept", "application/json, application/xml, */*")
 	resp, err := client.Do(req)
 	if err != nil {

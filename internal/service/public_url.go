@@ -5,11 +5,11 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/ShukeBta/MediaStationGo/internal/config"
-	"github.com/ShukeBta/MediaStationGo/internal/repository"
+	"github.com/ShukeBta/MMTL/internal/config"
+	"github.com/ShukeBta/MMTL/internal/repository"
 )
 
-// PublicServerURL returns the operator-configured public MediaStationGo base
+// PublicServerURL returns the operator-configured public MMTL base
 // URL. It is intentionally read from Setting first so Docker users only need to
 // fill one domain in the admin settings page after deployment.
 func PublicServerURL(ctx context.Context, repo *repository.Container, cfg *config.Config) string {

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.6
 # =============================================================================
-# Multi-architecture build for MediaStationGo.
+# Multi-architecture build for MMTL.
 #
 # Stage 1 (frontend) :  Node 20  -> static SPA bundle
 # Stage 2 (backend)  :  Go 1.25  -> single static binary (CGO_ENABLED=0)
@@ -8,7 +8,7 @@
 #
 # Build:
 #   docker buildx build --platform linux/amd64,linux/arm64 \
-#     --build-arg VERSION=MediaStationGo-v0.1.16 -t mediastation-go:latest --push .
+#     --build-arg VERSION=MMTL-v0.1.16 -t mmtl:latest --push .
 #
 # Optional Intel VAAPI/QSV runtime packages:
 #   docker buildx build --build-arg WITH_VAAPI=true ...
@@ -39,7 +39,7 @@ COPY . .
 COPY --from=frontend /app/web/dist ./web/dist
 RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o mediastation-go ./cmd/server
+    go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o mmtl ./cmd/server
 
 # ---- Stage 3: runtime ------------------------------------------------------
 FROM alpine:3.23
@@ -64,22 +64,22 @@ RUN apk add --no-cache \
     && rm -rf /var/cache/apk/*
 
 # Non-root user for the long-running process.
-RUN addgroup -S mediastation && adduser -S mediastation -G mediastation
+RUN addgroup -S mmtl && adduser -S mmtl -G mmtl
 
 WORKDIR /app
-COPY --from=backend /app/mediastation-go /usr/local/bin/mediastation-go
+COPY --from=backend /app/mmtl /usr/local/bin/mmtl
 COPY --from=frontend /app/web/dist /app/web/dist
 
 RUN mkdir -p /data /cache /media \
-    && chown -R mediastation:mediastation /data /cache /media
+    && chown -R mmtl:mmtl /data /cache /media
 
 # Default environment (overridable via docker-compose / `docker run -e`).
-ENV MEDIASTATION_APP_PORT=8080 \
-    MEDIASTATION_APP_DATA_DIR=/data \
-    MEDIASTATION_APP_WEB_DIR=/app/web/dist \
-    MEDIASTATION_DATABASE_DB_PATH=/data/mediastation.db \
-    MEDIASTATION_CACHE_CACHE_DIR=/cache \
-    MEDIASTATION_LOGGING_LEVEL=info \
+ENV MMTL_APP_PORT=8080 \
+    MMTL_APP_DATA_DIR=/data \
+    MMTL_APP_WEB_DIR=/app/web/dist \
+    MMTL_DATABASE_DB_PATH=/data/mmtl.db \
+    MMTL_CACHE_CACHE_DIR=/cache \
+    MMTL_LOGGING_LEVEL=info \
     TZ=Asia/Shanghai
 
 EXPOSE 8080

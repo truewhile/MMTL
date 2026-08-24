@@ -9,10 +9,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MediaStationGo/internal/config"
-	"github.com/ShukeBta/MediaStationGo/internal/handler"
-	"github.com/ShukeBta/MediaStationGo/internal/middleware"
-	"github.com/ShukeBta/MediaStationGo/internal/service"
+	"github.com/ShukeBta/MMTL/internal/config"
+	"github.com/ShukeBta/MMTL/internal/handler"
+	"github.com/ShukeBta/MMTL/internal/middleware"
+	"github.com/ShukeBta/MMTL/internal/service"
 )
 
 func buildRouter(cfg *config.Config, logger *zap.Logger, svc *service.Container) *gin.Engine {
@@ -79,7 +79,7 @@ func serveNoCacheFile(filePath string) gin.HandlerFunc {
 func serveSPAIndex(c *gin.Context, indexPath string) {
 	setNoCacheHeaders(c)
 	if _, err := os.Stat(indexPath); err != nil {
-		c.String(http.StatusNotFound, "MediaStationGo web UI not found: %s", indexPath)
+		c.String(http.StatusNotFound, "MMTL web UI not found: %s", indexPath)
 		return
 	}
 	c.File(indexPath)
