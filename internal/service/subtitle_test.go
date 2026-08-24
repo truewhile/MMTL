@@ -47,12 +47,12 @@ func TestSubtitleDiscoverNoTracksReturnsEmptySlice(t *testing.T) {
 
 func TestNormaliseTimecode(t *testing.T) {
 	cases := map[string]string{
-		"0:00:01":      "00:00:01",
-		"0:00:01.51":   "00:00:01.510", // ASS centiseconds -> 3-digit ms
-		"0:00:04.123":  "00:00:04.123", // already 3 digits
-		"00:00:12.07":  "00:00:12.070", // 2-digit fraction padded
+		"0:00:01":       "00:00:01",
+		"0:00:01.51":    "00:00:01.510", // ASS centiseconds -> 3-digit ms
+		"0:00:04.123":   "00:00:04.123", // already 3 digits
+		"00:00:12.07":   "00:00:12.070", // 2-digit fraction padded
 		"00:01:30.1234": "00:01:30.123", // capped at 3 digits
-		"00:00:1.5":    "00:00:01.500", // single-digit seconds and fraction
+		"00:00:1.5":     "00:00:01.500", // single-digit seconds and fraction
 	}
 	for in, want := range cases {
 		if got := normaliseTimecode(in); got != want {

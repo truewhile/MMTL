@@ -37,8 +37,8 @@ const (
 	RefreshTokenCheckFailed   = 40140120
 )
 
-// DefaultUA 请求 UA。
-const DefaultUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 MMTL-115-OpenAPI/1.0"
+// DefaultUA 请求 UA（标准 API 客户端格式，避免伪装浏览器触发 115 WAF 拦截与 405 错误）。
+const DefaultUA = "MMTL-115-GoClient/1.0"
 
 // OpenAPIError 保留 115 开放平台返回的原始错误信息。
 type OpenAPIError struct {

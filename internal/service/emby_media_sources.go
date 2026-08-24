@@ -234,9 +234,9 @@ func (e *EmbyService) appendSubtitleStreams(ctx context.Context, streams []map[s
 			// MediaSource.Id (== m.ID here). No "mediasource_" prefix: that
 			// prefix only appears in real servers because their MediaSource.Id
 			// value itself starts with it, not because the route template says so.
-			"IsTextSubtitleStream":     true, // external sidecar files are always text subtitles
-			"SupportsExternalStream":   true,
-			"DeliveryUrl":              "/Videos/" + mediaID + "/" + mediaID + "/Subtitles/" + fmt.Sprint(index) + "/Stream." + codec,
+			"IsTextSubtitleStream":   true, // external sidecar files are always text subtitles
+			"SupportsExternalStream": true,
+			"DeliveryUrl":            "/Videos/" + mediaID + "/" + mediaID + "/Subtitles/" + fmt.Sprint(index) + "/Stream." + codec,
 		})
 	}
 	return streams

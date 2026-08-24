@@ -30,7 +30,7 @@ const encPrefix = "enc:v1:"
 // CryptoService wraps an AES-GCM cipher derived from a stable per-install
 // secret (the JWT secret).
 type CryptoService struct {
-	log *zap.Logger
+	log  *zap.Logger
 	aead cipher.AEAD
 }
 

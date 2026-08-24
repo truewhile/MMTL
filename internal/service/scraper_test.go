@@ -372,10 +372,10 @@ func TestApplyManualMatchSkipsTMDbEpisodeStillWhenDisabled(t *testing.T) {
 	if !strings.HasSuffix(got.PosterURL, "/images/w500/poster.jpg") {
 		t.Fatalf("series poster should still be saved when manual episode artwork is disabled: got %q", got.PosterURL)
 	}
-		if !strings.HasSuffix(got.BackdropURL, "/images/w1280/backdrop.jpg") {
-			t.Fatalf("series backdrop should still be saved when manual episode artwork is disabled: got %q", got.BackdropURL)
-		}
+	if !strings.HasSuffix(got.BackdropURL, "/images/w1280/backdrop.jpg") {
+		t.Fatalf("series backdrop should still be saved when manual episode artwork is disabled: got %q", got.BackdropURL)
 	}
+}
 
 func TestEnrichOneAdultScrapesArtwork(t *testing.T) {
 	scraper, repos, closeServer := newTestScraper(t)

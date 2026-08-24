@@ -253,9 +253,10 @@ func (st *strmSyncState) walkRemote() error {
 			return fmt.Errorf("列出远端目录 %s 失败：%w", task.id, err)
 		}
 		for _, entry := range entries {
-			rel := entry.Name
+			cleanName := cleanEntryName(entry.Name, entry.IsDir)
+			rel := cleanName
 			if task.rel != "" {
-				rel = task.rel + "/" + entry.Name
+				rel = task.rel + "/" + cleanName
 			}
 			if entry.IsDir {
 				queue = append(queue, dirTask{id: entry.ID, rel: rel})
@@ -277,8 +278,13 @@ func (st *strmSyncState) processRemoteFile(entry cloud.FileEntry, rel string) {
 	switch {
 	case st.isVideoExt(ext, entry.Size):
 		st.handleVideo(entry, rel, ext)
-	case st.cfg.DownloadMeta && st.isMetaExt(ext):
-		st.handleMeta(entry, rel, ext)
+	case st.isMetaExt(ext):
+		st.recordRemoteMeta(entry, rel)
+		if st.cfg.DownloadMeta {
+			st.handleMeta(entry, rel, ext)
+		} else {
+			st.touchProgress()
+		}
 	default:
 		st.touchProgress()
 	}
@@ -414,12 +420,17 @@ func (st *strmSyncState) strmPathParam(rel string) string {
 	}
 }
 
-// handleMeta 元数据入下载队列（本地已存在且大小一致则跳过）。
-func (st *strmSyncState) handleMeta(entry cloud.FileEntry, rel, ext string) {
+// recordRemoteMeta 记录远端存在的元数据索引及文件大小。
+func (st *strmSyncState) recordRemoteMeta(entry cloud.FileEntry, rel string) {
 	st.mu.Lock()
 	st.seenMeta["m:"+rel] = true
 	st.remoteMeta["m:"+rel] = entry.Size
 	st.mu.Unlock()
+}
+
+// handleMeta 元数据入下载队列（本地已存在且大小一致则跳过）。
+func (st *strmSyncState) handleMeta(entry cloud.FileEntry, rel, ext string) {
+	st.recordRemoteMeta(entry, rel)
 
 	target, err := joinLocalRel(st.p.LocalPath, rel)
 	if err != nil {
@@ -569,12 +580,13 @@ func (st *strmSyncState) scanLocalMetaForUpload() error {
 			return nil
 		}
 		st.mu.Lock()
-		remoteSize, exists := st.remoteMeta["m:"+rel]
+		_, exists := st.remoteMeta["m:"+rel]
 		st.mu.Unlock()
-		if exists && remoteSize == info.Size() {
+		if exists {
+			// 网盘端已存在该元数据文件，跳过上传
 			return nil
 		}
-		if st.taskExists("upload", st.p.ID, rel) {
+		if st.taskExists("upload", st.p.ID, path) {
 			return nil
 		}
 		task := &model.StrmUploadTask{

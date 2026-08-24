@@ -202,3 +202,141 @@ func TestStrmDefaultBaseURL(t *testing.T) {
 		t.Fatal("effective config base url should fall back to default")
 	}
 }
+
+func TestSanitizePathWithSpecialChars(t *testing.T) {
+	cases := []struct {
+		input    string
+		isDir    bool
+		wantName string
+	}{
+		{"数码宝贝:拯救者", true, "数码宝贝 拯救者"},
+		{"数码宝贝:拯救者.mp4", false, "数码宝贝 拯救者.mp4"},
+		{"Season 01.", true, "Season 01"},
+		{"file:name?test*<foo>|bar\".mkv", false, "file nametestfoobar.mkv"},
+		{"poster.jpg", false, "poster.jpg"},
+		{"  trailing space  ", true, "trailing space"},
+		{"CON", true, "_CON"},
+		{"aux.mp4", false, "_aux.mp4"},
+		{"NUL.nfo", false, "_NUL.nfo"},
+		{"COM1", false, "_COM1"},
+		{"test\x00\x1f\x7fcontrol.mkv", false, "testcontrol.mkv"},
+	}
+	for _, tc := range cases {
+		got := cleanEntryName(tc.input, tc.isDir)
+		if got != tc.wantName {
+			t.Errorf("cleanEntryName(%q, %v) = %q, want %q", tc.input, tc.isDir, got, tc.wantName)
+		}
+	}
+
+	// Test sanitizeRelativePath
+	rel := "动漫/数码宝贝:拯救者/数码宝贝:拯救者.mp4"
+	wantRel := filepath.Join("动漫", "数码宝贝 拯救者", "数码宝贝 拯救者.mp4")
+	if got := sanitizeRelativePath(rel); got != wantRel {
+		t.Errorf("sanitizeRelativePath(%q) = %q, want %q", rel, got, wantRel)
+	}
+
+	// Test sanitizeLocalPath - Windows Drive
+	localWin := `D:\test\动漫\数码宝贝:拯救者\poster.jpg`
+	wantLocalWin := filepath.Join(`D:\`, "test", "动漫", "数码宝贝 拯救者", "poster.jpg")
+	if got := sanitizeLocalPath(localWin); got != wantLocalWin {
+		t.Errorf("sanitizeLocalPath(%q) = %q, want %q", localWin, got, wantLocalWin)
+	}
+
+	// Test sanitizeLocalPath - Linux root
+	localLinux := `/media/data/动漫/数码宝贝:拯救者/ep01:拯救者.mkv`
+	cleanedLinux := sanitizeLocalPath(localLinux)
+	if strings.Contains(cleanedLinux, ":") && !strings.HasPrefix(cleanedLinux, "D:") && !strings.HasPrefix(cleanedLinux, "C:") {
+		t.Errorf("sanitizeLocalPath should not contain colons in path components: %q", cleanedLinux)
+	}
+
+	// Test joinLocalRel
+	root := t.TempDir()
+	joined, err := joinLocalRel(root, "动漫/数码宝贝:拯救者/poster.jpg")
+	if err != nil {
+		t.Fatalf("joinLocalRel failed: %v", err)
+	}
+	wantJoined := filepath.Join(root, "动漫", "数码宝贝 拯救者", "poster.jpg")
+	if joined != wantJoined {
+		t.Errorf("joinLocalRel = %q, want %q", joined, wantJoined)
+	}
+
+	// Test joinLocalRel prevents path traversal
+	if _, err := joinLocalRel(root, "../../"); err == nil {
+		t.Error("joinLocalRel should error on empty/traversal-only path")
+	}
+	traversalCleaned, err := joinLocalRel(root, "../../etc/passwd")
+	if err != nil {
+		t.Fatalf("joinLocalRel failed on traversal path: %v", err)
+	}
+	if !strings.HasPrefix(traversalCleaned, root) {
+		t.Errorf("joinLocalRel allowed path escape: %s", traversalCleaned)
+	}
+
+	// Verify mkdir succeeds on this joined path
+	if err := os.MkdirAll(filepath.Dir(joined), 0o755); err != nil {
+		t.Fatalf("MkdirAll on joined path failed: %v", err)
+	}
+	if info, err := os.Stat(filepath.Dir(joined)); err != nil || !info.IsDir() {
+		t.Fatalf("Dir not created: %v", err)
+	}
+}
+
+// TestScanLocalMetaForUpload 验证元数据上传比对逻辑：网盘已存在跳过，网盘不存在才入队上传。
+func TestScanLocalMetaForUpload(t *testing.T) {
+	svc := testStrmService(t)
+	localDir := t.TempDir()
+
+	// 本地有 2 个元数据：poster.jpg 和 fanart.jpg
+	writeFile(t, filepath.Join(localDir, "动漫", "poster.jpg"), "poster-data")
+	writeFile(t, filepath.Join(localDir, "动漫", "fanart.jpg"), "fanart-data")
+
+	p := &model.StrmSyncPath{
+		Base:       model.Base{ID: "test-path-upload"},
+		AccountID:  "acct-1",
+		Provider:   model.StrmProviderCloudDrive,
+		RemotePath: "/Media",
+		LocalPath:  localDir,
+		UploadMeta: true,
+	}
+
+	st := &strmSyncState{
+		s:          svc,
+		ctx:        context.Background(),
+		p:          p,
+		cfg:        &strmPathConfig{UploadMeta: true, MetaExt: []string{"jpg", "nfo"}},
+		rec:        &model.StrmSyncRecord{},
+		seenMeta:   map[string]bool{},
+		remoteMeta: map[string]int64{},
+	}
+
+	// 模拟远端已存在 poster.jpg
+	st.remoteMeta["m:动漫/poster.jpg"] = 1000
+
+	if err := st.scanLocalMetaForUpload(); err != nil {
+		t.Fatalf("scanLocalMetaForUpload failed: %v", err)
+	}
+
+	// 此时应该只有 fanart.jpg 入队上传，poster.jpg 被跳过
+	tasks, _, err := svc.repo.StrmUpload.List(context.Background(), "", 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 upload task (fanart.jpg), got %d", len(tasks))
+	}
+	if tasks[0].FileName != "fanart.jpg" {
+		t.Errorf("expected upload task for fanart.jpg, got %s", tasks[0].FileName)
+	}
+
+	// 再次扫描：fanart.jpg 已经在队列中，应自动去重，不重复入队
+	if err := st.scanLocalMetaForUpload(); err != nil {
+		t.Fatalf("second scanLocalMetaForUpload failed: %v", err)
+	}
+	tasks, _, err = svc.repo.StrmUpload.List(context.Background(), "", 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("expected still 1 upload task after dedup, got %d", len(tasks))
+	}
+}

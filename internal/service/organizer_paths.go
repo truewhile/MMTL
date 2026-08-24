@@ -5,13 +5,22 @@ import (
 	"strings"
 )
 
-// sanitizeFilename removes characters not safe for filesystem names.
+// sanitizeFilename removes characters not safe for filesystem names across Windows, Linux, and macOS.
 func sanitizeFilename(s string) string {
 	r := strings.NewReplacer(
 		"/", " ", "\\", " ", ":", " ", "*", "", "?", "",
 		"\"", "", "<", "", ">", "", "|", "",
 	)
-	return strings.TrimSpace(r.Replace(s))
+	replaced := r.Replace(s)
+	var sb strings.Builder
+	for _, ch := range replaced {
+		// Strip ASCII control characters (0-31, 127)
+		if ch < 32 || ch == 127 {
+			continue
+		}
+		sb.WriteRune(ch)
+	}
+	return strings.Join(strings.Fields(sb.String()), " ")
 }
 
 func (o *OrganizerService) organizeRoot(libraryPath, mediaType, category string) string {

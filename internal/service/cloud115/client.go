@@ -1,18 +1,16 @@
-// 115 开放平台 HTTP 客户端（移植自 QMediaSync 的 v115open，去掉 resty 依赖，
-// 使用 net/http + 简单限流重试；只保留只读能力：授权/列目录/详情/下载直链）。
+// 115 开放平台 HTTP 客户端（集成全局三级令牌桶限流、熔断保护与防 405 重定向策略）。
 package cloud115
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -22,21 +20,35 @@ type OpenClient struct {
 	HTTP            *http.Client
 	AccessToken     string
 	RefreshTokenStr string
-
-	// 全局 QPS 限流（115 开放平台免费额度较低）
-	lastSecond  int64
-	reqInSecond int64
+	executor        *QueueExecutor
 }
 
-var openClientMu sync.Mutex
+// default115HTTPClient 创建带有防 405 重定向保护的 http.Client。
+func default115HTTPClient() *http.Client {
+	return &http.Client{
+		Timeout: 60 * time.Second,
+		// 防止 Go 标准库在遇到 301/302/307 重定向时将 POST 降级为 GET 导致 115 报 405 Method Not Allowed
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return errors.New("stopped after 5 redirects")
+			}
+			// 如果原请求是 POST，重定向时不允许静默转为 GET（直接终止自动重定向，由业务层处理响应）
+			if len(via) > 0 && via[len(via)-1].Method == http.MethodPost {
+				return http.ErrUseLastResponse
+			}
+			return nil
+		},
+	}
+}
 
 // NewOpenClient 构造客户端。
 func NewOpenClient(appID, accessToken, refreshToken string) *OpenClient {
 	return &OpenClient{
 		AppID:           appID,
-		HTTP:            &http.Client{Timeout: 60 * time.Second},
+		HTTP:            default115HTTPClient(),
 		AccessToken:     accessToken,
 		RefreshTokenStr: refreshToken,
+		executor:        GetGlobalExecutor(),
 	}
 }
 
@@ -44,30 +56,6 @@ func NewOpenClient(appID, accessToken, refreshToken string) *OpenClient {
 func (c *OpenClient) SetAuthToken(accessToken, refreshToken string) {
 	c.AccessToken = accessToken
 	c.RefreshTokenStr = refreshToken
-}
-
-// throttle 简单的每秒限流（默认 4 QPS，115 免费应用限额约 5 QPS）。
-func (c *OpenClient) throttle(n int) {
-	for i := 0; i < n; i++ {
-		now := time.Now().Unix()
-		last := atomic.LoadInt64(&c.lastSecond)
-		if last != now {
-			if atomic.CompareAndSwapInt64(&c.lastSecond, last, now) {
-				atomic.StoreInt64(&c.reqInSecond, 0)
-			}
-		}
-		count := atomic.LoadInt64(&c.reqInSecond)
-		if count >= 4 {
-			time.Sleep(300 * time.Millisecond)
-			i--
-			continue
-		}
-		if atomic.CompareAndSwapInt64(&c.reqInSecond, count, count+1) {
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
-		i--
-	}
 }
 
 // RespState 兼容 115 不同端点返回的 state 类型（proapi 返回布尔、passport 返回数字）。
@@ -101,38 +89,65 @@ type RespBase struct {
 	Raw     json.RawMessage `json:"-"` // 原始响应体（外层附加字段用）
 }
 
-// doJSON 执行 GET 请求并解析为统一响应；带 AccessToken（access=true 时）。
+// doJSON 执行 HTTP 请求并解析为统一响应；带 AccessToken（access=true 时）。
 func (c *OpenClient) doJSON(ctx context.Context, method, rawURL string, form map[string]string, access bool, retries int) (*RespBase, error) {
+	executor := c.executor
+	if executor == nil {
+		executor = GetGlobalExecutor()
+	}
+
 	var lastErr error
 	for attempt := 0; attempt <= retries; attempt++ {
-		c.throttle(1)
+		// 1. 获取全局三级令牌桶（QPS/QPM/QPH）令牌，若在熔断状态则阻塞等待冷却
+		if err := executor.Acquire(ctx); err != nil {
+			return nil, err
+		}
+
 		req, err := c.buildRequest(ctx, method, rawURL, form, access)
 		if err != nil {
 			return nil, err
 		}
+
 		resp, err := c.HTTP.Do(req)
 		if err != nil {
 			lastErr = err
 			if attempt < retries {
-				time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)
+				time.Sleep(time.Duration(attempt+1) * 1 * time.Second)
 				continue
 			}
 			return nil, err
 		}
+
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
 		_ = resp.Body.Close()
 		if readErr != nil {
 			lastErr = readErr
 			continue
 		}
+
+		// 检查 HTTP 状态码：特别处理 405/406/429 等限流和异常阻断
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			if resp.StatusCode == http.StatusMethodNotAllowed || resp.StatusCode == http.StatusNotAcceptable || resp.StatusCode == http.StatusTooManyRequests {
+				// 触发全局熔断冷却，防止短时间连续重试导致 IP 被完全拉黑
+				executor.MarkThrottled()
+				lastErr = fmt.Errorf("115 接口触发频控/安全拦截（HTTP %d）：%s", resp.StatusCode, strings.TrimSpace(string(body)))
+				if attempt < retries {
+					// 阻塞等待 115 限流冷却解封后自动重试当前请求
+					if waitErr := executor.throttleManager.WaitThrottleRecovery(ctx); waitErr != nil {
+						return nil, waitErr
+					}
+					continue
+				}
+				return nil, lastErr
+			}
 			lastErr = fmt.Errorf("115 接口返回 HTTP %d：%s", resp.StatusCode, strings.TrimSpace(string(body)))
 			if attempt < retries {
-				time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)
+				time.Sleep(time.Duration(attempt+1) * 1 * time.Second)
 				continue
 			}
 			return nil, lastErr
 		}
+
 		var base RespBase
 		if err := json.Unmarshal(body, &base); err != nil {
 			return nil, fmt.Errorf("115 接口响应解析失败：%w", err)
@@ -141,13 +156,29 @@ func (c *OpenClient) doJSON(ctx context.Context, method, rawURL string, form map
 		if base.State {
 			return &base, nil
 		}
-		// 业务失败：限流/Token 错误不重试，其余按配置重试
-		if IsThrottleCode(base.Code) || isTokenCode(base.Code) {
+
+		// 业务返回限流错误码（406 / 770004）：标记全局熔断，等待冷却后重试
+		if IsThrottleCode(base.Code) {
+			executor.MarkThrottled()
+			lastErr = NewOpenAPIResponseError(base.Code, base.Errno, base.Message, base.Error, "115 访问频率达到上限，已进入冷却")
+			if attempt < retries {
+				// 阻塞等待限流冷却解封后自动重试当前请求
+				if waitErr := executor.throttleManager.WaitThrottleRecovery(ctx); waitErr != nil {
+					return nil, waitErr
+				}
+				continue
+			}
+			return &base, lastErr
+		}
+
+		// Token 失效不重试
+		if isTokenCode(base.Code) {
 			return &base, nil
 		}
+
 		lastErr = NewOpenAPIResponseError(base.Code, base.Errno, base.Message, base.Error, "115 接口调用失败")
 		if attempt < retries {
-			time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)
+			time.Sleep(time.Duration(attempt+1) * 1 * time.Second)
 			continue
 		}
 		return &base, lastErr

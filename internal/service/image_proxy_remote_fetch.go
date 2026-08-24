@@ -158,13 +158,13 @@ func fetchRemoteImageWithCurl(ctx context.Context, raw, host string) ([]byte, st
 		"--header", "Cache-Control: no-cache",
 		"--header", "Pragma: no-cache",
 	}
-		if referer := remoteImageReferer(host); referer != "" {
-			args = append(args, "--referer", referer)
-		}
-		if cookie := remoteImageCookie(host); cookie != "" {
-			args = append(args, "--cookie", cookie)
-		}
-		args = append(args, "--", raw)
+	if referer := remoteImageReferer(host); referer != "" {
+		args = append(args, "--referer", referer)
+	}
+	if cookie := remoteImageCookie(host); cookie != "" {
+		args = append(args, "--cookie", cookie)
+	}
+	args = append(args, "--", raw)
 
 	cmd := exec.CommandContext(curlCtx, bin, args...) // #nosec G204 -- bin is resolved by LookPath and args are not shell-expanded.
 	stderr := bytes.Buffer{}

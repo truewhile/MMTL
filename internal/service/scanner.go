@@ -62,12 +62,12 @@ type ScannerService struct {
 
 	imageProxy *ImageProxy
 
-	localMediaProbeOnce     sync.Once
-	localMediaProbeQueue    chan localMediaProbeTask
-	localMediaProbeMu       sync.Mutex
-	localMediaProbing       map[string]struct{}
-	localScanMu             sync.Mutex
-	localScans              map[string]struct{}
+	localMediaProbeOnce  sync.Once
+	localMediaProbeQueue chan localMediaProbeTask
+	localMediaProbeMu    sync.Mutex
+	localMediaProbing    map[string]struct{}
+	localScanMu          sync.Mutex
+	localScans           map[string]struct{}
 }
 
 // NewScannerService is the constructor.
@@ -80,7 +80,7 @@ func NewScannerService(
 	scraper *ScraperService,
 ) *ScannerService {
 	return &ScannerService{
-		cfg:                cfg, log: log, repo: repo, hub: hub,
+		cfg: cfg, log: log, repo: repo, hub: hub,
 		probe:                probe,
 		scraper:              scraper,
 		localMediaProbeQueue: make(chan localMediaProbeTask, 1024),

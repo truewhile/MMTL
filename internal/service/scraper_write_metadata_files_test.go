@@ -37,12 +37,12 @@ func TestWriteArtworkDataToPathWritesJellyfinSidecar(t *testing.T) {
 // name Jellyfin sidecar files.
 func TestImageExtForContentType(t *testing.T) {
 	cases := map[string]string{
-		"image/jpeg":         ".jpg",
-		"image/pjpeg":        ".jpg",
-		"image/png":          ".png",
-		"image/webp":         ".webp",
-		"image/gif":          ".gif",
-		"image/avif":         ".avif",
+		"image/jpeg":                 ".jpg",
+		"image/pjpeg":                ".jpg",
+		"image/png":                  ".png",
+		"image/webp":                 ".webp",
+		"image/gif":                  ".gif",
+		"image/avif":                 ".avif",
 		"image/jpeg; charset=binary": ".jpg",
 		"application/octet-stream":   ".img",
 	}

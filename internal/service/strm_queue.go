@@ -59,6 +59,11 @@ func (s *StrmService) downloadWorker(ctx context.Context) {
 }
 
 func (s *StrmService) processDownloadTask(ctx context.Context, task *model.StrmDownloadTask) {
+	cleanPath := sanitizeLocalPath(task.LocalPath)
+	if cleanPath != "" && cleanPath != task.LocalPath {
+		task.LocalPath = cleanPath
+		_ = s.repo.StrmDownload.Update(context.Background(), task)
+	}
 	finish := func(status, message string) {
 		now := time.Now()
 		task.Status = status
@@ -210,6 +215,7 @@ func retryTask(retryCount *int, status *string, errMsg *string, nextTryAt **time
 
 // downloadToFile 把直链内容下载到目标文件（临时文件 + 原子改名）。
 func downloadToFile(ctx context.Context, link *cloud.DirectLink, target string, client *http.Client) error {
+	target = sanitizeLocalPath(target)
 	if link == nil || link.URL == "" {
 		return errors.New("空下载地址")
 	}

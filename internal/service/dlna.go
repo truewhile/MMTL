@@ -31,8 +31,8 @@ import (
 type DLNAService struct {
 	log *zap.Logger
 
-	mu      sync.Mutex
-	cache   []DLNADevice
+	mu       sync.Mutex
+	cache    []DLNADevice
 	cachedAt time.Time
 }
 
@@ -47,8 +47,8 @@ type DLNADevice struct {
 	FriendlyName string `json:"friendly_name"`
 	Manufacturer string `json:"manufacturer"`
 	ModelName    string `json:"model_name"`
-	Location     string `json:"location"`     // device description URL
-	ControlURL   string `json:"control_url"`  // AVTransport SOAP endpoint
+	Location     string `json:"location"`    // device description URL
+	ControlURL   string `json:"control_url"` // AVTransport SOAP endpoint
 	IPAddress    string `json:"ip_address"`
 }
 
@@ -168,10 +168,10 @@ func (d *DLNAService) fetchDescription(ctx context.Context, location string) (*D
 		ControlURL  string `xml:"controlURL"`
 	}
 	type device struct {
-		FriendlyName string    `xml:"friendlyName"`
-		Manufacturer string    `xml:"manufacturer"`
-		ModelName    string    `xml:"modelName"`
-		UDN          string    `xml:"UDN"`
+		FriendlyName string `xml:"friendlyName"`
+		Manufacturer string `xml:"manufacturer"`
+		ModelName    string `xml:"modelName"`
+		UDN          string `xml:"UDN"`
 		ServiceList  struct {
 			Services []service `xml:"service"`
 		} `xml:"serviceList"`

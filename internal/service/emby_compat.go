@@ -43,10 +43,10 @@ const PlaybackDirectOnlySettingKey = "playback.direct_only"
 
 // EmbyService produces Emby-shaped JSON.
 type EmbyService struct {
-	cfg     *config.Config
-	log     *zap.Logger
-	repo    *repository.Container
-	cache   *RuntimeCacheService
+	cfg      *config.Config
+	log      *zap.Logger
+	repo     *repository.Container
+	cache    *RuntimeCacheService
 	subtitle *SubtitleService
 
 	virtualMu      sync.RWMutex

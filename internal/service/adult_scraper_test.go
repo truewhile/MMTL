@@ -36,13 +36,13 @@ func TestParseAdultDetailHTML(t *testing.T) {
 <div>日期 2024-05-01</div>
 </html>`
 
-		got := parseAdultDetailHTML(html, "SSIS-001", "javdb", "https://javdb.com/v/abc")
-		if got == nil {
-			t.Fatal("parseAdultDetailHTML returned nil")
-		}
-		if got.Title != "SSIS-001-测试标题" || got.OriginalName != "SSIS-001" || !got.NSFW {
-			t.Fatalf("unexpected metadata: %+v", got)
-		}
+	got := parseAdultDetailHTML(html, "SSIS-001", "javdb", "https://javdb.com/v/abc")
+	if got == nil {
+		t.Fatal("parseAdultDetailHTML returned nil")
+	}
+	if got.Title != "SSIS-001-测试标题" || got.OriginalName != "SSIS-001" || !got.NSFW {
+		t.Fatalf("unexpected metadata: %+v", got)
+	}
 	if got.PosterURL != "https://javdb.com/covers/ssis001.jpg" || got.BackdropURL != "https://javdb.com/samples/1.jpg" {
 		t.Fatalf("unexpected artwork: %+v", got)
 	}
@@ -98,9 +98,9 @@ func TestAdultProviderUsesConfiguredMultipleSources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-		if match == nil || match.Title != "SSIS-001-多源命中标题" || match.OriginalName != "SSIS-001" || !match.NSFW {
-			t.Fatalf("multi-source adult match = %+v", match)
-		}
+	if match == nil || match.Title != "SSIS-001-多源命中标题" || match.OriginalName != "SSIS-001" || !match.NSFW {
+		t.Fatalf("multi-source adult match = %+v", match)
+	}
 }
 
 func TestAdultSourceKindRecognizesJavBusMirrors(t *testing.T) {
@@ -135,12 +135,12 @@ func TestAdultProviderDefaultBases(t *testing.T) {
 	if len(got) != len(want) {
 		t.Fatalf("resolveBases len = %d, want %d: %v", len(got), len(want), got)
 	}
-		for i := range want {
-			if got[i] != want[i] {
-				t.Fatalf("resolveBases[%d] = %q, want %q", i, got[i], want[i])
-			}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("resolveBases[%d] = %q, want %q", i, got[i], want[i])
 		}
 	}
+}
 
 func TestParseAdultDetailHTMLRejectsAgeVerification(t *testing.T) {
 	verifyHTML := `<html>

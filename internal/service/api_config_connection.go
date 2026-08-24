@@ -30,11 +30,11 @@ func (s *ApiConfigService) TestConnection(ctx context.Context, provider string) 
 		return s.testDeepSeek(cfg)
 	case "siliconflow":
 		return s.testSiliconFlow(cfg)
-		case "adult":
-			return s.testAdult(ctx, cfg)
-		case "metatube":
-			return s.testMetaTube(ctx, cfg)
-		default:
+	case "adult":
+		return s.testAdult(ctx, cfg)
+	case "metatube":
+		return s.testMetaTube(ctx, cfg)
+	default:
 		return "unknown", fmt.Errorf("no test implemented for provider: %s", provider)
 	}
 }

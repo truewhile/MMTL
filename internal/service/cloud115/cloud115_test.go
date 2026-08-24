@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 // mockTransport 用 httptest server 替换 API 基址。
@@ -319,5 +320,58 @@ func TestSourceCatalog(t *testing.T) {
 	}
 	if len(BuiltInRelaySources()) == 0 || len(ThirdPartySources()) != 2 {
 		t.Fatal("relay/thrid-party sources broken")
+	}
+}
+
+func TestHTTP405AndThrottleRecovery(t *testing.T) {
+	tm := NewThrottleManager(100 * time.Millisecond)
+	qe := NewQueueExecutor(10, 200, 12000)
+	qe.throttleManager = tm
+
+	mockAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		w.Write([]byte("Method Not Allowed"))
+	})
+
+	c := NewOpenClient("100195125", "at1", "rt1")
+	c.executor = qe
+
+	_, err := c.GetDownloadURL(context.Background(), "pickTest")
+	if err == nil {
+		t.Fatal("expected 405 error")
+	}
+	if !tm.IsThrottled() {
+		t.Fatal("405 should trigger throttle status")
+	}
+
+	// 验证熔断冷却后能正常恢复
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+	if err := tm.WaitThrottleRecovery(ctx); err != nil {
+		t.Fatalf("wait throttle recovery failed: %v", err)
+	}
+	if tm.IsThrottled() {
+		t.Fatal("throttle status should be cleared after duration")
+	}
+}
+
+func TestThrottleCodeHandling(t *testing.T) {
+	tm := NewThrottleManager(100 * time.Millisecond)
+	qe := NewQueueExecutor(10, 200, 12000)
+	qe.throttleManager = tm
+
+	mockAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"state":false,"code":770004,"message":"访问频率过高"}`))
+	})
+
+	c := NewOpenClient("100195125", "at1", "rt1")
+	c.executor = qe
+
+	_, _, err := c.GetFsList(context.Background(), "0", 0, 100)
+	if err == nil {
+		t.Fatal("expected throttle error")
+	}
+	if !tm.IsThrottled() {
+		t.Fatal("code 770004 should trigger throttle status")
 	}
 }

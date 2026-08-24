@@ -53,17 +53,17 @@ type DanmakuRenderConfig struct {
 // must ask the user which one to use (disambiguation); Raw is empty then.
 type DanmakuFetchResult struct {
 	DanmakuRenderConfig
-	SourceType string           `json:"source_type"`
-	Raw        string           `json:"raw,omitempty"`
-	Candidates []DanmakuAnime   `json:"candidates,omitempty"`
+	SourceType string         `json:"source_type"`
+	Raw        string         `json:"raw,omitempty"`
+	Candidates []DanmakuAnime `json:"candidates,omitempty"`
 }
 
 // DanmakuAnime is one search hit (an anime) with its episode list, mirroring
 // the dandanplay SearchEpisodesResponse shape.
 type DanmakuAnime struct {
-	AnimeID   int64              `json:"animeId"`
-	AnimeTitle string            `json:"animeTitle"`
-	Episodes  []DanmakuEpisode   `json:"episodes"`
+	AnimeID    int64            `json:"animeId"`
+	AnimeTitle string           `json:"animeTitle"`
+	Episodes   []DanmakuEpisode `json:"episodes"`
 }
 
 // DanmakuEpisode is one selectable danmaku library inside an anime.
@@ -125,9 +125,9 @@ func (s *DanmakuService) Config(ctx context.Context) DanmakuRenderConfig {
 // through the dandanplay protocol:
 //
 //  1. search episodes by title (+ season/episode number)
-//  2a. exactly one hit → fetch that episode's comment library
-//  2b. several hits → return candidates (Raw empty) so the player asks the user
-//  2c. explicit episodeID → fetch it directly
+//     2a. exactly one hit → fetch that episode's comment library
+//     2b. several hits → return candidates (Raw empty) so the player asks the user
+//     2c. explicit episodeID → fetch it directly
 //  3. fetch the comment library XML
 //
 // When danmaku is disabled the result carries Enabled=false so the player can
@@ -250,9 +250,9 @@ func (s *DanmakuService) searchCandidates(ctx context.Context, base, name, episo
 	}
 	var resp struct {
 		Animes []struct {
-			AnimeID   int64  `json:"animeId"`
+			AnimeID    int64  `json:"animeId"`
 			AnimeTitle string `json:"animeTitle"`
-			Episodes  []struct {
+			Episodes   []struct {
 				EpisodeID    int64  `json:"episodeId"`
 				EpisodeTitle string `json:"episodeTitle"`
 			} `json:"episodes"`

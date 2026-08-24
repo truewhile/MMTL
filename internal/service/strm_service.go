@@ -572,14 +572,161 @@ const defaultStrmUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537
 
 // ensureLocalDir 创建本地输出目录。
 func ensureLocalDir(dir string) error {
-	return os.MkdirAll(dir, 0o755)
+	return os.MkdirAll(sanitizeLocalPath(dir), 0o755)
+}
+
+// windowsReservedNames 包含 Windows 系统底层保留的设备名称（大小写不敏感）。
+var windowsReservedNames = map[string]bool{
+	"CON": true, "PRN": true, "AUX": true, "NUL": true,
+	"COM1": true, "COM2": true, "COM3": true, "COM4": true, "COM5": true,
+	"COM6": true, "COM7": true, "COM8": true, "COM9": true,
+	"LPT1": true, "LPT2": true, "LPT3": true, "LPT4": true, "LPT5": true,
+	"LPT6": true, "LPT7": true, "LPT8": true, "LPT9": true,
+}
+
+func isWindowsReservedName(name string) bool {
+	return windowsReservedNames[strings.ToUpper(name)]
+}
+
+// truncateStringRuneSafe 安全截断 UTF-8 字符串至指定字节长度，不切断中文字符或多字节 rune。
+func truncateStringRuneSafe(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	b := []byte(s)
+	if len(b) <= maxBytes {
+		return s
+	}
+	for maxBytes > 0 && (b[maxBytes]&0xC0 == 0x80) {
+		maxBytes--
+	}
+	return strings.TrimRight(string(b[:maxBytes]), ". ")
+}
+
+// cleanEntryName 清理单个目录名或文件名中的非法字符、控制字符、尾部点空格及 Windows 保留字，
+// 确保在 Windows (NTFS/FAT)、Linux (ext4/btrfs/xfs) 及 NAS/SMB 挂载环境下均安全可用。
+func cleanEntryName(name string, isDir bool) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "unnamed"
+	}
+
+	if isDir {
+		clean := sanitizeFilename(name)
+		clean = strings.Trim(clean, ". ")
+		if clean == "" {
+			return "unnamed"
+		}
+		if isWindowsReservedName(clean) {
+			clean = "_" + clean
+		}
+		return truncateStringRuneSafe(clean, 255)
+	}
+
+	ext := filepath.Ext(name)
+	base := strings.TrimSuffix(name, ext)
+
+	// 清洗扩展名中的非法字符
+	cleanExt := sanitizeFilename(ext)
+	cleanExt = strings.TrimSpace(cleanExt)
+	if cleanExt != "" && !strings.HasPrefix(cleanExt, ".") {
+		cleanExt = "." + cleanExt
+	}
+
+	cleanBase := sanitizeFilename(base)
+	cleanBase = strings.Trim(cleanBase, ". ")
+	if cleanBase == "" {
+		cleanBase = "unnamed"
+	}
+	if isWindowsReservedName(cleanBase) {
+		cleanBase = "_" + cleanBase
+	}
+
+	maxBaseBytes := 255 - len(cleanExt)
+	if maxBaseBytes < 10 {
+		maxBaseBytes = 255
+		cleanExt = ""
+	}
+	cleanBase = truncateStringRuneSafe(cleanBase, maxBaseBytes)
+	return cleanBase + cleanExt
+}
+
+// sanitizeRelativePath 清理相对路径中的非法字符与首尾点空格，确保跨操作系统路径合法。
+func sanitizeRelativePath(rel string) string {
+	rel = strings.TrimSpace(rel)
+	if rel == "" {
+		return ""
+	}
+	rel = strings.ReplaceAll(rel, "\\", "/")
+	parts := strings.Split(rel, "/")
+	out := make([]string, 0, len(parts))
+	for i, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" || part == "." || part == ".." {
+			continue
+		}
+		isDir := i < len(parts)-1
+		clean := cleanEntryName(part, isDir)
+		if clean == "" || clean == "." || clean == ".." {
+			continue
+		}
+		out = append(out, clean)
+	}
+	if len(out) == 0 {
+		return ""
+	}
+	return filepath.Join(out...)
+}
+
+// sanitizeLocalPath 对本地全路径中除根目录/盘符/UNC之外的各级目录及文件名进行跨平台非法字符清洗。
+func sanitizeLocalPath(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" || p == "." {
+		return p
+	}
+	vol := filepath.VolumeName(p)
+	rest := p[len(vol):]
+	hasRootSlash := len(rest) > 0 && (rest[0] == '/' || rest[0] == '\\')
+
+	parts := strings.FieldsFunc(rest, func(r rune) bool {
+		return r == '/' || r == '\\'
+	})
+	cleanedParts := make([]string, 0, len(parts))
+	for i, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" || part == "." || part == ".." {
+			continue
+		}
+		isDir := i < len(parts)-1
+		clean := cleanEntryName(part, isDir)
+		if clean == "" || clean == "." || clean == ".." {
+			continue
+		}
+		cleanedParts = append(cleanedParts, clean)
+	}
+	prefix := vol
+	if hasRootSlash {
+		prefix += string(filepath.Separator)
+	}
+	if len(cleanedParts) == 0 {
+		return filepath.Clean(prefix)
+	}
+	if prefix == "" {
+		return filepath.Clean(filepath.Join(cleanedParts...))
+	}
+	return filepath.Clean(filepath.Join(prefix, filepath.Join(cleanedParts...)))
 }
 
 // joinLocalRel 拼接本地目标路径并校验不越出根目录。
 func joinLocalRel(root, rel string) (string, error) {
 	root = filepath.Clean(root)
-	target := filepath.Clean(filepath.Join(root, filepath.FromSlash(rel)))
-	if target != root && !strings.HasPrefix(target, root+string(filepath.Separator)) {
+	cleanRel := sanitizeRelativePath(rel)
+	if cleanRel == "" {
+		return "", errors.New("无效相对路径")
+	}
+	target := filepath.Clean(filepath.Join(root, cleanRel))
+	relToRoot, err := filepath.Rel(root, target)
+	if err != nil || strings.HasPrefix(relToRoot, "..") || (relToRoot == "." && target != root) {
 		return "", errors.New("本地路径越界")
 	}
 	return target, nil
