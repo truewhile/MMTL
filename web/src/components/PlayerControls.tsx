@@ -16,11 +16,7 @@ import type { SubtitleTrack } from '../api/subtitles'
 // PlayerControls — custom bottom control bar replacing the native <video
 // controls> (which cannot host custom buttons). The danmaku toggle sits right
 // next to the volume control. The bar auto-hides while playing and reappears
-// on mouse movement; it stays visible while paused.
-//
-// Native keyboard shortcuts (space / arrows) still work because they are
-// element-level defaults on <video>. Subtitles from <track> elements keep
-// rendering; the CC button opens a track picker (关闭 / 各轨道).
+// on mouse movement; it stays visible while paused or when hovering/interacting.
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) s = 0
@@ -63,9 +59,32 @@ export function PlayerControls({
   const [fullscreen, setFullscreen] = useState(false)
   const [pip, setPip] = useState(false)
   const [uiVisible, setUiVisible] = useState(true)
+  const [controlsHovered, setControlsHovered] = useState(false)
+  const [isScrubbing, setIsScrubbing] = useState(false)
+  const [scrubValue, setScrubValue] = useState<number | null>(null)
   const [subtitleMenuOpen, setSubtitleMenuOpen] = useState(false)
   const subtitleMenuRef = useRef<HTMLDivElement | null>(null)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const controlsHoveredRef = useRef(false)
+  const isScrubbingRef = useRef(false)
+  const subtitleMenuOpenRef = useRef(false)
+  const danmakuOpenRef = useRef(false)
+
+  useEffect(() => {
+    controlsHoveredRef.current = controlsHovered
+  }, [controlsHovered])
+
+  useEffect(() => {
+    isScrubbingRef.current = isScrubbing
+  }, [isScrubbing])
+
+  useEffect(() => {
+    subtitleMenuOpenRef.current = subtitleMenuOpen
+  }, [subtitleMenuOpen])
+
+  useEffect(() => {
+    danmakuOpenRef.current = danmakuOpen
+  }, [danmakuOpen])
 
   // 点击控制栏外部时关闭字幕菜单
   useEffect(() => {
@@ -79,42 +98,74 @@ export function PlayerControls({
     return () => document.removeEventListener('mousedown', onDocClick)
   }, [subtitleMenuOpen])
 
-  // 播放时 3 秒无操作自动隐藏控制栏；暂停时保持显示。监听挂在视频容器上，
-  // 控制栏隐藏（pointer-events-none）后移动鼠标仍能重新唤起。
+  // 播放时 3 秒无操作自动隐藏控制栏；暂停/悬停/拖动进度条/打开菜单时保持显示。
+  // 监听挂在整个播放器舞台容器（data-player-stage）上，避免光标移到控制栏时因离开视频画面而误触发 mouseleave。
   useEffect(() => {
     const el = video()
-    if (!el) return
-    const parent = el.parentElement
-    const onMove = () => {
-      setUiVisible(true)
+    const stage = container()
+    if (!el || !stage) return
+
+    const resetTimer = () => {
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
-      if (!el.paused) {
-        hideTimerRef.current = setTimeout(() => setUiVisible(false), 3000)
+      if (
+        !el.paused &&
+        !controlsHoveredRef.current &&
+        !isScrubbingRef.current &&
+        !subtitleMenuOpenRef.current &&
+        !danmakuOpenRef.current
+      ) {
+        hideTimerRef.current = setTimeout(() => {
+          if (
+            !controlsHoveredRef.current &&
+            !isScrubbingRef.current &&
+            !subtitleMenuOpenRef.current &&
+            !danmakuOpenRef.current
+          ) {
+            setUiVisible(false)
+          }
+        }, 3000)
       }
     }
-    const onLeave = () => {
-      if (el.paused) return
+
+    const onMove = () => {
+      setUiVisible(true)
+      resetTimer()
+    }
+
+    const onLeave = (e: MouseEvent) => {
+      // 仅当光标真正移出 stage 容器时才处理
+      if (e.relatedTarget && stage.contains(e.relatedTarget as Node)) {
+        return
+      }
+      if (el.paused || controlsHoveredRef.current || isScrubbingRef.current) return
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
       setUiVisible(false)
     }
+
     const syncPlay = () => {
       setPlaying(!el.paused)
       onMove()
     }
-    const syncTime = () => setCurrentTime(el.currentTime)
+    const syncTime = () => {
+      if (!isScrubbingRef.current) {
+        setCurrentTime(el.currentTime)
+      }
+    }
     const syncMeta = () => {
       setDuration(el.duration || 0)
-      setCurrentTime(el.currentTime)
+      if (!isScrubbingRef.current) {
+        setCurrentTime(el.currentTime)
+      }
     }
     const syncVolume = () => {
       setVolume(el.volume)
       setMuted(el.muted)
     }
-    const syncFullscreen = () => setFullscreen(document.fullscreenElement === parent)
+    const syncFullscreen = () => setFullscreen(Boolean(document.fullscreenElement))
     const syncPip = () => setPip(document.pictureInPictureElement === el)
 
-    parent?.addEventListener('mousemove', onMove)
-    parent?.addEventListener('mouseleave', onLeave)
+    stage.addEventListener('mousemove', onMove)
+    stage.addEventListener('mouseleave', onLeave)
 
     el.addEventListener('play', syncPlay)
     el.addEventListener('playing', syncPlay)
@@ -131,8 +182,8 @@ export function PlayerControls({
     syncVolume()
     syncFullscreen()
     return () => {
-      parent?.removeEventListener('mousemove', onMove)
-      parent?.removeEventListener('mouseleave', onLeave)
+      stage.removeEventListener('mousemove', onMove)
+      stage.removeEventListener('mouseleave', onLeave)
       el.removeEventListener('play', syncPlay)
       el.removeEventListener('playing', syncPlay)
       el.removeEventListener('pause', syncPlay)
@@ -148,6 +199,20 @@ export function PlayerControls({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoRef])
 
+  // 当悬停或菜单状态改变时，更新控制栏计时器
+  useEffect(() => {
+    if (controlsHovered || isScrubbing || subtitleMenuOpen || danmakuOpen) {
+      setUiVisible(true)
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
+    } else {
+      const el = video()
+      if (el && !el.paused) {
+        if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
+        hideTimerRef.current = setTimeout(() => setUiVisible(false), 3000)
+      }
+    }
+  }, [controlsHovered, isScrubbing, subtitleMenuOpen, danmakuOpen])
+
   const togglePlay = () => {
     const el = video()
     if (!el) return
@@ -155,11 +220,29 @@ export function PlayerControls({
     else el.pause()
   }
 
-  const seek = (v: number) => {
-    const el = video()
-    if (!el) return
-    el.currentTime = v
+  const handleSeekChange = (v: number) => {
+    setScrubValue(v)
     setCurrentTime(v)
+    const el = video()
+    if (el && !isScrubbing) {
+      el.currentTime = v
+    }
+  }
+
+  const handleSeekStart = () => {
+    setIsScrubbing(true)
+    setUiVisible(true)
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
+  }
+
+  const handleSeekEnd = (v: number) => {
+    const el = video()
+    if (el) {
+      el.currentTime = v
+      setCurrentTime(v)
+    }
+    setIsScrubbing(false)
+    setScrubValue(null)
   }
 
   const changeVolume = (v: number) => {
@@ -202,14 +285,18 @@ export function PlayerControls({
     'pictureInPictureEnabled' in document &&
     document.pictureInPictureEnabled
 
+  const displayTime = isScrubbing && scrubValue !== null ? scrubValue : currentTime
+
   return (
     <div
-      className={`pointer-events-auto absolute inset-x-0 bottom-0 z-20 px-3 pb-2 pt-12 transition-opacity duration-300 ${
+      className={`pointer-events-auto absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-3 pb-3 pt-14 transition-opacity duration-300 ${
         uiVisible ? 'opacity-100' : 'pointer-events-none opacity-0'
       }`}
+      onMouseEnter={() => setControlsHovered(true)}
+      onMouseLeave={() => setControlsHovered(false)}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center gap-2 text-white">
+      <div className="flex items-center gap-2.5 text-white">
         <button
           onClick={togglePlay}
           className="rounded-full p-1.5 transition hover:bg-white/15"
@@ -223,14 +310,18 @@ export function PlayerControls({
           min={0}
           max={duration || 0}
           step={0.1}
-          value={currentTime}
-          onChange={(e) => seek(Number(e.target.value))}
-          className="min-w-0 flex-1 accent-rose-500"
+          value={displayTime}
+          onMouseDown={handleSeekStart}
+          onTouchStart={handleSeekStart}
+          onChange={(e) => handleSeekChange(Number(e.target.value))}
+          onMouseUp={(e) => handleSeekEnd(Number((e.target as HTMLInputElement).value))}
+          onTouchEnd={(e) => handleSeekEnd(Number((e.target as HTMLInputElement).value))}
+          className="min-w-0 flex-1 cursor-pointer accent-rose-500"
           aria-label="播放进度"
         />
 
         <span className="shrink-0 font-mono text-xs tabular-nums text-white/85">
-          {formatTime(currentTime)} / {formatTime(duration)}
+          {formatTime(displayTime)} / {formatTime(duration)}
         </span>
 
         {pipSupported && (
