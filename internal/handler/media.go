@@ -32,7 +32,7 @@ func listLibrariesHandler(svc *service.Container) gin.HandlerFunc {
 			return
 		}
 		role, _ := c.Get(middleware.CtxUserRole)
-		includeHidden := role == "admin" && (c.Query("include_hidden") == "1" || c.Query("all") == "1")
+		includeHidden := role == "admin" && (c.Query("include_hidden") == "1" || c.Query("include_hidden") == "true" || c.Query("all") == "1")
 		if !includeHidden {
 			libs = service.FilterDisplayCloudLibraries(c.Request.Context(), svc.Repo, libs)
 			visibility := mediaVisibilityForRequest(c, svc)
@@ -60,7 +60,7 @@ func getLibraryHandler(svc *service.Container) gin.HandlerFunc {
 			return
 		}
 		role, _ := c.Get(middleware.CtxUserRole)
-		includeHidden := role == "admin" && (c.Query("include_hidden") == "1" || c.Query("all") == "1")
+		includeHidden := role == "admin" && (c.Query("include_hidden") == "1" || c.Query("include_hidden") == "true" || c.Query("all") == "1")
 		if !includeHidden {
 			libs := service.FilterDisplayCloudLibraries(c.Request.Context(), svc.Repo, []model.Library{*lib})
 			if len(libs) == 0 || !service.LibraryVisibleForUser(c.Request.Context(), svc.Repo, libs[0], mediaVisibilityForRequest(c, svc)) {

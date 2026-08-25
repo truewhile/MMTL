@@ -219,8 +219,8 @@ func (s *DanmakuService) Fetch(ctx context.Context, mediaID, keyword, episodeID 
 
 		target := ""
 
-		// 1) hash 识别：始终走官方 /api/v2/match。
-		if media != nil && media.Path != "" {
+		// 1) hash 识别：始终走官方 /api/v2/match（keyword 手动覆盖时跳过，直接走第 3 层）。
+		if target == "" && !manualKeyword && media != nil && media.Path != "" {
 			if hash, ok := s.mediaHash(ctx, media); ok {
 				fileSize := media.SizeBytes
 				if strings.EqualFold(filepath.Ext(media.Path), ".strm") {

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { libraryAPI } from '../api/library'
 import { toolsAPI } from '../api/tools'
+import { openManageLibrariesDialog } from '../components/manageLibrariesDialog'
 import {
   LibrariesContent,
   LibrariesEmptyState,
@@ -15,6 +16,32 @@ export function LibrariesPage() {
   const [repairing, setRepairing] = useState(false)
   const [repairEpisodeArtwork, setRepairEpisodeArtwork] = useState(false)
   const [repairMsg, setRepairMsg] = useState('')
+
+  const loadLibraries = useCallback(async () => {
+    setLoading(true)
+    try {
+      const libs = await libraryAPI.list()
+      const rows = await Promise.all(libs.map(async (library) => {
+        try {
+          if (isSeriesLibraryType(library.type)) {
+            const [seriesPage, mediaPage] = await Promise.all([
+              libraryAPI.listSeries(library.id, 1, 10),
+              libraryAPI.listMedia(library.id, 1, 1, { groupVersions: false }),
+            ])
+            return { library, items: [], total: mediaPage.total, cards: seriesPage.items ?? [] } satisfies LibraryPreview
+          }
+          const page = await libraryAPI.listMedia(library.id, 1, 160, { groupVersions: false })
+          const cards = latestLibraryCards(page.items)
+          return { library, items: page.items, total: page.total, cards } satisfies LibraryPreview
+        } catch {
+          return { library, items: [], total: 0, cards: [] } satisfies LibraryPreview
+        }
+      }))
+      setPreviews(rows)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   async function handleRepairRescrape() {
     if (repairing) return
@@ -30,36 +57,14 @@ export function LibrariesPage() {
     }
   }
 
+  const handleManageLibraries = async () => {
+    await openManageLibrariesDialog()
+    await loadLibraries()
+  }
+
   useEffect(() => {
-    let cancelled = false
-    async function load() {
-      setLoading(true)
-      try {
-        const libs = await libraryAPI.list()
-        const rows = await Promise.all(libs.map(async (library) => {
-          try {
-            if (isSeriesLibraryType(library.type)) {
-              const [seriesPage, mediaPage] = await Promise.all([
-                libraryAPI.listSeries(library.id, 1, 10),
-                libraryAPI.listMedia(library.id, 1, 1, { groupVersions: false }),
-              ])
-              return { library, items: [], total: mediaPage.total, cards: seriesPage.items ?? [] } satisfies LibraryPreview
-            }
-            const page = await libraryAPI.listMedia(library.id, 1, 160, { groupVersions: false })
-            const cards = latestLibraryCards(page.items)
-            return { library, items: page.items, total: page.total, cards } satisfies LibraryPreview
-          } catch {
-            return { library, items: [], total: 0, cards: [] } satisfies LibraryPreview
-          }
-        }))
-        if (!cancelled) setPreviews(rows)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
-    return () => { cancelled = true }
-  }, [])
+    loadLibraries().catch(() => undefined)
+  }, [loadLibraries])
 
   const total = useMemo(() => previews.reduce((sum, preview) => sum + preview.total, 0), [previews])
 
@@ -77,6 +82,7 @@ export function LibrariesPage() {
         repairing={repairing}
         onRepairEpisodeArtworkChange={setRepairEpisodeArtwork}
         onRepairRescrape={handleRepairRescrape}
+        onManageLibraries={handleManageLibraries}
       />
 
       {previews.length === 0 ? (

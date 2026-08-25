@@ -123,12 +123,20 @@ func LibraryVisibleForUser(ctx context.Context, repo *repository.Container, lib 
 		return false
 	}
 	if repo != nil && repo.DB != nil {
-		var count int64
+		var totalCount int64
 		_ = repo.DB.WithContext(ctx).Model(&model.Media{}).
-			Where("library_id = ? AND nsfw = ?", lib.ID, true).
-			Count(&count).Error
-		if count > 0 {
-			return false
+			Where("library_id = ?", lib.ID).
+			Count(&totalCount).Error
+		if totalCount > 0 {
+			var nsfwCount int64
+			_ = repo.DB.WithContext(ctx).Model(&model.Media{}).
+				Where("library_id = ? AND nsfw = ?", lib.ID, true).
+				Count(&nsfwCount).Error
+			// 仅当整库媒体全部为成人内容（纯成人库）时才隐藏整库；
+			// 含有普通内容的混合媒体库保持库本身可见，具体 NSFW 条目在媒体列表内过滤。
+			if nsfwCount == totalCount {
+				return false
+			}
 		}
 	}
 	return true

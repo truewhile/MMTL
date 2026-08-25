@@ -6,7 +6,6 @@ import { ArrowRight, Film, FolderOpen, Library as LibraryIcon, Music, PlayCircle
 import { imageURL } from '../api/client'
 import { EpisodeArtworkToggle } from '../components/EpisodeArtworkToggle'
 import { MediaCard } from '../components/MediaCard'
-import { openManageLibrariesDialog } from '../components/manageLibrariesDialog'
 import { seriesCardLink } from '../utils/groupSeries'
 import { libraryDisplayPath } from './libraryDisplayModel'
 import { libraryArtworkItems, type LibraryPreview } from './librariesPageModel'
@@ -37,6 +36,7 @@ export function LibrariesHeader({
   repairing,
   onRepairEpisodeArtworkChange,
   onRepairRescrape,
+  onManageLibraries,
 }: {
   previewCount: number
   total: number
@@ -45,6 +45,7 @@ export function LibrariesHeader({
   repairing: boolean
   onRepairEpisodeArtworkChange: (value: boolean) => void
   onRepairRescrape: () => void
+  onManageLibraries: () => void
 }) {
   return (
     <div className="flex flex-wrap items-end justify-between gap-4">
@@ -72,7 +73,7 @@ export function LibrariesHeader({
           <RefreshCw size={14} className={repairing ? 'animate-spin' : ''} />
           {repairing ? '正在启动…' : '全库修复+重刮'}
         </button>
-        <button type="button" onClick={() => openManageLibrariesDialog()} className="btn-outline">
+        <button type="button" onClick={onManageLibraries} className="btn-outline">
           管理媒体库
         </button>
       </div>
