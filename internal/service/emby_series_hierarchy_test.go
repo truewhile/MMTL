@@ -334,3 +334,105 @@ func TestEmbyCloudAnimeUsesSeriesNameFromChineseSeasonFolder(t *testing.T) {
 		t.Fatalf("cloud anime should be grouped as one series named 剑来, got %#v", items)
 	}
 }
+
+func TestEmbySeriesGroupingWithPrefixedSeasonFolders(t *testing.T) {
+	svc := newTestEmbyService(t)
+	lib := model.Library{Name: "动漫", Path: `/media/动漫`, Type: "anime", Enabled: true}
+	if err := svc.repo.Library.Create(t.Context(), &lib); err != nil {
+		t.Fatalf("create library: %v", err)
+	}
+
+	for season := 1; season <= 5; season++ {
+		for ep := 1; ep <= 3; ep++ {
+			media := model.Media{
+				Base:         model.Base{ID: fmt.Sprintf("shokugeki-s%02de%02d", season, ep)},
+				LibraryID:    lib.ID,
+				Title:        "食戟之灵",
+				OriginalName: "食戟のソーマ",
+				ScrapeStatus: "matched",
+				TMDbID:       62273,
+				BangumiID:    116461,
+				Path:         fmt.Sprintf(`/media/动漫/食戟之灵/食戟之灵 S%02d/食戟之灵 S%02dE%02d.strm`, season, season, ep),
+				SeasonNum:    season,
+				EpisodeNum:   ep,
+			}
+			if err := svc.repo.DB.Create(&media).Error; err != nil {
+				t.Fatalf("create media: %v", err)
+			}
+		}
+	}
+
+	root, err := svc.Items(t.Context(), ItemsParams{ParentID: lib.ID, Limit: 50})
+	if err != nil {
+		t.Fatalf("library items: %v", err)
+	}
+	rootItems := root["Items"].([]map[string]any)
+	if len(rootItems) != 1 {
+		t.Fatalf("expected 1 series card for 食戟之灵 across 5 seasons, got %d cards: %#v", len(rootItems), rootItems)
+	}
+	if rootItems[0]["Name"] != "食戟之灵" || rootItems[0]["Type"] != "Series" {
+		t.Fatalf("unexpected series item: %#v", rootItems[0])
+	}
+	seriesID := rootItems[0]["Id"].(string)
+
+	seasons, err := svc.Items(t.Context(), ItemsParams{ParentID: seriesID, Limit: 50})
+	if err != nil {
+		t.Fatalf("series seasons: %v", err)
+	}
+	seasonItems := seasons["Items"].([]map[string]any)
+	if len(seasonItems) != 5 {
+		t.Fatalf("expected 5 seasons, got %d: %#v", len(seasonItems), seasonItems)
+	}
+	for i, s := range seasonItems {
+		wantSeasonNum := i + 1
+		if s["Type"] != "Season" || s["IndexNumber"] != wantSeasonNum {
+			t.Errorf("season [%d] = %#v, want IndexNumber=%d", i, s, wantSeasonNum)
+		}
+	}
+
+	counts, err := svc.ItemCounts(t.Context(), "user-1")
+	if err != nil {
+		t.Fatalf("item counts: %v", err)
+	}
+	if counts["SeriesCount"] != 1 || counts["EpisodeCount"] != int64(15) {
+		t.Fatalf("counts = %#v, want 1 series and 15 episodes", counts)
+	}
+}
+
+func TestInferSeriesNameFromPath(t *testing.T) {
+	tests := []struct {
+		path string
+		want string
+	}{
+		{
+			path: `/media/动漫/食戟之灵/食戟之灵 S01/食戟之灵 S01E01.strm`,
+			want: "食戟之灵",
+		},
+		{
+			path: `/media/动漫/食戟之灵/食戟之灵 S05/食戟之灵 S05E12.strm`,
+			want: "食戟之灵",
+		},
+		{
+			path: `/media/动漫/食戟之灵/Season 02/01.mkv`,
+			want: "食戟之灵",
+		},
+		{
+			path: `/media/动漫/进击的巨人 第2季/01.mkv`,
+			want: "进击的巨人",
+		},
+		{
+			path: `cloud://openlist/国漫/剑来/第二季/04.mkv`,
+			want: "剑来",
+		},
+		{
+			path: `/media/tv/间谍过家家 (2022)/Specials/S00E01.mkv`,
+			want: "间谍过家家",
+		},
+	}
+	for _, tc := range tests {
+		got := inferSeriesNameFromPath(tc.path)
+		if got != tc.want {
+			t.Errorf("inferSeriesNameFromPath(%q) = %q, want %q", tc.path, got, tc.want)
+		}
+	}
+}
