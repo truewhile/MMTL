@@ -249,6 +249,7 @@ export function PlayerVideoStage({
               ))}
             </video>
             <DanmakuStage
+              key={media.id}
               media={media}
               videoRef={videoRef}
               enabled={danmakuEnabled}

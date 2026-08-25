@@ -128,6 +128,9 @@ export function DanmakuStage({
 
     const loadDanmaku = async () => {
       let loadedInfo: DanmakuLoadedInfo | null = null
+      comments = []
+      nextIndex = 0
+      manager.clear()
       try {
         const res = await danmakuAPI.fetch(media.id, {
           kw: search ?? undefined,

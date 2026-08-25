@@ -168,6 +168,17 @@ export function PlayerPage() {
     setDanmakuInfo(null)
   }, [])
 
+  // 切换视频时重置媒体与弹幕状态，确保新视频自动重新识别并加载弹幕
+  useEffect(() => {
+    setMedia(null)
+    setDanmakuEpisodeId(null)
+    setDanmakuCandidates([])
+    setDanmakuSearch(null)
+    setDanmakuSelectedSource('')
+    setDanmakuInfo(null)
+    setDanmakuSearching(true)
+  }, [id])
+
   // Load metadata and pick a default mode.
   useEffect(() => {
     if (!id) return
