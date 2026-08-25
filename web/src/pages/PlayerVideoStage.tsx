@@ -53,6 +53,8 @@ export function PlayerVideoStage({
   const stageRef = useRef<HTMLDivElement>(null)
   const [videoRatio, setVideoRatio] = useState<number | null>(null)
   const [stageRect, setStageRect] = useState<{ width: number; height: number } | null>(null)
+  // 当前展示的字幕文本（由自定义字幕层渲染，100% 透明无黑框）
+  const [activeCueText, setActiveCueText] = useState<string>('')
 
   // 监听舞台容器的真实尺寸（响应窗口大小调整和全屏切换）
   useEffect(() => {
@@ -103,18 +105,41 @@ export function PlayerVideoStage({
     else void stage.requestFullscreen?.()
   }
 
-  // 把用户选择的字幕轨道应用到 <video> 的 textTracks（跨浏览器显式设置
-  // mode；<track default> 只影响初始值，部分浏览器不会自动显示）。
-  //
-  // 通过 React 渲染的 <track> 元素定位而不是 textTracks 索引：hls.js 等
-  // 可能向 textTracks 注入内部轨道（如 CEA-608 captions），索引会错位。
+  // 自定义字幕驱动逻辑：
+  // 把所选轨道设为 mode = 'hidden'（让浏览器在后台静默解析时间轴，但不渲染原生带黑底的字幕框），
+  // 由下方的 React 自定义层输出 100% 纯透明背景、高清晰文字阴影的字幕。
   useEffect(() => {
     const video = videoRef.current
-    if (!video || subs.length === 0) return
+    if (!video || subs.length === 0 || subtitleIndex < 0 || !subs[subtitleIndex]) {
+      setActiveCueText('')
+      return
+    }
+
     const timers = new Set<ReturnType<typeof setTimeout>>()
     const delay = (fn: () => void, ms: number) => {
       const id = setTimeout(fn, ms)
       timers.add(id)
+    }
+
+    const updateCue = () => {
+      const trackEls = Array.from(video.querySelectorAll('track'))
+      const selectedEl = trackEls[subtitleIndex]
+      const tt = selectedEl?.track
+      if (!tt) {
+        setActiveCueText('')
+        return
+      }
+
+      if (tt.activeCues && tt.activeCues.length > 0) {
+        const texts: string[] = []
+        for (let i = 0; i < tt.activeCues.length; i++) {
+          const cue = tt.activeCues[i] as VTTCue
+          if (cue && cue.text) texts.push(cue.text)
+        }
+        setActiveCueText(texts.join('\n'))
+      } else {
+        setActiveCueText('')
+      }
     }
 
     const apply = () => {
@@ -122,32 +147,54 @@ export function PlayerVideoStage({
       if (trackEls.length === 0) return
       trackEls.forEach((el, i) => {
         const tt = el.track
-        if (tt) tt.mode = i === subtitleIndex ? 'showing' : 'disabled'
+        if (tt) {
+          // 'hidden' 模式：浏览器解析 WebVTT 并触发 cuechange，但隐藏原生黑底 UI
+          tt.mode = i === subtitleIndex ? 'hidden' : 'disabled'
+        }
       })
-      // Chrome 把轨道从 disabled 切回 showing 时是异步重新拉取字幕；
-      // 若拉取因竞态没有发生（例如切换过程中视频重载），cues 会一直为空，
-      // 表现为「字幕已选中但不显示」。检测到空轨道后强制重载一次兜底。
+
       const selected = trackEls[subtitleIndex]
       if (!selected) return
+
+      const tt = selected.track
+      if (tt) {
+        tt.removeEventListener('cuechange', updateCue)
+        tt.addEventListener('cuechange', updateCue)
+      }
+
+      // 竞态兜底重载检测
       delay(() => {
-        const tt = selected.track
-        if (tt && tt.mode === 'showing' && (!tt.cues || tt.cues.length === 0)) {
+        const curTt = selected.track
+        if (curTt && curTt.mode === 'hidden' && (!curTt.cues || curTt.cues.length === 0)) {
           const src = selected.getAttribute('src')
           if (src) {
             selected.setAttribute('src', '')
             selected.setAttribute('src', src)
-            tt.mode = 'showing'
+            curTt.mode = 'hidden'
           }
         }
       }, 1200)
+
+      updateCue()
     }
 
     apply()
-    // 轨道元数据就绪后再应用一次，确保字幕真正可见
     video.addEventListener('loadedmetadata', apply)
+    video.addEventListener('timeupdate', updateCue)
+    video.addEventListener('seeking', updateCue)
+    video.addEventListener('seeked', updateCue)
+
     return () => {
       video.removeEventListener('loadedmetadata', apply)
+      video.removeEventListener('timeupdate', updateCue)
+      video.removeEventListener('seeking', updateCue)
+      video.removeEventListener('seeked', updateCue)
       timers.forEach(clearTimeout)
+      const trackEls = Array.from(video.querySelectorAll('track'))
+      const selected = trackEls[subtitleIndex]
+      if (selected?.track) {
+        selected.track.removeEventListener('cuechange', updateCue)
+      }
     }
   }, [subtitleIndex, subs, videoRef])
 
@@ -213,6 +260,21 @@ export function PlayerVideoStage({
               onLoaded={onDanmakuLoaded}
               onCandidates={onDanmakuCandidates}
             />
+            {/* 自定义沉浸式字幕层：纯透明背景 + 柔和阴影，完全消除浏览器原生黑框 */}
+            {activeCueText ? (
+              <div className="pointer-events-none absolute inset-x-0 bottom-4 sm:bottom-6 md:bottom-8 z-10 flex justify-center text-center px-4">
+                <span
+                  className="inline-block max-w-[92%] whitespace-pre-line text-center font-sans font-medium text-white text-base sm:text-lg md:text-xl lg:text-2xl select-none"
+                  style={{
+                    textShadow:
+                      '0 1px 3px rgba(0, 0, 0, 0.95), 0 0 8px rgba(0, 0, 0, 0.85), 0 0 16px rgba(0, 0, 0, 0.65)',
+                    lineHeight: 1.35,
+                  }}
+                >
+                  {activeCueText}
+                </span>
+              </div>
+            ) : null}
           </div>
           <PlayerControls
             videoRef={videoRef}
