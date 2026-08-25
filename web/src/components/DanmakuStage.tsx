@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { create, type Manager, type ManagerPlugin } from 'danmu'
 
-import { danmakuAPI, type DanmakuAnime } from '../api/danmaku'
+import { danmakuAPI, type DanmakuAnime, type DanmakuLoadedInfo } from '../api/danmaku'
 import type { Media } from '../types'
 import { parseDanmaku, type Comment } from '../utils/parseDanmaku'
 
@@ -28,8 +28,8 @@ type DanmakuStageProps = {
   search?: string | null
   /** Explicit danmaku library chosen by the user; null = auto-resolve. */
   episodeId?: number | string | null
-  /** Called after each fetch attempt (success or error) finishes. */
-  onLoaded?: () => void
+  /** Called after each fetch attempt (success or error) finishes with metadata. */
+  onLoaded?: (info: DanmakuLoadedInfo | null) => void
   /** Called when multiple anime matched and the user must pick one. */
   onCandidates?: (candidates: DanmakuAnime[]) => void
 }
@@ -127,6 +127,7 @@ export function DanmakuStage({
     applyLiveSettings()
 
     const loadDanmaku = async () => {
+      let loadedInfo: DanmakuLoadedInfo | null = null
       try {
         const res = await danmakuAPI.fetch(media.id, {
           kw: search ?? undefined,
@@ -144,14 +145,28 @@ export function DanmakuStage({
             .filter((c) => Number.isFinite(c.time) && c.time >= 0)
             .sort((a, b) => a.time - b.time)
           nextIndex = 0
+          loadedInfo = {
+            animeTitle: res.anime_title,
+            episodeTitle: res.episode_title,
+            episodeId: res.episode_id ?? (episodeId ? Number(episodeId) || episodeId : undefined),
+            matchMode: res.match_mode,
+            totalCount: comments.length,
+            sourceType: res.source_type,
+          }
         } else {
           comments = []
+          loadedInfo = {
+            totalCount: 0,
+          }
         }
       } catch {
         // 拉取失败时静默关闭弹幕，不打断播放。
         comments = []
+        loadedInfo = {
+          totalCount: 0,
+        }
       } finally {
-        if (!disposed) onLoaded?.()
+        if (!disposed) onLoaded?.(loadedInfo)
       }
     }
 

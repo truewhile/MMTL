@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReactNode, RefObject } from 'react'
 
 import { subtitlesAPI, type SubtitleTrack } from '../api/subtitles'
-import { type DanmakuAnime } from '../api/danmaku'
+import { type DanmakuAnime, type DanmakuLoadedInfo } from '../api/danmaku'
 import type { Media } from '../types'
 import { DanmakuStage } from '../components/DanmakuStage'
 import { PlayerControls } from '../components/PlayerControls'
@@ -24,7 +24,7 @@ type PlayerVideoStageProps = {
   danmakuEpisodeId: number | string | null
   danmakuOpen: boolean
   onToggleDanmaku: () => void
-  onDanmakuLoaded: () => void
+  onDanmakuLoaded: (info: DanmakuLoadedInfo | null) => void
   onDanmakuCandidates: (candidates: DanmakuAnime[]) => void
   /** Danmaku settings panel; rendered inside the stage so it stays visible in fullscreen. */
   danmakuPanel: ReactNode

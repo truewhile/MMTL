@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 
 import { mediaAPI } from '../api/library'
 import { api, hlsURL, streamURL } from '../api/client'
-import { danmakuAPI, type DanmakuAnime } from '../api/danmaku'
+import { danmakuAPI, type DanmakuAnime, type DanmakuLoadedInfo } from '../api/danmaku'
 import { playbackAPI } from '../api/playback'
 import { subtitlesAPI, type SubtitleTrack } from '../api/subtitles'
 import { systemAPI } from '../api/system'
@@ -72,6 +72,8 @@ export function PlayerPage() {
   const [danmakuEpisodeId, setDanmakuEpisodeId] = useState<number | string | null>(null)
   // 自动匹配歧义（多番剧命中）时的候选列表。
   const [danmakuCandidates, setDanmakuCandidates] = useState<DanmakuAnime[]>([])
+  // 已加载弹幕的元数据信息（番剧名、单集名、条数、匹配模式等）。
+  const [danmakuInfo, setDanmakuInfo] = useState<DanmakuLoadedInfo | null>(null)
   // 用户当前选定的弹幕来源描述（面板中展示）。
   const [danmakuSelectedSource, setDanmakuSelectedSource] = useState('')
   const [danmakuOpacity, setDanmakuOpacity] = useState(1)
@@ -129,17 +131,20 @@ export function PlayerPage() {
     setDanmakuSearching(true)
     setDanmakuCandidates([])
     setDanmakuEpisodeId(null)
+    setDanmakuInfo(null)
     setDanmakuSearch(kw || null)
   }, [])
 
-  const danmakuLoaded = useCallback(() => {
+  const danmakuLoaded = useCallback((info: DanmakuLoadedInfo | null) => {
     setDanmakuSearching(false)
+    setDanmakuInfo(info)
   }, [])
 
   // 多番剧命中（disambiguation）：展示候选让用户选择。
   const danmakuGotCandidates = useCallback((candidates: DanmakuAnime[]) => {
     setDanmakuCandidates(candidates)
     setDanmakuSearching(false)
+    setDanmakuInfo(null)
     // 候选是静默返回的（此时没有任何弹幕）；自动打开面板提示用户选择来源。
     if (candidates.length > 0) setDanmakuOpen(true)
   }, [])
@@ -150,7 +155,7 @@ export function PlayerPage() {
     setDanmakuCandidates([])
     setDanmakuSearching(true)
     // 展示当前所选来源（面板标题处可见）。
-    setDanmakuSelectedSource(`${animeTitle}・${episodeTitle}`)
+    setDanmakuSelectedSource(episodeTitle ? `${animeTitle}・${episodeTitle}` : animeTitle)
   }, [])
 
   // 回到自动匹配（清除用户手动选择）。
@@ -159,6 +164,8 @@ export function PlayerPage() {
     setDanmakuCandidates([])
     setDanmakuSearching(true)
     setDanmakuSearch(null)
+    setDanmakuSelectedSource('')
+    setDanmakuInfo(null)
   }, [])
 
   // Load metadata and pick a default mode.
@@ -346,6 +353,7 @@ export function PlayerPage() {
             onFontSizeChange={setDanmakuFontSize}
             candidates={danmakuCandidates}
             selectedSource={danmakuSelectedSource}
+            danmakuInfo={danmakuInfo}
             onSelectEpisode={danmakuSelectEpisode}
             onResetAuto={danmakuResetAuto}
           />

@@ -92,6 +92,10 @@ func TestDanmakuFetchHashMatchLayer(t *testing.T) {
 	require.Equal(t, "xml", res.SourceType)
 	require.Contains(t, res.Raw, "弹幕Hash命中")
 	require.Empty(t, res.Candidates)
+	require.Equal(t, "测试动画", res.AnimeTitle)
+	require.Equal(t, "第1话", res.EpisodeTitle)
+	require.Equal(t, int64(25484), res.EpisodeID)
+	require.Equal(t, "hash", res.MatchMode)
 
 	// match 请求体：文件名去扩展名并 URL 转义（官方接口要求，实测验证）、
 	// hash、大小、matchMode 齐全。

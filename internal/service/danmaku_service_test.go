@@ -142,6 +142,10 @@ func TestDanmakuFetchWithDandanplaySource(t *testing.T) {
 	require.Equal(t, "xml", res.SourceType)
 	require.Contains(t, res.Raw, "弹幕A")
 	require.Contains(t, res.Raw, `p="0.5,1,16777215,user1"`)
+	require.Equal(t, "测试动画", res.AnimeTitle)
+	require.Equal(t, "第1话", res.EpisodeTitle)
+	require.Equal(t, int64(25484), res.EpisodeID)
+	require.Equal(t, "search", res.MatchMode)
 }
 
 func TestDanmakuFetchUsesOriginalNameForSearch(t *testing.T) {
@@ -262,6 +266,8 @@ func TestDanmakuFetchWithExplicitEpisodeID(t *testing.T) {
 	require.True(t, res.Enabled)
 	require.Contains(t, res.Raw, "显式指定弹幕")
 	require.Empty(t, res.Candidates)
+	require.Equal(t, int64(99999), res.EpisodeID)
+	require.Equal(t, "manual", res.MatchMode)
 }
 func TestDetectDanmakuSourceType(t *testing.T) {
 	cases := []struct {

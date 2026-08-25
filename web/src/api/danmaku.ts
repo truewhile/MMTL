@@ -28,6 +28,19 @@ export interface DanmakuFetchResult {
   area: string
   raw?: string
   candidates?: DanmakuAnime[]
+  anime_title?: string
+  episode_title?: string
+  episode_id?: number
+  match_mode?: 'hash' | 'filename' | 'search' | 'manual' | string
+}
+
+export interface DanmakuLoadedInfo {
+  animeTitle?: string
+  episodeTitle?: string
+  episodeId?: number | string
+  matchMode?: 'hash' | 'filename' | 'search' | 'manual' | string
+  totalCount: number
+  sourceType?: 'auto' | 'xml' | 'json'
 }
 
 export type DanmakuFetchOptions = {
