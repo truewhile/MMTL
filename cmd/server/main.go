@@ -12,10 +12,7 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -108,30 +105,19 @@ func main() {
 
 	router := buildRouter(cfg, logger, services)
 
-	srv := &http.Server{
-		Addr:              fmt.Sprintf(":%d", cfg.App.Port),
-		Handler:           router,
-		ReadHeaderTimeout: 15 * time.Second,
+	serverMgr := newServerManager(cfg, logger, router)
+	services.ReloadHTTPServer = serverMgr.Reload
+	if err := serverMgr.Start(); err != nil {
+		logger.Fatal("listen failed", zap.Error(err))
 	}
-
-	ln, err := net.Listen("tcp", srv.Addr)
-	if err != nil {
-		logger.Fatal("listen failed", zap.String("addr", srv.Addr), zap.Error(err))
-	}
-	localIP := getLocalIP()
-	logger.Info("server is ready",
-		zap.String("local", fmt.Sprintf("http://%s:%d", localIP, cfg.App.Port)),
-		zap.String("listen", srv.Addr),
-	)
 	go func() {
-		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Fatal("listen failed", zap.Error(err))
+		scheme := "http"
+		if cfg.App.HTTPSEnabled {
+			scheme = "https"
 		}
-	}()
-	go func() {
 		if publicIP := getPublicIP(3 * time.Second); publicIP != "" {
 			logger.Info("server public endpoint",
-				zap.String("public", fmt.Sprintf("http://%s:%d", publicIP, cfg.App.Port)),
+				zap.String("public", fmt.Sprintf("%s://%s:%d", scheme, publicIP, cfg.App.Port)),
 			)
 		}
 	}()
@@ -145,7 +131,7 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := serverMgr.Shutdown(ctx); err != nil {
 		logger.Error("graceful shutdown failed", zap.Error(err))
 	}
 	services.Close()

@@ -304,7 +304,7 @@ export function PlayerPage() {
   }, [directOnly, hlsUnavailable, mode, params, setParams])
 
   return (
-    <div className="relative -m-6 flex min-h-screen flex-col overflow-hidden bg-black md:-m-8">
+    <div className="relative flex h-full w-full flex-1 flex-col overflow-hidden bg-black">
       <PlayerTopBar
         directOnly={directOnly}
         mode={mode}

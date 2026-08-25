@@ -50,7 +50,10 @@ export function PlayerControls({
   onToggleDanmaku,
 }: PlayerControlsProps) {
   const video = () => videoRef.current
-  const container = () => videoRef.current?.parentElement ?? null
+  const container = () =>
+    videoRef.current?.closest<HTMLElement>('[data-player-stage]') ??
+    videoRef.current?.parentElement ??
+    null
 
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)

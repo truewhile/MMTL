@@ -63,18 +63,65 @@ export function SettingsPage() {
   const onSave = async (e: FormEvent) => {
     e.preventDefault()
     if (dirty.size === 0) return
+
+    const wantHTTPS = values['https.enabled'] === 'true' || values['https.enabled'] === '1'
+    // 证书/私钥任一来源可用即可：路径优先，其次粘贴的内容。
+    const materialOK = (content?: string, path?: string) =>
+      Boolean((path ?? '').trim() || (content ?? '').trim())
+    if (wantHTTPS && !(materialOK(values['https.cert'], values['https.cert_path']) &&
+                       materialOK(values['https.key'], values['https.key_path']))) {
+      toast.error('启用 HTTPS 前请先填写 SSL 证书和私钥（内容或路径任选其一）')
+      return
+    }
+
     setSaving(true)
     try {
-      // Backend exposes a single-key updater; loop through dirty keys.
-      for (const key of dirty) {
-        await adminAPI.updateSetting(key, values[key] ?? '')
+      // 证书/私钥（内容与路径）先保存、启用开关最后保存，后端校验开关时才能读到最新的配置。
+      const rank = (k: string) =>
+        k === 'https.cert' ||
+        k === 'https.key' ||
+        k === 'https.cert_path' ||
+        k === 'https.key_path'
+          ? 0
+          : k === 'https.enabled'
+            ? 2
+            : 1
+      const orderedKeys = [...dirty].sort((a, b) => rank(a) - rank(b))
+
+      const failures: string[] = []
+      for (const key of orderedKeys) {
+        try {
+          await adminAPI.updateSetting(key, values[key] ?? '')
+        } catch (err) {
+          failures.push(
+            (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+              `保存 ${key} 失败`,
+          )
+        }
       }
+      if (failures.length > 0) {
+        toast.error(failures[0])
+        return
+      }
+
       toast.success(`已保存 ${dirty.size} 项配置`)
       setDirty(new Set())
-    } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? '保存失败'
-      toast.error(msg)
+
+      // 切换 HTTPS 后（或关闭 HTTPS 后）连接会短暂中断，自动跳转到对应协议地址。
+      const currentIsHTTPS = window.location.protocol === 'https:'
+      const targetProto = wantHTTPS ? 'https:' : 'http:'
+      if (wantHTTPS !== currentIsHTTPS) {
+        toast(wantHTTPS ? '正在切换到 HTTPS 访问…' : '正在切换回 HTTP 访问…')
+        window.setTimeout(() => {
+          const url =
+            targetProto +
+            '//' +
+            window.location.host +
+            window.location.pathname +
+            window.location.search
+          window.location.replace(url)
+        }, 800)
+      }
     } finally {
       setSaving(false)
     }

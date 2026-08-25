@@ -100,6 +100,16 @@ func ApplyRuntimeSetting(cfg *config.Config, key, value string) {
 		}
 	case "transcode.video_bitrate", "transcoder.video_bitrate":
 		cfg.Transcoder.VideoBitrate = value
+	case "https.enabled":
+		cfg.App.HTTPSEnabled = parseBoolSetting(value, false)
+	case "https.cert":
+		cfg.App.SSLCert = value
+	case "https.key":
+		cfg.App.SSLKey = value
+	case "https.cert_path":
+		cfg.App.SSLCertPath = strings.TrimSpace(value)
+	case "https.key_path":
+		cfg.App.SSLKeyPath = strings.TrimSpace(value)
 	}
 }
 

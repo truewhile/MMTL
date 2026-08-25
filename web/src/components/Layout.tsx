@@ -50,6 +50,7 @@ export function Layout() {
 
   const showSidebar = !isMediaView(location.pathname, location.search)
   const hideSearch = location.pathname.startsWith('/settings')
+  const isPlayPage = location.pathname.startsWith('/play')
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[var(--app-bg)] text-[var(--app-text)] font-body select-none">
@@ -60,17 +61,19 @@ export function Layout() {
         showSidebar={showSidebar}
       />
       <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
-        <LayoutHeader
-          permissions={permissions}
-          theme={theme}
-          onOpenMobileDrawer={() => sidebar.setIsMobileDrawerOpen(true)}
-          user={user}
-          activeProfileId={activeProfileId}
-          profile={profile}
-          onLogout={closeProfileAndLogout}
-          showSidebar={showSidebar}
-          hideSearch={hideSearch}
-        />
+        {!isPlayPage && (
+          <LayoutHeader
+            permissions={permissions}
+            theme={theme}
+            onOpenMobileDrawer={() => sidebar.setIsMobileDrawerOpen(true)}
+            user={user}
+            activeProfileId={activeProfileId}
+            profile={profile}
+            onLogout={closeProfileAndLogout}
+            showSidebar={showSidebar}
+            hideSearch={hideSearch}
+          />
+        )}
         <LayoutWorkspace routeKey={location.pathname} />
       </div>
     </div>

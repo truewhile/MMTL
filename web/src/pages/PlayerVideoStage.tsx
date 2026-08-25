@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode, RefObject } from 'react'
 
 import { subtitlesAPI, type SubtitleTrack } from '../api/subtitles'
@@ -50,6 +50,45 @@ export function PlayerVideoStage({
   onDanmakuCandidates,
   danmakuPanel,
 }: PlayerVideoStageProps) {
+  const stageRef = useRef<HTMLDivElement>(null)
+  const [videoRatio, setVideoRatio] = useState<number | null>(null)
+  const [stageRect, setStageRect] = useState<{ width: number; height: number } | null>(null)
+
+  // 监听舞台容器的真实尺寸（响应窗口大小调整和全屏切换）
+  useEffect(() => {
+    const stage = stageRef.current
+    if (!stage) return
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (entry) {
+        setStageRect({
+          width: entry.contentRect.width,
+          height: entry.contentRect.height,
+        })
+      }
+    })
+    ro.observe(stage)
+    return () => ro.disconnect()
+  }, [])
+
+  // 监听视频元数据加载，获取真实画面宽高比
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    const updateRatio = () => {
+      if (video.videoWidth && video.videoHeight) {
+        setVideoRatio(video.videoWidth / video.videoHeight)
+      }
+    }
+    updateRatio()
+    video.addEventListener('loadedmetadata', updateRatio)
+    video.addEventListener('resize', updateRatio)
+    return () => {
+      video.removeEventListener('loadedmetadata', updateRatio)
+      video.removeEventListener('resize', updateRatio)
+    }
+  }, [videoRef, media])
+
   // 点击视频切换播放/暂停；双击切换全屏（控制栏事件自行阻止冒泡）。
   const togglePlay = () => {
     const video = videoRef.current
@@ -58,7 +97,7 @@ export function PlayerVideoStage({
     else video.pause()
   }
   const toggleFullscreen = () => {
-    const stage = videoRef.current?.parentElement
+    const stage = stageRef.current
     if (!stage) return
     if (document.fullscreenElement) void document.exitFullscreen()
     else void stage.requestFullscreen?.()
@@ -112,43 +151,69 @@ export function PlayerVideoStage({
     }
   }, [subtitleIndex, subs, videoRef])
 
+  // 根据视频画面宽高比与舞台宽高比，确定视频在哪个轴向撑满 100%
+  const isWiderThanStage =
+    videoRatio && stageRect && stageRect.height > 0
+      ? videoRatio > stageRect.width / stageRect.height
+      : true
+
+  const wrapperStyle = videoRatio
+    ? {
+        aspectRatio: `${videoRatio}`,
+        width: isWiderThanStage ? '100%' : 'auto',
+        height: isWiderThanStage ? 'auto' : '100%',
+        maxWidth: '100%',
+        maxHeight: '100%',
+      }
+    : {
+        width: '100%',
+        height: '100%',
+      }
+
   return (
     <div
-      className="relative flex flex-1 items-center justify-center overflow-hidden bg-black"
+      ref={stageRef}
+      data-player-stage
+      className="relative flex h-full w-full flex-1 items-center justify-center overflow-hidden bg-black"
       onClick={togglePlay}
       onDoubleClick={toggleFullscreen}
     >
       {media ? (
         <>
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            className="relative z-0 max-h-screen w-full max-w-[1600px] bg-black"
-            onError={onVideoError}
+          <div
+            className="relative flex items-center justify-center overflow-hidden"
+            style={wrapperStyle}
           >
-            {subs.map((track) => (
-              <track
-                key={track.path}
-                kind="subtitles"
-                src={subtitlesAPI.url(media.id, track.path)}
-                srcLang={track.lang}
-                label={track.label || track.lang}
-              />
-            ))}
-          </video>
-          <DanmakuStage
-            media={media}
-            videoRef={videoRef}
-            enabled={danmakuEnabled}
-            opacity={danmakuOpacity}
-            fontSize={danmakuFontSize}
-            area={danmakuArea}
-            search={danmakuSearch}
-            episodeId={danmakuEpisodeId}
-            onLoaded={onDanmakuLoaded}
-            onCandidates={onDanmakuCandidates}
-          />
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              className="h-full w-full object-contain bg-black"
+              onError={onVideoError}
+            >
+              {subs.map((track) => (
+                <track
+                  key={track.path}
+                  kind="subtitles"
+                  src={subtitlesAPI.url(media.id, track.path)}
+                  srcLang={track.lang}
+                  label={track.label || track.lang}
+                />
+              ))}
+            </video>
+            <DanmakuStage
+              media={media}
+              videoRef={videoRef}
+              enabled={danmakuEnabled}
+              opacity={danmakuOpacity}
+              fontSize={danmakuFontSize}
+              area={danmakuArea}
+              search={danmakuSearch}
+              episodeId={danmakuEpisodeId}
+              onLoaded={onDanmakuLoaded}
+              onCandidates={onDanmakuCandidates}
+            />
+          </div>
           <PlayerControls
             videoRef={videoRef}
             subs={subs}

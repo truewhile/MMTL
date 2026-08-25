@@ -109,6 +109,14 @@ export function DanmakuStage({
     // 弹幕层不拦截播放器控制栏的点击。
     holder.style.pointerEvents = 'none'
 
+    // 监听 holder 尺寸变化（全屏/退出全屏/窗口缩放），实时重置弹道与容器边界
+    const ro = new ResizeObserver(() => {
+      if (!disposed && managerRef.current) {
+        managerRef.current.format()
+      }
+    })
+    ro.observe(holder)
+
     const applyLiveSettings = () => {
       const { opacity: liveOpacity, area: liveArea } = liveRef.current
       manager.setOpacity(liveOpacity)
@@ -215,6 +223,7 @@ export function DanmakuStage({
 
     return () => {
       disposed = true
+      ro.disconnect()
       cancelAnimationFrame(raf)
       video.removeEventListener('play', onPlay)
       video.removeEventListener('playing', onPlay)

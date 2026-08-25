@@ -64,6 +64,10 @@ type Container struct {
 
 	stopCtx    context.Context
 	stopCancel context.CancelFunc
+
+	// ReloadHTTPServer 由 cmd/server 注入。HTTPS 相关设置保存后，handler
+	// 会调用它把 HTTP/HTTPS 监听热切换到最新配置；nil 表示未注入（测试环境）。
+	ReloadHTTPServer func() error
 }
 
 // New 构建服务容器。
