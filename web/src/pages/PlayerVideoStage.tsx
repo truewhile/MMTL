@@ -115,12 +115,6 @@ export function PlayerVideoStage({
       return
     }
 
-    const timers = new Set<ReturnType<typeof setTimeout>>()
-    const delay = (fn: () => void, ms: number) => {
-      const id = setTimeout(fn, ms)
-      timers.add(id)
-    }
-
     const updateCue = () => {
       const trackEls = Array.from(video.querySelectorAll('track'))
       const selectedEl = trackEls[subtitleIndex]
@@ -130,16 +124,24 @@ export function PlayerVideoStage({
         return
       }
 
+      // 优先从浏览器 activeCues 中取当前文本；若浏览器在 hidden 模式下延迟触发 cuechange，
+      // 则从 tt.cues 中根据 video.currentTime 实时匹配当前字幕，确保初次加载无感立即可见。
+      const texts: string[] = []
       if (tt.activeCues && tt.activeCues.length > 0) {
-        const texts: string[] = []
         for (let i = 0; i < tt.activeCues.length; i++) {
           const cue = tt.activeCues[i] as VTTCue
           if (cue && cue.text) texts.push(cue.text)
         }
-        setActiveCueText(texts.join('\n'))
-      } else {
-        setActiveCueText('')
+      } else if (tt.cues && tt.cues.length > 0) {
+        const cur = video.currentTime
+        for (let i = 0; i < tt.cues.length; i++) {
+          const cue = tt.cues[i] as VTTCue
+          if (cue && cur >= cue.startTime && cur <= cue.endTime && cue.text) {
+            texts.push(cue.text)
+          }
+        }
       }
+      setActiveCueText(texts.join('\n'))
     }
 
     const apply = () => {
@@ -162,18 +164,8 @@ export function PlayerVideoStage({
         tt.addEventListener('cuechange', updateCue)
       }
 
-      // 竞态兜底重载检测
-      delay(() => {
-        const curTt = selected.track
-        if (curTt && curTt.mode === 'hidden' && (!curTt.cues || curTt.cues.length === 0)) {
-          const src = selected.getAttribute('src')
-          if (src) {
-            selected.setAttribute('src', '')
-            selected.setAttribute('src', src)
-            curTt.mode = 'hidden'
-          }
-        }
-      }, 1200)
+      selected.removeEventListener('load', updateCue)
+      selected.addEventListener('load', updateCue)
 
       updateCue()
     }
@@ -183,20 +175,24 @@ export function PlayerVideoStage({
     video.addEventListener('timeupdate', updateCue)
     video.addEventListener('seeking', updateCue)
     video.addEventListener('seeked', updateCue)
+    video.addEventListener('playing', updateCue)
 
     return () => {
       video.removeEventListener('loadedmetadata', apply)
       video.removeEventListener('timeupdate', updateCue)
       video.removeEventListener('seeking', updateCue)
       video.removeEventListener('seeked', updateCue)
-      timers.forEach(clearTimeout)
+      video.removeEventListener('playing', updateCue)
       const trackEls = Array.from(video.querySelectorAll('track'))
       const selected = trackEls[subtitleIndex]
-      if (selected?.track) {
-        selected.track.removeEventListener('cuechange', updateCue)
+      if (selected) {
+        selected.removeEventListener('load', updateCue)
+        if (selected.track) {
+          selected.track.removeEventListener('cuechange', updateCue)
+        }
       }
     }
-  }, [subtitleIndex, subs, videoRef])
+  }, [subtitleIndex, subs, videoRef, media])
 
   // 根据视频画面宽高比与舞台宽高比，确定视频在哪个轴向撑满 100%
   const isWiderThanStage =
@@ -238,13 +234,14 @@ export function PlayerVideoStage({
               className="h-full w-full object-contain bg-black"
               onError={onVideoError}
             >
-              {subs.map((track) => (
+              {subs.map((track, index) => (
                 <track
                   key={track.path}
                   kind="subtitles"
                   src={subtitlesAPI.url(media.id, track.path)}
                   srcLang={track.lang}
                   label={track.label || track.lang}
+                  default={index === subtitleIndex}
                 />
               ))}
             </video>
