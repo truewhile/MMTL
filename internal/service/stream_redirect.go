@@ -15,11 +15,22 @@ import (
 // /api/cloud/play 路径，由 absoluteInternalRedirect 基于「当前请求」补全
 // host，从而对历史脏数据免疫。
 func normalizeCloudPlayTarget(raw string) string {
-	typ, ref, ok := parseCloudMediaPlaybackURL(raw)
-	if !ok {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
 		return raw
 	}
-	return BuildRelativeCloudPlayURL(typ, ref)
+	if typ, ref, ok := parseCloudMediaPlaybackURL(raw); ok {
+		return BuildRelativeCloudPlayURL(typ, ref)
+	}
+	if u, err := url.Parse(raw); err == nil {
+		path := strings.ToLower(u.Path)
+		if strings.HasPrefix(path, "/api/strm/play/") || strings.HasPrefix(path, "/api/cloud/play/") || strings.HasPrefix(path, "/api/stream/") {
+			u.Scheme = ""
+			u.Host = ""
+			return u.String()
+		}
+	}
+	return raw
 }
 
 // BuildRelativeCloudPlayURL 构造相对的云盘播放 API 路径。
