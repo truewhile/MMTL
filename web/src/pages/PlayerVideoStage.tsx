@@ -66,19 +66,50 @@ export function PlayerVideoStage({
 
   // 把用户选择的字幕轨道应用到 <video> 的 textTracks（跨浏览器显式设置
   // mode；<track default> 只影响初始值，部分浏览器不会自动显示）。
+  //
+  // 通过 React 渲染的 <track> 元素定位而不是 textTracks 索引：hls.js 等
+  // 可能向 textTracks 注入内部轨道（如 CEA-608 captions），索引会错位。
   useEffect(() => {
     const video = videoRef.current
     if (!video || subs.length === 0) return
-    const apply = () => {
-      const tracks = video.textTracks
-      for (let i = 0; i < tracks.length; i++) {
-        tracks[i].mode = i === subtitleIndex ? 'showing' : 'disabled'
-      }
+    const timers = new Set<ReturnType<typeof setTimeout>>()
+    const delay = (fn: () => void, ms: number) => {
+      const id = setTimeout(fn, ms)
+      timers.add(id)
     }
+
+    const apply = () => {
+      const trackEls = Array.from(video.querySelectorAll('track'))
+      if (trackEls.length === 0) return
+      trackEls.forEach((el, i) => {
+        const tt = el.track
+        if (tt) tt.mode = i === subtitleIndex ? 'showing' : 'disabled'
+      })
+      // Chrome 把轨道从 disabled 切回 showing 时是异步重新拉取字幕；
+      // 若拉取因竞态没有发生（例如切换过程中视频重载），cues 会一直为空，
+      // 表现为「字幕已选中但不显示」。检测到空轨道后强制重载一次兜底。
+      const selected = trackEls[subtitleIndex]
+      if (!selected) return
+      delay(() => {
+        const tt = selected.track
+        if (tt && tt.mode === 'showing' && (!tt.cues || tt.cues.length === 0)) {
+          const src = selected.getAttribute('src')
+          if (src) {
+            selected.setAttribute('src', '')
+            selected.setAttribute('src', src)
+            tt.mode = 'showing'
+          }
+        }
+      }, 1200)
+    }
+
     apply()
     // 轨道元数据就绪后再应用一次，确保字幕真正可见
     video.addEventListener('loadedmetadata', apply)
-    return () => video.removeEventListener('loadedmetadata', apply)
+    return () => {
+      video.removeEventListener('loadedmetadata', apply)
+      timers.forEach(clearTimeout)
+    }
   }, [subtitleIndex, subs, videoRef])
 
   return (

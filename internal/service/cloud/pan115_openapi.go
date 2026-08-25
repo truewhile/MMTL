@@ -85,7 +85,14 @@ func (p *openAPI115Provider) ResolveWithUA(ctx context.Context, fileRef, ua stri
 	if err != nil {
 		return nil, err
 	}
-	return &DirectLink{URL: url, Proxy: false}, nil
+	// 115 CDN 防盗链白名单：直链绑定换取时的 User-Agent（调用方 UA 或
+	// DefaultUA），后续请求必须携带同一 UA，否则 403。302 播放由客户端
+	// 自带 UA 天然满足；服务端直连（弹幕 hash 等）依赖这里的 Headers。
+	bound := strings.TrimSpace(ua)
+	if bound == "" {
+		bound = cloud115.DefaultUA
+	}
+	return &DirectLink{URL: url, Proxy: false, Headers: map[string]string{"User-Agent": bound}}, nil
 }
 
 // OpenClient 暴露底层客户端（token 刷新用）。

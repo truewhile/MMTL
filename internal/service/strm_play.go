@@ -84,7 +84,9 @@ func (s *StrmService) resolveCloudPlay(ctx context.Context, provider string, q u
 	if link.Proxy {
 		return &StrmPlayResult{Link: link, Proxy: true}, nil
 	}
-	return &StrmPlayResult{RedirectURL: link.URL}, nil
+	// Link 一并保留：302 处理器只认 RedirectURL，但服务端直连（弹幕 hash
+	// 拉取）需要 link.Headers 才能通过直链防盗链校验。
+	return &StrmPlayResult{RedirectURL: link.URL, Link: link}, nil
 }
 
 // resolveLocalPlay 本地源：校验路径位于某个本地同步目录的源目录内。

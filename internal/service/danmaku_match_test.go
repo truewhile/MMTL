@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/ShukeBta/MMTL/internal/service/cloud"
 )
 
 // overrideDanmakuOfficialBase points the "official" endpoint (match + fallback)
@@ -178,14 +179,21 @@ func TestDanmakuFetchHashMissFallsBackToFileNameSearch(t *testing.T) {
 }
 
 // strm：通过解析出的直链 Range 拉 16MB 前缀算 hash → match → 拉弹幕。
+// range server 模拟 115 CDN 防盗链：UA 不匹配直接 403（真实部署中
+// 直链绑定换取时的 UA，不带绑定 UA 拉取会失败，见 pan115_openapi.go）。
 func TestDanmakuFetchStrmHashViaDirectLink(t *testing.T) {
 	content := bytes.Repeat([]byte("strm-video-bytes-0123456789"), 400)
 	sum := md5.Sum(content)
 	wantHash := hex.EncodeToString(sum[:])
 
-	var gotRange string
+	var gotRange, gotUA string
 	rangeSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotRange = r.Header.Get("Range")
+		gotUA = r.Header.Get("User-Agent")
+		if gotUA != "bound-ua-115" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
 		w.Header().Set("Content-Type", "application/octet-stream")
 		_, _ = w.Write(content)
 	}))
@@ -202,7 +210,11 @@ func TestDanmakuFetchStrmHashViaDirectLink(t *testing.T) {
 	var gotProvider string
 	svc.SetStrmResolver(func(_ context.Context, provider string, _ url.Values) (*StrmPlayResult, error) {
 		gotProvider = provider
-		return &StrmPlayResult{RedirectURL: rangeSrv.URL}, nil
+		// 播放链路 302 直链 + 绑定的 UA 头（防服务端直连 403）。
+		return &StrmPlayResult{
+			RedirectURL: rangeSrv.URL,
+			Link:        &cloud.DirectLink{URL: rangeSrv.URL, Headers: map[string]string{"User-Agent": "bound-ua-115"}},
+		}, nil
 	})
 	ctx := context.Background()
 	strmPath := filepath.Join(t.TempDir(), "远程动画.第01话.strm")
@@ -220,6 +232,7 @@ func TestDanmakuFetchStrmHashViaDirectLink(t *testing.T) {
 	require.Contains(t, res.Raw, "弹幕Strm命中")
 	require.Equal(t, "115", gotProvider)
 	require.Contains(t, gotRange, "bytes=0-")
+	require.Equal(t, "bound-ua-115", gotUA) // 防盗链 UA 必须透传
 	require.Contains(t, seen, `"fileHash":"`+wantHash+`"`)
 	require.Contains(t, seen, `"fileName":"`+url.QueryEscape("远程动画.第01话")+`"`)
 	// strm 的 SizeBytes 是文本大小，不参与 match。

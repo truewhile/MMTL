@@ -545,6 +545,8 @@ func (s *DanmakuService) hashStrmTarget(ctx context.Context, raw string) (string
 		}
 		src, err = s.strmResolve(ctx, segs[0], u.Query())
 		if err != nil || src == nil {
+			s.log.Warn("danmaku strm resolve failed, hash layer skipped",
+				zap.String("provider", segs[0]), zap.Error(err))
 			return "", false
 		}
 	case u.Scheme == "http" || u.Scheme == "https":
@@ -557,13 +559,20 @@ func (s *DanmakuService) hashStrmTarget(ctx context.Context, raw string) (string
 	case src.LocalPath != "":
 		return s.hashLocalFile(src.LocalPath)
 	case src.RedirectURL != "":
-		body, err = s.openRangeBody(ctx, src.RedirectURL, nil)
+		var headers map[string]string
+		if src.Link != nil {
+			headers = src.Link.Headers // 115 直链防盗链要求携带绑定 UA
+		}
+		body, err = s.openRangeBody(ctx, src.RedirectURL, headers)
 	case src.Link != nil && src.Link.URL != "":
 		body, err = s.openRangeBody(ctx, src.Link.URL, src.Link.Headers)
 	default:
 		return "", false
 	}
 	if err != nil || body == nil {
+		if err != nil {
+			s.log.Warn("danmaku hash prefix fetch failed, hash layer skipped", zap.String("target", raw), zap.Error(err))
+		}
 		return "", false
 	}
 	defer body.Close()
