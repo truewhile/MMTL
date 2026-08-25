@@ -48,11 +48,18 @@ type StrmSyncPath struct {
 	DeleteDir       bool       `json:"delete_dir"`                        // 清理多余文件时删除空目录
 	Cron            string     `gorm:"size:128" json:"cron"`              // 5 段 cron 表达式（可选）
 	EnableCron      bool       `json:"enable_cron"`                       // 是否按 Cron 定时同步
+	SyncMode        string     `gorm:"size:32;default:'incremental'" json:"sync_mode"` // 默认同步模式：incremental / full
 	Enabled         bool       `gorm:"default:true" json:"enabled"`
 	LastSyncAt      *time.Time `json:"last_sync_at"`
 	LastSyncStatus  string     `gorm:"size:16" json:"last_sync_status"` // idle/running/ok/error/canceled
 	LastSyncMessage string     `gorm:"size:1024" json:"last_sync_message"`
 }
+
+// STRM 同步类型。
+const (
+	StrmSyncTypeIncremental = "incremental"
+	StrmSyncTypeFull        = "full"
+)
 
 // StrmSyncRecord 是一次同步执行的记录。
 const (
@@ -66,6 +73,7 @@ const (
 type StrmSyncRecord struct {
 	Base
 	SyncPathID string     `gorm:"size:36;index" json:"sync_path_id"`
+	SyncType   string     `gorm:"size:32;default:'incremental'" json:"sync_type"` // incremental / full
 	Status     string     `gorm:"size:16;index" json:"status"`
 	Total      int64      `json:"total"`    // 远端发现的文件总数
 	NewStrm    int64      `json:"new_strm"` // 本次新建/更新的 strm 数
@@ -123,3 +131,12 @@ type StrmUploadTask struct {
 	StartedAt  *time.Time `json:"started_at"`
 	FinishedAt *time.Time `json:"finished_at"`
 }
+
+// StrmDirCache 缓存远端网盘目录 ID 与相对路径映射（支持 115 增量同步秒级寻址）。
+type StrmDirCache struct {
+	Base
+	SyncPathID string `gorm:"size:36;index:idx_strm_dir_cache,priority:1" json:"sync_path_id"`
+	DirID      string `gorm:"size:128;index:idx_strm_dir_cache,priority:2" json:"dir_id"`
+	Path       string `gorm:"size:1024" json:"path"` // 相对根目录的路径
+}
+

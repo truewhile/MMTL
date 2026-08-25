@@ -20,6 +20,7 @@ import (
 
 	"github.com/ShukeBta/MMTL/internal/model"
 	"github.com/ShukeBta/MMTL/internal/service/cloud"
+	"github.com/ShukeBta/MMTL/internal/service/cloud115"
 )
 
 // strmSyncState 是一次同步执行的上下文。
@@ -31,16 +32,19 @@ type strmSyncState struct {
 	provider cloud.Provider // local 提供方为 nil
 	cfg      *strmPathConfig
 	rec      *model.StrmSyncRecord
+	syncType string
 
 	mu         sync.Mutex
 	processed  int              // 已处理文件计数（用于定期落库进度）
 	seenVideo  map[string]bool  // "v:"+去掉扩展名的相对路径 → 远端存在该视频
 	seenMeta   map[string]bool  // "m:"+相对路径 → 远端存在该元数据
 	remoteMeta map[string]int64 // 远端元数据大小（上传比对用）
+	dirCache   sync.Map         // dirID (string) -> relativePath (string)
 }
 
 // StartSync 启动一次同步（异步执行，同一目录同时只允许一个任务）。
-func (s *StrmService) StartSync(ctx context.Context, pathID string) error {
+// syncType 支持 "incremental"（默认增量）和 "full"（全量同步）。
+func (s *StrmService) StartSync(ctx context.Context, pathID string, syncType ...string) error {
 	p, err := s.repo.StrmSyncPath.FindByID(ctx, pathID)
 	if err != nil || p == nil {
 		return errNotFoundOr(err, "同步目录不存在")
@@ -64,9 +68,20 @@ func (s *StrmService) StartSync(ctx context.Context, pathID string) error {
 	s.running[pathID] = cancel
 	s.mu.Unlock()
 
+	mode := model.StrmSyncTypeIncremental
+	if len(syncType) > 0 && syncType[0] != "" {
+		mode = syncType[0]
+	} else if p.SyncMode != "" {
+		mode = p.SyncMode
+	}
+	if mode != model.StrmSyncTypeFull {
+		mode = model.StrmSyncTypeIncremental
+	}
+
 	now := time.Now()
 	rec := &model.StrmSyncRecord{
 		SyncPathID: pathID,
+		SyncType:   mode,
 		Status:     model.StrmSyncRecordRunning,
 		StartedAt:  &now,
 	}
@@ -145,6 +160,7 @@ func (s *StrmService) runSync(ctx context.Context, p *model.StrmSyncPath, rec *m
 		p:          p,
 		cfg:        cfg,
 		rec:        rec,
+		syncType:   rec.SyncType,
 		seenVideo:  map[string]bool{},
 		seenMeta:   map[string]bool{},
 		remoteMeta: map[string]int64{},
@@ -191,15 +207,19 @@ func (s *StrmService) finishSync(p *model.StrmSyncPath, rec *model.StrmSyncRecor
 	p.LastSyncStatus = status
 	p.LastSyncMessage = message
 	if status != model.StrmSyncRecordFailed && message == "" {
-		p.LastSyncMessage = fmt.Sprintf("完成：新增/更新 %d 个 strm，下载 %d 个元数据，清理 %d 个文件",
-			rec.NewStrm, rec.NewMeta, rec.Pruned)
+		syncTypeLabel := "增量"
+		if rec.SyncType == model.StrmSyncTypeFull {
+			syncTypeLabel = "全量"
+		}
+		p.LastSyncMessage = fmt.Sprintf("[%s] 完成：新增/更新 %d 个 strm，跳过 %d 个，下载 %d 个元数据，清理 %d 个文件",
+			syncTypeLabel, rec.NewStrm, rec.Skipped, rec.NewMeta, rec.Pruned)
 	}
 	if err := s.repo.StrmSyncPath.Update(context.Background(), p); err != nil {
 		s.log.Warn("update strm sync path failed", zap.Error(err))
 	}
 	s.log.Info("strm sync finished",
-		zap.String("path_id", p.ID), zap.String("status", status),
-		zap.Int64("new_strm", rec.NewStrm), zap.Int64("new_meta", rec.NewMeta),
+		zap.String("path_id", p.ID), zap.String("sync_type", rec.SyncType), zap.String("status", status),
+		zap.Int64("new_strm", rec.NewStrm), zap.Int64("skipped", rec.Skipped), zap.Int64("new_meta", rec.NewMeta),
 		zap.Int64("pruned", rec.Pruned), zap.String("message", message))
 }
 
@@ -208,8 +228,14 @@ func (st *strmSyncState) run() error {
 		return fmt.Errorf("创建输出目录失败：%w", err)
 	}
 	if st.provider != nil {
-		if err := st.walkRemote(); err != nil {
-			return err
+		if open115, ok := st.provider.(cloud.OpenAPI115Provider); ok && st.p.Provider == model.StrmProvider115 {
+			if err := st.walk115Flat(open115.OpenClient()); err != nil {
+				return err
+			}
+		} else {
+			if err := st.walkRemote(); err != nil {
+				return err
+			}
 		}
 	} else {
 		if err := st.walkLocalSource(); err != nil {
@@ -374,6 +400,215 @@ func (st *strmSyncState) isMetaExt(ext string) bool {
 	return false
 }
 
+// walk115Flat 使用 115 开放平台扁平化分页批量拉取机制与目录拓扑缓存（参考 QMediaSync）。
+// 极大地降低 API 请求次数并支持毫秒级/秒级增量同步。
+func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
+	ctx := st.ctx
+	rootCID := strings.TrimSpace(st.p.RemotePath)
+	if rootCID == "" {
+		rootCID = "0"
+	}
+
+	// 1. 目录拓扑缓存处理
+	st.dirCache.Store(rootCID, "")
+	if st.syncType == model.StrmSyncTypeFull {
+		// 全量同步：清空本路径的历史目录缓存
+		if err := st.s.repo.StrmDirCache.DeleteBySyncPathID(ctx, st.p.ID); err != nil {
+			st.s.log.Warn("delete strm dir cache failed", zap.Error(err))
+		}
+	} else {
+		// 增量同步：预加载历史目录缓存
+		cached, err := st.s.repo.StrmDirCache.ListBySyncPathID(ctx, st.p.ID)
+		if err == nil {
+			for _, item := range cached {
+				st.dirCache.Store(item.DirID, item.Path)
+			}
+		}
+	}
+
+	// 2. 探测文件总数
+	const pageSize = 1150
+	firstBatch, totalCount, err := open115.GetFsListFlat(ctx, rootCID, 0, pageSize)
+	if err != nil {
+		return fmt.Errorf("115: 获取文件列表失败：%w", err)
+	}
+
+	allFiles := make([]cloud115.RemoteFile, 0, totalCount)
+	allFiles = append(allFiles, firstBatch...)
+
+	// 3. 并发分页拉取剩余文件
+	if totalCount > int64(len(firstBatch)) {
+		totalPages := int((totalCount + pageSize - 1) / pageSize)
+		type pageTask struct {
+			offset int
+		}
+		pageTasks := make([]pageTask, 0, totalPages-1)
+		for page := 1; page < totalPages; page++ {
+			pageTasks = append(pageTasks, pageTask{offset: page * pageSize})
+		}
+
+		var (
+			filesMu  sync.Mutex
+			wg       sync.WaitGroup
+			taskCh   = make(chan pageTask, len(pageTasks))
+			errMu    sync.Mutex
+			fetchErr error
+		)
+
+		for _, t := range pageTasks {
+			taskCh <- t
+		}
+		close(taskCh)
+
+		workers := 4
+		if len(pageTasks) < workers {
+			workers = len(pageTasks)
+		}
+
+		for i := 0; i < workers; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for t := range taskCh {
+					if ctx.Err() != nil {
+						return
+					}
+					files, _, err := open115.GetFsListFlat(ctx, rootCID, t.offset, pageSize)
+					if err != nil {
+						errMu.Lock()
+						if fetchErr == nil {
+							fetchErr = err
+						}
+						errMu.Unlock()
+						return
+					}
+					filesMu.Lock()
+					allFiles = append(allFiles, files...)
+					filesMu.Unlock()
+				}
+			}()
+		}
+		wg.Wait()
+		if fetchErr != nil {
+			return fmt.Errorf("115: 分页拉取失败：%w", fetchErr)
+		}
+	}
+
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
+	// 4. 收集所有未在缓存中的父目录 ID (file.Pid)
+	missingPids := make(map[string]struct{})
+	for _, f := range allFiles {
+		pid := f.Pid
+		if pid == "" || pid == rootCID {
+			continue
+		}
+		if _, ok := st.dirCache.Load(pid); !ok {
+			missingPids[pid] = struct{}{}
+		}
+	}
+
+	// 并发补全未知目录详情与祖先链
+	if len(missingPids) > 0 {
+		pidList := make([]string, 0, len(missingPids))
+		for pid := range missingPids {
+			pidList = append(pidList, pid)
+		}
+
+		pidCh := make(chan string, len(pidList))
+		for _, pid := range pidList {
+			pidCh <- pid
+		}
+		close(pidCh)
+
+		var (
+			pwg        sync.WaitGroup
+			dirWorkers = 4
+		)
+		if len(pidList) < dirWorkers {
+			dirWorkers = len(pidList)
+		}
+
+		for i := 0; i < dirWorkers; i++ {
+			pwg.Add(1)
+			go func() {
+				defer pwg.Done()
+				for pid := range pidCh {
+					if ctx.Err() != nil {
+						return
+					}
+					detail, err := open115.GetFsDetailByCid(ctx, pid)
+					if err != nil {
+						st.s.log.Warn("115: 获取目录详情失败", zap.String("pid", pid), zap.Error(err))
+						continue
+					}
+					if detail == nil {
+						continue
+					}
+					// 解析相对路径
+					relPath := detail.RelativePath(rootCID)
+					st.dirCache.Store(pid, relPath)
+					_ = st.s.repo.StrmDirCache.Set(ctx, st.p.ID, pid, relPath)
+
+					// 顺便解析并缓存 detail.Paths 中包含的中间各层级目录
+					for _, ancestor := range detail.Paths {
+						if ancestor.FileId == "0" || ancestor.FileId == rootCID {
+							continue
+						}
+						if _, loaded := st.dirCache.Load(ancestor.FileId); !loaded {
+							subDetail := &cloud115.RemoteFileDetail{
+								FileId: ancestor.FileId,
+								Paths:  nil,
+							}
+							for _, p := range detail.Paths {
+								subDetail.Paths = append(subDetail.Paths, p)
+								if p.FileId == ancestor.FileId {
+									break
+								}
+							}
+							ancestorRel := subDetail.RelativePath(rootCID)
+							st.dirCache.Store(ancestor.FileId, ancestorRel)
+							_ = st.s.repo.StrmDirCache.Set(ctx, st.p.ID, ancestor.FileId, ancestorRel)
+						}
+					}
+				}
+			}()
+		}
+		pwg.Wait()
+	}
+
+	// 5. 分类处理所有文件
+	for _, f := range allFiles {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		cleanName := cleanEntryName(f.FileName, false)
+		var rel string
+		if f.Pid == "" || f.Pid == rootCID {
+			rel = cleanName
+		} else {
+			if parentVal, ok := st.dirCache.Load(f.Pid); ok && parentVal.(string) != "" {
+				rel = parentVal.(string) + "/" + cleanName
+			} else {
+				rel = cleanName
+			}
+		}
+		entry := cloud.FileEntry{
+			ID:       f.FileId,
+			Name:     f.FileName,
+			IsDir:    false,
+			Size:     f.FileSize,
+			MTime:    f.Utime,
+			PickCode: f.PickCode,
+		}
+		st.processRemoteFile(entry, rel)
+	}
+
+	return nil
+}
+
 // handleVideo 生成/更新 .strm 文件。
 func (st *strmSyncState) handleVideo(entry cloud.FileEntry, rel, ext string) {
 	relSansExt := rel[:len(rel)-len(ext)]
@@ -391,6 +626,18 @@ func (st *strmSyncState) handleVideo(entry cloud.FileEntry, rel, ext string) {
 		st.s.log.Warn("strm target path out of root", zap.String("rel", targetRel), zap.Error(err))
 		return
 	}
+
+	// 增量同步模式快速检查：本地 strm 文件存在、非空且修改时间与远端 mtime 一致，直接跳过无需读磁盘
+	if st.syncType == model.StrmSyncTypeIncremental && entry.MTime > 0 {
+		if info, err := os.Stat(target); err == nil && info.Size() > 0 && info.ModTime().Unix() == entry.MTime {
+			st.mu.Lock()
+			st.rec.Skipped++
+			st.mu.Unlock()
+			st.touchProgress()
+			return
+		}
+	}
+
 	content, err := st.strmContent(entry, rel, ext)
 	if err != nil {
 		// 并发 worker 下 rec.Message 无锁写会有数据竞争，这里仅记录日志；
@@ -403,6 +650,11 @@ func (st *strmSyncState) handleVideo(entry cloud.FileEntry, rel, ext string) {
 		existing = string(data)
 	}
 	if existing == content {
+		// 对齐本地 strm 修改时间为远端 mtime，便于后续秒级比对
+		if entry.MTime > 0 {
+			mTime := time.Unix(entry.MTime, 0)
+			_ = os.Chtimes(target, mTime, mTime)
+		}
 		st.mu.Lock()
 		st.rec.Skipped++
 		st.mu.Unlock()
@@ -422,6 +674,10 @@ func (st *strmSyncState) handleVideo(entry cloud.FileEntry, rel, ext string) {
 		_ = os.Remove(tmp)
 		st.s.log.Warn("rename strm failed", zap.String("file", target), zap.Error(err))
 		return
+	}
+	if entry.MTime > 0 {
+		mTime := time.Unix(entry.MTime, 0)
+		_ = os.Chtimes(target, mTime, mTime)
 	}
 	st.mu.Lock()
 	st.rec.NewStrm++
@@ -576,29 +832,43 @@ func (st *strmSyncState) walkLocalSource() error {
 		if err != nil {
 			return nil
 		}
-		target, err := joinLocalRel(st.p.LocalPath, relSansExt+".strm")
-		if err != nil {
-			return nil
-		}
-		if data, err := os.ReadFile(target); err == nil && string(data) == content {
+			target, err := joinLocalRel(st.p.LocalPath, relSansExt+".strm")
+			if err != nil {
+				return nil
+			}
+			mTime := info.ModTime()
+			if st.syncType == model.StrmSyncTypeIncremental {
+				if tInfo, err := os.Stat(target); err == nil && tInfo.Size() > 0 && tInfo.ModTime().Unix() == mTime.Unix() {
+					st.mu.Lock()
+					st.rec.Skipped++
+					st.mu.Unlock()
+					st.touchProgress()
+					return nil
+				}
+			}
+			if data, err := os.ReadFile(target); err == nil && string(data) == content {
+				_ = os.Chtimes(target, mTime, mTime)
+				st.mu.Lock()
+				st.rec.Skipped++
+				st.mu.Unlock()
+				st.touchProgress()
+				return nil
+			}
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return nil
+			}
+			tmp := target + ".tmp"
+			if err := os.WriteFile(tmp, []byte(content), 0o644); err == nil {
+				_ = os.Rename(tmp, target)
+				_ = os.Chtimes(target, mTime, mTime)
+			} else {
+				_ = os.Remove(tmp)
+			}
 			st.mu.Lock()
-			st.rec.Skipped++
+			st.rec.NewStrm++
 			st.mu.Unlock()
+			st.touchProgress()
 			return nil
-		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			return nil
-		}
-		tmp := target + ".tmp"
-		if err := os.WriteFile(tmp, []byte(content), 0o644); err == nil {
-			_ = os.Rename(tmp, target)
-		} else {
-			_ = os.Remove(tmp)
-		}
-		st.mu.Lock()
-		st.rec.NewStrm++
-		st.mu.Unlock()
-		return nil
 	})
 }
 

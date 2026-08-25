@@ -22,6 +22,12 @@ import (
 	"github.com/ShukeBta/MMTL/internal/service/cloud115"
 )
 
+// OpenAPI115Provider 暴露 115 开放平台驱动接口。
+type OpenAPI115Provider interface {
+	Provider
+	OpenClient() *cloud115.OpenClient
+}
+
 // openAPI115Provider 实现 Provider 接口：List 列目录、Resolve 用 pickcode
 // 换下载直链（302 offload，无需代理）、Ping 探测根目录。
 type openAPI115Provider struct {
@@ -55,15 +61,16 @@ func (p *openAPI115Provider) List(ctx context.Context, dirID string) ([]FileEntr
 		if err != nil {
 			return nil, err
 		}
-		for _, f := range files {
-			out = append(out, FileEntry{
-				ID:       f.FileId,
-				Name:     f.FileName,
-				IsDir:    f.Category == cloud115.TypeDir,
-				Size:     f.FileSize,
-				PickCode: f.PickCode,
-			})
-		}
+			for _, f := range files {
+				out = append(out, FileEntry{
+					ID:       f.FileId,
+					Name:     f.FileName,
+					IsDir:    f.Category == cloud115.TypeDir,
+					Size:     f.FileSize,
+					MTime:    f.Utime,
+					PickCode: f.PickCode,
+				})
+			}
 		if len(files) < pageSize {
 			break
 		}

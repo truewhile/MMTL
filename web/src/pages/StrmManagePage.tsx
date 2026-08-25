@@ -96,11 +96,11 @@ export function StrmManagePage() {
     return () => clearInterval(timer)
   }, [paths, refresh])
 
-  const startSync = async (path: StrmSyncPath) => {
+  const startSync = async (path: StrmSyncPath, mode: 'incremental' | 'full' = 'incremental') => {
     setActingPath(path.id)
     try {
-      await strmAPI.startSync(path.id)
-      toast.success(`已开始同步「${path.name}」`)
+      await strmAPI.startSync(path.id, mode)
+      toast.success(`已开始${mode === 'full' ? '全量' : '增量'}同步「${path.name}」`)
       await refresh()
     } catch (err) {
       toast.error(apiErrorMessage(err))
@@ -344,7 +344,7 @@ function SyncPathSection({
   onAdd: () => void
   onEdit: (path: StrmSyncPath) => void
   onDelete: (path: StrmSyncPath) => void
-  onStart: (path: StrmSyncPath) => void
+  onStart: (path: StrmSyncPath, mode?: 'incremental' | 'full') => void
   onCancel: (path: StrmSyncPath) => void
 }) {
   return (
@@ -401,15 +401,28 @@ function SyncPathSection({
                         取消
                       </button>
                     ) : (
-                      <button
-                        type="button"
-                        disabled={actingPath === path.id || !path.enabled}
-                        onClick={() => onStart(path)}
-                        className={`${iconButtonCls} disabled:opacity-40`}
-                      >
-                        {actingPath === path.id ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-                        立即同步
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          disabled={actingPath === path.id || !path.enabled}
+                          onClick={() => onStart(path, 'incremental')}
+                          className={`${iconButtonCls} text-brand-600 font-medium disabled:opacity-40`}
+                          title="增量同步：基于目录缓存快速同步新增与更新文件"
+                        >
+                          {actingPath === path.id ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                          增量同步
+                        </button>
+                        <button
+                          type="button"
+                          disabled={actingPath === path.id || !path.enabled}
+                          onClick={() => onStart(path, 'full')}
+                          className={`${iconButtonCls} text-sand-600 disabled:opacity-40`}
+                          title="全量同步：重置目录缓存并全量比对所有文件"
+                        >
+                          <RefreshCw size={14} />
+                          全量同步
+                        </button>
+                      </>
                     )}
                     <button type="button" onClick={() => onEdit(path)} className={`${iconButtonCls}`}>
                       <Pencil size={14} />
@@ -456,9 +469,11 @@ function RecordSection({ records }: { records: StrmSyncRecord[] }) {
             <thead className="border-b border-gray-200 text-xs uppercase tracking-wider text-sand-500">
               <tr>
                 <th className="px-3 py-2">时间</th>
+                <th className="px-3 py-2">类型</th>
                 <th className="px-3 py-2">状态</th>
                 <th className="px-3 py-2 text-right">扫描文件</th>
-                <th className="px-3 py-2 text-right">新增 strm</th>
+                <th className="px-3 py-2 text-right">新增/更新</th>
+                <th className="px-3 py-2 text-right">跳过</th>
                 <th className="px-3 py-2 text-right">下载元数据</th>
                 <th className="px-3 py-2 text-right">清理</th>
                 <th className="px-3 py-2">说明</th>
@@ -467,10 +482,16 @@ function RecordSection({ records }: { records: StrmSyncRecord[] }) {
             <tbody>
               {records.map((record) => {
                 const meta = RECORD_STATUS_META[record.status] ?? RECORD_STATUS_META.pending
+                const isFull = record.sync_type === 'full'
                 return (
                   <tr key={record.id} className="border-t border-gray-100">
                     <td className="whitespace-nowrap px-3 py-2 text-xs text-ink-50">
                       {formatTime(record.started_at ?? record.created_at)}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${isFull ? 'bg-amber-50 text-amber-600 border border-amber-200' : 'bg-brand-50 text-brand-600 border border-brand-200'}`}>
+                        {isFull ? '全量' : '增量'}
+                      </span>
                     </td>
                     <td className="px-3 py-2">
                       <span className={'rounded-full px-2 py-0.5 text-[11px] font-semibold ' + meta.cls}>
@@ -479,6 +500,7 @@ function RecordSection({ records }: { records: StrmSyncRecord[] }) {
                     </td>
                     <td className="px-3 py-2 text-right">{record.total}</td>
                     <td className="px-3 py-2 text-right text-brand-500">{record.new_strm}</td>
+                    <td className="px-3 py-2 text-right text-gray-500">{record.skipped}</td>
                     <td className="px-3 py-2 text-right">{record.new_meta}</td>
                     <td className="px-3 py-2 text-right">{record.pruned}</td>
                     <td className="max-w-[260px] truncate px-3 py-2 text-xs text-sand-500">{record.message}</td>

@@ -107,7 +107,8 @@ export const strmAPI = {
 
   deletePath: (id: string) => api.delete(`/admin/strm/paths/${id}`).then((r) => r.data),
 
-  startSync: (id: string) => api.post(`/admin/strm/paths/${id}/sync`).then((r) => r.data),
+  startSync: (id: string, mode: 'incremental' | 'full' = 'incremental') =>
+    api.post(`/admin/strm/paths/${id}/sync`, null, { params: { mode } }).then((r) => r.data),
 
   cancelSync: (id: string) => api.post(`/admin/strm/paths/${id}/cancel`).then((r) => r.data),
 

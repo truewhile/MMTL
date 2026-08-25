@@ -404,6 +404,9 @@ func (s *StrmService) CreateSyncPath(ctx context.Context, p *model.StrmSyncPath)
 	if strings.TrimSpace(p.Name) == "" {
 		p.Name = "同步目录 " + time.Now().Format("01-02 15:04")
 	}
+	if p.SyncMode == "" {
+		p.SyncMode = model.StrmSyncTypeIncremental
+	}
 	if p.EnableCron && strings.TrimSpace(p.Cron) == "" {
 		return nil, errors.New("启用定时同步需要填写 cron 表达式")
 	}
@@ -430,6 +433,12 @@ func (s *StrmService) UpdateSyncPath(ctx context.Context, id string, p *model.St
 	p.LastSyncAt = existing.LastSyncAt
 	p.LastSyncStatus = existing.LastSyncStatus
 	p.LastSyncMessage = existing.LastSyncMessage
+	if p.SyncMode == "" {
+		p.SyncMode = existing.SyncMode
+		if p.SyncMode == "" {
+			p.SyncMode = model.StrmSyncTypeIncremental
+		}
+	}
 	if p.EnableCron && strings.TrimSpace(p.Cron) == "" {
 		return nil, errors.New("启用定时同步需要填写 cron 表达式")
 	}

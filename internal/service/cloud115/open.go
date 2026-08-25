@@ -89,6 +89,36 @@ func (c *OpenClient) GetFsList(ctx context.Context, cid string, offset, limit in
 	return files, strings.Join(pathStr, "/"), nil
 }
 
+// GetFsListFlat 递归扁平化列出 cid 下的所有文件（跨越所有子目录，不包含文件夹节点），并返回文件列表与该树下的总文件数。
+// 类似于 QMediaSync 的 115 扁平化批量拉取机制，极大地降低多层级子目录下的 API 请求次数。
+func (c *OpenClient) GetFsListFlat(ctx context.Context, cid string, offset, limit int) ([]RemoteFile, int64, error) {
+	if cid == "" {
+		cid = "0"
+	}
+	if limit <= 0 {
+		limit = 1150
+	}
+	params := map[string]string{
+		"cid":      cid,
+		"limit":    fmt.Sprint(limit),
+		"offset":   fmt.Sprint(offset),
+		"cur":      "0",
+		"show_dir": "0",
+	}
+	resp, err := c.doAuthJSON(ctx, "GET", ProAPIBase+"/open/ufile/files", params, 2)
+	if err != nil {
+		return nil, 0, err
+	}
+	if !resp.State {
+		return nil, 0, NewOpenAPIResponseError(resp.Code, resp.Errno, resp.Message, resp.Error, "115 接口调用失败")
+	}
+	files, err := openList[RemoteFile](resp.Data)
+	if err != nil {
+		return nil, 0, fmt.Errorf("115: 解析文件列表失败：%w", err)
+	}
+	return files, resp.Count, nil
+}
+
 // GetFsDetailByCid 查询文件（夹）详情。
 func (c *OpenClient) GetFsDetailByCid(ctx context.Context, fileId string) (*RemoteFileDetail, error) {
 	params := map[string]string{"file_id": fileId}
@@ -112,6 +142,38 @@ type RemoteFileDetail struct {
 		Name   string `json:"file_name"`
 	} `json:"paths"`
 }
+
+// RelativePath 计算该目录相对于根同步目录（rootCID）的相对路径。
+func (d *RemoteFileDetail) RelativePath(rootCID string) string {
+	if d == nil || len(d.Paths) == 0 {
+		return ""
+	}
+	if rootCID == "" {
+		rootCID = "0"
+	}
+	rootIdx := -1
+	for i, p := range d.Paths {
+		if p.FileId == rootCID {
+			rootIdx = i
+			break
+		}
+	}
+	var segments []string
+	start := 0
+	if rootIdx >= 0 {
+		start = rootIdx + 1
+	} else if len(d.Paths) > 0 && (d.Paths[0].FileId == "0" || d.Paths[0].FileId == "") {
+		start = 1
+	}
+	for i := start; i < len(d.Paths); i++ {
+		name := strings.TrimSpace(d.Paths[i].Name)
+		if name != "" {
+			segments = append(segments, name)
+		}
+	}
+	return strings.Join(segments, "/")
+}
+
 
 // ─── 下载直链 ──────────────────────────────────────────────────────────────────
 

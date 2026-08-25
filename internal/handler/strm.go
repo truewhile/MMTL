@@ -178,6 +178,7 @@ type strmSyncPathReq struct {
 	DeleteDir      *bool  `json:"delete_dir"`
 	Cron           string `json:"cron"`
 	EnableCron     *bool  `json:"enable_cron"`
+	SyncMode       string `json:"sync_mode"`
 	Enabled        *bool  `json:"enabled"`
 }
 
@@ -261,7 +262,16 @@ func deleteStrmSyncPathHandler(svc *service.Container) gin.HandlerFunc {
 
 func startStrmSyncHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if err := svc.Strm.StartSync(c.Request.Context(), c.Param("id")); err != nil {
+		mode := c.Query("mode")
+		if mode == "" {
+			var body struct {
+				Mode string `json:"mode"`
+			}
+			if err := c.ShouldBindJSON(&body); err == nil && body.Mode != "" {
+				mode = body.Mode
+			}
+		}
+		if err := svc.Strm.StartSync(c.Request.Context(), c.Param("id"), mode); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
@@ -458,6 +468,7 @@ func strmSyncPathFromReq(req strmSyncPathReq) *model.StrmSyncPath {
 		DeleteDir:      boolValue(req.DeleteDir, false),
 		Cron:           strings.TrimSpace(req.Cron),
 		EnableCron:     boolValue(req.EnableCron, false),
+		SyncMode:       strings.TrimSpace(req.SyncMode),
 		Enabled:        boolValue(req.Enabled, true),
 	}
 }

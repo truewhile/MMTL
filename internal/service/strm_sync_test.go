@@ -34,10 +34,10 @@ func testStrmService(t *testing.T) *StrmService {
 		sqlDB.SetMaxOpenConns(4)
 		t.Cleanup(func() { _ = sqlDB.Close() })
 	}
-	if err := db.AutoMigrate(&model.StrmAccount{}, &model.StrmSyncPath{}, &model.StrmSyncRecord{},
-		&model.StrmDownloadTask{}, &model.StrmUploadTask{}, &model.Setting{}); err != nil {
-		t.Fatal(err)
-	}
+		if err := db.AutoMigrate(&model.StrmAccount{}, &model.StrmSyncPath{}, &model.StrmSyncRecord{},
+			&model.StrmDownloadTask{}, &model.StrmUploadTask{}, &model.StrmDirCache{}, &model.Setting{}); err != nil {
+			t.Fatal(err)
+		}
 	repos := repository.New(db)
 	ctx := context.Background()
 	if err := repos.Setting.Set(ctx, StrmSettingBaseURL, "http://test.local:8096"); err != nil {
@@ -158,6 +158,57 @@ func TestLocalStrmSync(t *testing.T) {
 		t.Fatalf("strm file should have been pruned, got err=%v", err)
 	}
 }
+
+// TestStrmFullAndIncrementalSync 测试增量同步与全量同步模式切换及记录
+func TestStrmFullAndIncrementalSync(t *testing.T) {
+	svc := testStrmService(t)
+	src := t.TempDir()
+	out := t.TempDir()
+
+	writeFile(t, filepath.Join(src, "电影", "星际穿越.mkv"), "fake-video-data")
+
+	p := syncPathRecord(t, svc, model.StrmProviderLocal, src, out, true)
+
+	// 1. 默认触发增量同步
+	if err := svc.StartSync(context.Background(), p.ID, model.StrmSyncTypeIncremental); err != nil {
+		t.Fatal(err)
+	}
+	record := waitSyncDone(t, svc, p.ID, 10*time.Second)
+	if record.Status != model.StrmSyncRecordDone {
+		t.Fatalf("sync status = %s, message = %s", record.Status, record.Message)
+	}
+	if record.SyncType != model.StrmSyncTypeIncremental {
+		t.Fatalf("expected sync_type = incremental, got %s", record.SyncType)
+	}
+	if record.NewStrm != 1 {
+		t.Fatalf("expected 1 new strm, got %d", record.NewStrm)
+	}
+
+	// 2. 再次执行增量同步，应当跳过
+	if err := svc.StartSync(context.Background(), p.ID, model.StrmSyncTypeIncremental); err != nil {
+		t.Fatal(err)
+	}
+	record = waitSyncDone(t, svc, p.ID, 10*time.Second)
+	if record.SyncType != model.StrmSyncTypeIncremental {
+		t.Fatalf("expected sync_type = incremental, got %s", record.SyncType)
+	}
+	if record.Skipped != 1 {
+		t.Fatalf("expected 1 skipped, got %d", record.Skipped)
+	}
+
+	// 3. 执行全量同步
+	if err := svc.StartSync(context.Background(), p.ID, model.StrmSyncTypeFull); err != nil {
+		t.Fatal(err)
+	}
+	record = waitSyncDone(t, svc, p.ID, 10*time.Second)
+	if record.SyncType != model.StrmSyncTypeFull {
+		t.Fatalf("expected sync_type = full, got %s", record.SyncType)
+	}
+	if record.Status != model.StrmSyncRecordDone {
+		t.Fatalf("full sync failed: status = %s, message = %s", record.Status, record.Message)
+	}
+}
+
 
 // TestStrmCronMatches cron 表达式匹配。
 func TestStrmCronMatches(t *testing.T) {

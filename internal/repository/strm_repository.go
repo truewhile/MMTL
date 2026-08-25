@@ -96,11 +96,12 @@ func (r *StrmSyncPathRepository) Update(ctx context.Context, p *model.StrmSyncPa
 		"add_path":          p.AddPath,
 		"download_meta":     p.DownloadMeta,
 		"upload_meta":       p.UploadMeta,
-		"delete_dir":        p.DeleteDir,
-		"cron":              p.Cron,
-		"enable_cron":       p.EnableCron,
-		"enabled":           p.Enabled,
-		"last_sync_at":      p.LastSyncAt,
+			"delete_dir":        p.DeleteDir,
+			"cron":              p.Cron,
+			"enable_cron":       p.EnableCron,
+			"sync_mode":         p.SyncMode,
+			"enabled":           p.Enabled,
+			"last_sync_at":      p.LastSyncAt,
 		"last_sync_status":  p.LastSyncStatus,
 		"last_sync_message": p.LastSyncMessage,
 		"updated_at":        time.Now(),
@@ -122,6 +123,7 @@ func (r *StrmSyncRecordRepository) Create(ctx context.Context, rec *model.StrmSy
 
 func (r *StrmSyncRecordRepository) Update(ctx context.Context, rec *model.StrmSyncRecord) error {
 	return r.db.WithContext(ctx).Model(&model.StrmSyncRecord{}).Where("id = ?", rec.ID).Updates(map[string]any{
+		"sync_type":   rec.SyncType,
 		"status":      rec.Status,
 		"total":       rec.Total,
 		"new_strm":    rec.NewStrm,
@@ -436,3 +438,39 @@ func (r *StrmUploadTaskRepository) DeleteFinishedOlderThan(ctx context.Context, 
 		[]string{model.StrmTaskDone, model.StrmTaskFailed, model.StrmTaskCanceled}, before).
 		Delete(&model.StrmUploadTask{}).Error
 }
+
+// ─── StrmDirCache ─────────────────────────────────────────────────────────────
+
+// StrmDirCacheRepository persists model.StrmDirCache.
+type StrmDirCacheRepository struct{ db *gorm.DB }
+
+func (r *StrmDirCacheRepository) ListBySyncPathID(ctx context.Context, syncPathID string) ([]model.StrmDirCache, error) {
+	var rows []model.StrmDirCache
+	err := r.db.WithContext(ctx).Where("sync_path_id = ?", syncPathID).Find(&rows).Error
+	return rows, err
+}
+
+func (r *StrmDirCacheRepository) Set(ctx context.Context, syncPathID, dirID, path string) error {
+	var row model.StrmDirCache
+	err := r.db.WithContext(ctx).Where("sync_path_id = ? AND dir_id = ?", syncPathID, dirID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		row = model.StrmDirCache{
+			SyncPathID: syncPathID,
+			DirID:      dirID,
+			Path:       path,
+		}
+		return r.db.WithContext(ctx).Create(&row).Error
+	}
+	if err != nil {
+		return err
+	}
+	return r.db.WithContext(ctx).Model(&model.StrmDirCache{}).Where("id = ?", row.ID).Updates(map[string]any{
+		"path":       path,
+		"updated_at": time.Now(),
+	}).Error
+}
+
+func (r *StrmDirCacheRepository) DeleteBySyncPathID(ctx context.Context, syncPathID string) error {
+	return r.db.WithContext(ctx).Where("sync_path_id = ?", syncPathID).Delete(&model.StrmDirCache{}).Error
+}
+

@@ -674,6 +674,7 @@ export function StrmSyncPathDialog({
     delete_dir: existing?.delete_dir ?? false,
     cron: existing?.cron ?? '',
     enable_cron: existing?.enable_cron ?? false,
+    sync_mode: existing?.sync_mode ?? 'incremental',
     enabled: existing?.enabled ?? true,
   }))
   const [saving, setSaving] = useState(false)
@@ -831,7 +832,7 @@ export function StrmSyncPathDialog({
                 <input className={inputCls} value={form.exclude_name ?? ''} placeholder="sample,trailer" onChange={(e) => set('exclude_name', e.target.value)} />
               </Field>
             </div>
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-3">
               <Field label="STRM 链接 path 参数">
                 <select className={inputCls} value={form.add_path ?? 1} onChange={(e) => set('add_path', Number(e.target.value))}>
                   <option value={1}>完整远端路径</option>
@@ -839,7 +840,13 @@ export function StrmSyncPathDialog({
                   <option value={3}>不带 path</option>
                 </select>
               </Field>
-              <Field label="定时同步 Cron" hint="5 段表达式，如 0 */6 * * *（每 6 小时）">
+              <Field label="默认同步模式" hint="定时触发或快速同步时的策略">
+                <select className={inputCls} value={form.sync_mode ?? 'incremental'} onChange={(e) => set('sync_mode', e.target.value as 'incremental' | 'full')}>
+                  <option value="incremental">增量同步（快速）</option>
+                  <option value="full">全量同步（全量校验）</option>
+                </select>
+              </Field>
+              <Field label="定时同步 Cron" hint="5 段表达式，如 0 */6 * * *">
                 <input className={inputCls} value={form.cron ?? ''} placeholder="0 */6 * * *" onChange={(e) => set('cron', e.target.value)} />
               </Field>
             </div>

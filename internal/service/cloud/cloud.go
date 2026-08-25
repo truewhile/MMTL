@@ -37,10 +37,11 @@ var ErrUnsupported = errors.New("unsupported cloud provider")
 
 // FileEntry is one item in a cloud directory listing.
 type FileEntry struct {
-	ID    string `json:"id"` // provider-native file id
-	Name  string `json:"name"`
-	IsDir bool   `json:"is_dir"`
-	Size  int64  `json:"size"`
+	ID       string `json:"id"` // provider-native file id
+	Name     string `json:"name"`
+	IsDir    bool   `json:"is_dir"`
+	Size     int64  `json:"size"`
+	MTime    int64  `json:"mtime,omitempty"`
 	// PickCode is 115-specific; other providers use ID directly.
 	PickCode string `json:"pick_code,omitempty"`
 }

@@ -90,6 +90,7 @@ type RespBase struct {
 	Errno   int             `json:"errno"`
 	Message string          `json:"message"`
 	Error   string          `json:"error"`
+	Count   int64           `json:"count"`
 	Data    json.RawMessage `json:"data"`
 	Raw     json.RawMessage `json:"-"` // 原始响应体（外层附加字段用）
 }

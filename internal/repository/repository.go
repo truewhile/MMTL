@@ -31,6 +31,7 @@ type Container struct {
 	StrmSyncRecord *StrmSyncRecordRepository
 	StrmDownload   *StrmDownloadTaskRepository
 	StrmUpload     *StrmUploadTaskRepository
+	StrmDirCache   *StrmDirCacheRepository
 }
 
 // New 将每个 repository 连接到单个 *gorm.DB。
@@ -58,5 +59,6 @@ func New(db *gorm.DB) *Container {
 		StrmSyncRecord: &StrmSyncRecordRepository{db: db},
 		StrmDownload:   &StrmDownloadTaskRepository{db: db},
 		StrmUpload:     &StrmUploadTaskRepository{db: db},
+		StrmDirCache:   &StrmDirCacheRepository{db: db},
 	}
 }

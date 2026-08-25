@@ -54,7 +54,8 @@ func AllModels() []interface{} {
 		&StrmAccount{},
 		&StrmSyncPath{},
 		&StrmSyncRecord{},
-		&StrmDownloadTask{},
-		&StrmUploadTask{},
-	}
+			&StrmDownloadTask{},
+			&StrmUploadTask{},
+			&StrmDirCache{},
+		}
 }

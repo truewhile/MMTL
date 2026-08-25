@@ -49,6 +49,7 @@ export interface StrmSyncPath {
   delete_dir: boolean
   cron: string
   enable_cron: boolean
+  sync_mode?: 'incremental' | 'full'
   enabled: boolean
   created_at: string
   last_sync_at?: string | null
@@ -75,12 +76,14 @@ export interface StrmSyncPathInput {
   delete_dir?: boolean
   cron?: string
   enable_cron?: boolean
+  sync_mode?: 'incremental' | 'full'
   enabled?: boolean
 }
 
 export interface StrmSyncRecord {
   id: string
   sync_path_id: string
+  sync_type?: 'incremental' | 'full'
   status: 'pending' | 'running' | 'done' | 'failed' | 'canceled'
   total: number
   new_strm: number
