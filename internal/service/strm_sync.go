@@ -440,15 +440,23 @@ func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
 		if err := st.s.repo.StrmDirCache.DeleteBySyncPathID(ctx, st.p.ID); err != nil {
 			st.s.log.Warn("delete strm dir cache failed", zap.Error(err))
 		}
-	} else {
-		// 增量同步：预加载历史目录缓存
-		cached, err := st.s.repo.StrmDirCache.ListBySyncPathID(ctx, st.p.ID)
-		if err == nil {
-			for _, item := range cached {
-				st.dirCache.Store(item.DirID, item.Path)
+		} else {
+			// 增量同步：预加载历史目录缓存（过滤历史一对多塌陷冲突的脏数据以自愈刷新）
+			cached, err := st.s.repo.StrmDirCache.ListBySyncPathID(ctx, st.p.ID)
+			if err == nil {
+				pathCounts := make(map[string]int, len(cached))
+				for _, item := range cached {
+					pathCounts[item.Path]++
+				}
+				for _, item := range cached {
+					// 若同一个 path 对应了多个不同 dir_id，说明包含历史层级塌陷的脏数据，不预加载，让后续步骤重新向 115 获取精确路径
+					if pathCounts[item.Path] > 1 {
+						continue
+					}
+					st.dirCache.Store(item.DirID, item.Path)
+				}
 			}
 		}
-	}
 
 	// 2. 探测文件总数
 	const pageSize = 1150
