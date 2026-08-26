@@ -32,20 +32,32 @@ function useCreateLibraryForm(refresh: () => Promise<void>) {
   const [roots, setRoots] = useState<RootDraft[]>([emptyRootDraft()])
   const [type, setType] = useState('movie')
   const [coverURL, setCoverURL] = useState('')
+  const [createPerSubfolder, setCreatePerSubfolder] = useState(false)
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault()
     try {
-      const payload = createRootPayload(roots)
-      if (payload.length === 0) {
-        toast.error('请至少填写一个路径')
-        return
+      if (createPerSubfolder) {
+        const parentPath = roots[0]?.path?.trim()
+        if (!parentPath) {
+          toast.error('请先选择或填写父级目录')
+          return
+        }
+        const { libraries } = await libraryAPI.createPerSubfolder(parentPath, type, coverURL.trim())
+        toast.success(`已按目录创建 ${libraries.length} 个媒体库`)
+      } else {
+        const payload = createRootPayload(roots)
+        if (payload.length === 0) {
+          toast.error('请至少填写一个路径')
+          return
+        }
+        await libraryAPI.createWithRoots(name, type, payload, coverURL.trim())
+        toast.success('媒体库已保存')
       }
-      await libraryAPI.createWithRoots(name, type, payload, coverURL.trim())
-      toast.success('媒体库已保存')
       setName('')
       setRoots([emptyRootDraft()])
       setCoverURL('')
+      setCreatePerSubfolder(false)
       await refresh()
     } catch (err: unknown) {
       toast.error(apiErrorMessage(err, '创建失败'))
@@ -61,9 +73,11 @@ function useCreateLibraryForm(refresh: () => Promise<void>) {
     type,
     coverURL,
     roots,
+    createPerSubfolder,
     setName,
     setType,
     setCoverURL,
+    setCreatePerSubfolder,
     updateRoot,
     addRoot: () => setRoots((prev) => [...prev, emptyRootDraft()]),
     removeRoot: (index: number) => setRoots((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index))),

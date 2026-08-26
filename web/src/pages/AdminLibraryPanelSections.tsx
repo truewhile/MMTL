@@ -9,9 +9,11 @@ type CreateFormProps = {
   type: string
   coverURL: string
   roots: RootDraft[]
+  createPerSubfolder: boolean
   onNameChange: (value: string) => void
   onTypeChange: (value: string) => void
   onCoverURLChange: (value: string) => void
+  onCreatePerSubfolderChange: (value: boolean) => void
   onRootChange: (index: number, patch: Partial<RootDraft>) => void
   onAddRoot: () => void
   onRemoveRoot: (index: number) => void
@@ -23,9 +25,11 @@ export function AdminLibraryCreateForm({
   type,
   coverURL,
   roots,
+  createPerSubfolder,
   onNameChange,
   onTypeChange,
   onCoverURLChange,
+  onCreatePerSubfolderChange,
   onRootChange,
   onAddRoot,
   onRemoveRoot,
@@ -50,9 +54,9 @@ export function AdminLibraryCreateForm({
     <>
       <form onSubmit={onSubmit} className="glass-panel grid gap-3 md:grid-cols-4">
         <input
-          required
+          required={!createPerSubfolder}
           className="input-base"
-          placeholder="名称"
+          placeholder={createPerSubfolder ? '父级媒体库名（批量模式忽略）' : '名称'}
           value={name}
           onChange={(e) => onNameChange(e.target.value)}
         />
@@ -81,15 +85,31 @@ export function AdminLibraryCreateForm({
               onRemove={onRemoveRoot}
             />
           ))}
-          <button type="button" className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm" onClick={onAddRoot}>
-            <Plus size={16} /> 添加路径
-          </button>
+          {!createPerSubfolder && (
+            <button type="button" className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm" onClick={onAddRoot}>
+              <Plus size={16} /> 添加路径
+            </button>
+          )}
         </div>
         <p className="md:col-span-4 -mt-2 text-xs text-sand-500">
           支持直接点选或手动输入；名称和类型与现有媒体库一致时，会自动把这里填写的路径追加到该媒体库。
         </p>
+        <label className="md:col-span-4 flex items-center gap-2 text-sm text-ink-100">
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-brand-400"
+            checked={createPerSubfolder}
+            onChange={(e) => onCreatePerSubfolderChange(e.target.checked)}
+          />
+          <span>按目录下每个子文件夹各建一个媒体库（媒体库名取子文件夹名）</span>
+        </label>
+        {createPerSubfolder && (
+          <p className="md:col-span-4 -mt-2 text-xs text-sand-500">
+            批处理模式：仅取上方第一个路径作为父级目录，会为其中每个子文件夹分别创建媒体库，可自选类型用于整体推断。
+          </p>
+        )}
         <button type="submit" className="neon-button md:col-span-4">
-          新建 / 追加路径
+          {createPerSubfolder ? '按目录批量创建' : '新建 / 追加路径'}
         </button>
       </form>
 

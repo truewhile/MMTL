@@ -16,12 +16,13 @@ import (
 )
 
 type createLibraryReq struct {
-	Name     string                     `json:"name" binding:"required"`
-	Path     string                     `json:"path"`
-	Paths    []string                   `json:"paths"`
-	Roots    []service.LibraryRootInput `json:"roots"`
-	Type     string                     `json:"type"`
-	CoverURL string                     `json:"cover_url"`
+	Name              string                     `json:"name"`
+	Path              string                     `json:"path"`
+	Paths             []string                   `json:"paths"`
+	Roots             []service.LibraryRootInput `json:"roots"`
+	Type              string                     `json:"type"`
+	CoverURL          string                     `json:"cover_url"`
+	CreatePerSubfolder bool                      `json:"create_per_subfolder"`
 }
 
 func listLibrariesHandler(svc *service.Container) gin.HandlerFunc {
@@ -88,9 +89,38 @@ func createLibraryHandler(svc *service.Container) gin.HandlerFunc {
 			}
 		}
 		if len(roots) == 0 && strings.TrimSpace(req.Path) != "" {
-			roots = append(roots, service.LibraryRootInput{Path: req.Path})
+roots = append(roots, service.LibraryRootInput{Path: req.Path})
+	}
+	var l *model.Library
+	if req.CreatePerSubfolder {
+		parent := ""
+		if len(roots) > 0 {
+			parent = roots[0].Path
+		} else if strings.TrimSpace(req.Path) != "" {
+			parent = req.Path
 		}
-		l, err := svc.Media.CreateLibraryWithRootsAndCover(c.Request.Context(), req.Name, req.Type, req.CoverURL, roots)
+		created, err := svc.Media.CreateLibrariesPerSubfolder(c.Request.Context(), parent, req.Type, req.CoverURL)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		uid, _ := c.Get("ctx_user_id")
+		for i := range created {
+			lib := &created[i]
+			svc.Audit.Record(c.Request.Context(), toString(uid), "library.create", lib.ID, c.ClientIP(), lib.Path)
+			if svc.Watcher != nil {
+				go func() { _ = svc.Watcher.Refresh(context.Background()) }()
+			}
+			for _, root := range lib.Roots {
+				if root.Enabled {
+					queueLibraryRootScan(svc, lib.ID, root.ID)
+				}
+			}
+		}
+		c.JSON(http.StatusCreated, gin.H{"libraries": created})
+		return
+	}
+	l, err := svc.Media.CreateLibraryWithRootsAndCover(c.Request.Context(), req.Name, req.Type, req.CoverURL, roots)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

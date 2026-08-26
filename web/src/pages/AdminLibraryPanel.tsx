@@ -13,9 +13,11 @@ export function AdminLibraryPanel() {
         type={createForm.type}
         coverURL={createForm.coverURL}
         roots={createForm.roots}
+        createPerSubfolder={createForm.createPerSubfolder}
         onNameChange={createForm.setName}
         onTypeChange={createForm.setType}
         onCoverURLChange={createForm.setCoverURL}
+        onCreatePerSubfolderChange={createForm.setCreatePerSubfolder}
         onRootChange={createForm.updateRoot}
         onAddRoot={createForm.addRoot}
         onRemoveRoot={createForm.removeRoot}

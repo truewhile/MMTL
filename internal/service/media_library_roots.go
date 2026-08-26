@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -57,6 +58,46 @@ func (s *MediaService) CreateLibraryWithRootsAndCover(ctx context.Context, name,
 	}
 	s.invalidateMediaCache(ctx)
 	return lib, nil
+}
+
+// CreateLibrariesPerSubfolder 为 parent 目录下的每个直接子目录各建一个媒体库，
+// 媒体库名取子目录名，路径指向该子目录。kind 为空时按子目录名推断类型。
+func (s *MediaService) CreateLibrariesPerSubfolder(ctx context.Context, parent, kind, coverURL string) ([]model.Library, error) {
+	parent = strings.TrimSpace(parent)
+	if parent == "" {
+		return nil, errors.New("parent path required")
+	}
+	dir, err := resolveAccessibleLibraryPath(parent)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("read directory failed: %w", err)
+	}
+	subdirs := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		subdirs = append(subdirs, filepath.Join(dir, entry.Name()))
+	}
+	if len(subdirs) == 0 {
+		return nil, errors.New("no subfolders found")
+	}
+	created := make([]model.Library, 0, len(subdirs))
+	for _, subdir := range subdirs {
+		name := filepath.Base(subdir)
+		lib, err := s.CreateLibraryWithRootsAndCover(ctx, name, kind, coverURL, []LibraryRootInput{{Path: subdir}})
+		if err != nil {
+			return nil, fmt.Errorf("create library for %s: %w", subdir, err)
+		}
+		created = append(created, *lib)
+	}
+	return created, nil
 }
 
 func (s *MediaService) UpdateLibraryCover(ctx context.Context, libraryID, coverURL string) error {

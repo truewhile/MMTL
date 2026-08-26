@@ -102,6 +102,9 @@ export const libraryAPI = {
   createWithRoots: (name: string, type: string, roots: LibraryRootInput[], coverURL = '') =>
     api.post<Library>('/libraries', { name, type, roots, cover_url: coverURL }).then((r) => r.data),
 
+  createPerSubfolder: (parentPath: string, type: string, coverURL = '') =>
+    api.post<{ libraries: Library[] }>('/libraries', { path: parentPath, type, cover_url: coverURL, create_per_subfolder: true }).then((r) => r.data),
+
   update: (id: string, payload: { cover_url: string }) =>
     api.patch<Library>(`/libraries/${id}`, payload).then((r) => r.data),
 
