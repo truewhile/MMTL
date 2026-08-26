@@ -104,15 +104,27 @@ func (s *StrmService) StartSync(ctx context.Context, pathID string, syncType ...
 	return nil
 }
 
-// CancelSync 取消正在进行的同步。
+// CancelSync 取消正在进行的同步（若为僵尸运行状态则直接自愈重置）。
 func (s *StrmService) CancelSync(ctx context.Context, pathID string) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	cancel, exists := s.running[pathID]
-	if !exists {
-		return errors.New("该目录当前没有进行中的同步")
+	if exists {
+		delete(s.running, pathID)
 	}
-	cancel()
+	s.mu.Unlock()
+
+	if exists && cancel != nil {
+		cancel()
+	}
+
+	// 无论内存中是否活跃，确保同步目录状态正确重置为已取消
+	if p, err := s.repo.StrmSyncPath.FindByID(ctx, pathID); err == nil && p != nil {
+		if p.LastSyncStatus == model.StrmSyncRecordRunning {
+			p.LastSyncStatus = model.StrmSyncRecordCanceled
+			p.LastSyncMessage = "已取消"
+			_ = s.repo.StrmSyncPath.Update(ctx, p)
+		}
+	}
 	return nil
 }
 
@@ -465,6 +477,8 @@ func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
 		return fmt.Errorf("115: 获取文件列表失败：%w", err)
 	}
 
+	st.updateSyncMessage(fmt.Sprintf("正在拉取远端文件列表 (共 %d 个文件)...", totalCount))
+
 	allFiles := make([]cloud115.RemoteFile, 0, totalCount)
 	allFiles = append(allFiles, firstBatch...)
 
@@ -492,7 +506,7 @@ func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
 		}
 		close(taskCh)
 
-		workers := 4
+		workers := 8
 		if len(pageTasks) < workers {
 			workers = len(pageTasks)
 		}
@@ -557,11 +571,15 @@ func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
 
 		var (
 			pwg        sync.WaitGroup
-			dirWorkers = 4
+			dirWorkers = 8
+			doneDirs   atomic.Int64
+			totalDirs  = len(pidList)
 		)
 		if len(pidList) < dirWorkers {
 			dirWorkers = len(pidList)
 		}
+
+		st.updateSyncMessage(fmt.Sprintf("正在解析目录树 (0/%d)...", totalDirs))
 
 		for i := 0; i < dirWorkers; i++ {
 			pwg.Add(1)
@@ -571,46 +589,54 @@ func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
 					if ctx.Err() != nil {
 						return
 					}
+					if _, loaded := st.dirCache.Load(pid); loaded {
+						if n := doneDirs.Add(1); n%20 == 0 || n == int64(totalDirs) {
+							st.updateSyncMessage(fmt.Sprintf("正在解析目录树 (%d/%d)...", n, totalDirs))
+						}
+						continue
+					}
 					detail, err := open115.GetFsDetailByCid(ctx, pid)
 					if err != nil {
 						st.s.log.Warn("115: 获取目录详情失败", zap.String("pid", pid), zap.Error(err))
-						continue
-					}
-					if detail == nil {
-						continue
-					}
-					// 解析相对路径
-					relPath := detail.RelativePath(rootCID)
-					st.dirCache.Store(pid, relPath)
-					_ = st.s.repo.StrmDirCache.Set(ctx, st.p.ID, pid, relPath)
+					} else if detail != nil {
+						// 解析相对路径
+						relPath := detail.RelativePath(rootCID)
+						st.dirCache.Store(pid, relPath)
+						_ = st.s.repo.StrmDirCache.Set(ctx, st.p.ID, pid, relPath)
 
-					// 顺便解析并缓存 detail.Paths 中包含的中间各层级目录
-					for _, ancestor := range detail.Paths {
-						if ancestor.FileId == "0" || ancestor.FileId == rootCID {
-							continue
-						}
-						if _, loaded := st.dirCache.Load(ancestor.FileId); !loaded {
+						// 顺便解析并缓存 detail.Paths 中包含的中间各层级目录
+						for _, ancestor := range detail.Paths {
+							if ancestor.FileId == "0" || ancestor.FileId == rootCID {
+								continue
+							}
+							if _, loaded := st.dirCache.Load(ancestor.FileId); !loaded {
 								subDetail := &cloud115.RemoteFileDetail{
 									FileId:   ancestor.FileId,
 									FileName: ancestor.Name,
 									Paths:    nil,
 								}
-							for _, p := range detail.Paths {
-								subDetail.Paths = append(subDetail.Paths, p)
-								if p.FileId == ancestor.FileId {
-									break
+								for _, p := range detail.Paths {
+									subDetail.Paths = append(subDetail.Paths, p)
+									if p.FileId == ancestor.FileId {
+										break
+									}
 								}
+								ancestorRel := subDetail.RelativePath(rootCID)
+								st.dirCache.Store(ancestor.FileId, ancestorRel)
+								_ = st.s.repo.StrmDirCache.Set(ctx, st.p.ID, ancestor.FileId, ancestorRel)
 							}
-							ancestorRel := subDetail.RelativePath(rootCID)
-							st.dirCache.Store(ancestor.FileId, ancestorRel)
-							_ = st.s.repo.StrmDirCache.Set(ctx, st.p.ID, ancestor.FileId, ancestorRel)
 						}
+					}
+					if n := doneDirs.Add(1); n%10 == 0 || n == int64(totalDirs) {
+						st.updateSyncMessage(fmt.Sprintf("正在解析目录树 (%d/%d)...", n, totalDirs))
 					}
 				}
 			}()
 		}
 		pwg.Wait()
 	}
+
+	st.updateSyncMessage(fmt.Sprintf("正在生成 STRM 与同步文件 (共 %d 个)...", len(allFiles)))
 
 	// 5. 分类处理所有文件
 	for _, f := range allFiles {
@@ -1136,6 +1162,18 @@ func (st *strmSyncState) flushProgress() {
 	if err := st.s.repo.StrmSyncRecord.Update(st.ctx, &rec); err != nil {
 		st.s.log.Warn("update strm sync progress failed", zap.Error(err))
 	}
+}
+
+// updateSyncMessage 实时更新同步阶段提示信息，让前端界面清晰了解当前进度。
+func (st *strmSyncState) updateSyncMessage(msg string) {
+	st.mu.Lock()
+	st.rec.Message = msg
+	st.p.LastSyncMessage = msg
+	rec := *st.rec
+	p := *st.p
+	st.mu.Unlock()
+	_ = st.s.repo.StrmSyncRecord.Update(st.ctx, &rec)
+	_ = st.s.repo.StrmSyncPath.Update(st.ctx, &p)
 }
 
 // ─── 定时同步巡检 ──────────────────────────────────────────────────────────────

@@ -113,6 +113,7 @@ func NewStrmService(cfg *config.Config, log *zap.Logger, repos *repository.Conta
 // Start 启动下载/上传队列 worker、定时同步巡检、115 token 刷新与队列清理。
 func (s *StrmService) Start(ctx context.Context) {
 	s.sync115RelayKey(ctx)
+	s.recoverInterruptedSyncs(ctx)
 	downloadThreads := s.strmIntSetting(ctx, StrmSettingDownloadThreads, 3)
 	if downloadThreads < 1 {
 		downloadThreads = 1
@@ -139,6 +140,21 @@ func (s *StrmService) Start(ctx context.Context) {
 	s.log.Info("strm service started",
 		zap.Int("download_threads", downloadThreads),
 		zap.Int("upload_threads", uploadThreads))
+}
+
+// recoverInterruptedSyncs 在服务启动时自愈重置因服务重启遗留的 running 状态。
+func (s *StrmService) recoverInterruptedSyncs(ctx context.Context) {
+	paths, err := s.repo.StrmSyncPath.List(ctx)
+	if err == nil {
+		for i := range paths {
+			p := &paths[i]
+			if p.LastSyncStatus == model.StrmSyncRecordRunning {
+				p.LastSyncStatus = model.StrmSyncRecordCanceled
+				p.LastSyncMessage = "服务重启，已重置同步状态"
+				_ = s.repo.StrmSyncPath.Update(ctx, p)
+			}
+		}
+	}
 }
 
 func (s *StrmService) Stop() {
