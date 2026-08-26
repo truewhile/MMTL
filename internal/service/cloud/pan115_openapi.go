@@ -17,6 +17,9 @@ package cloud
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/ShukeBta/MMTL/internal/service/cloud115"
@@ -61,16 +64,16 @@ func (p *openAPI115Provider) List(ctx context.Context, dirID string) ([]FileEntr
 		if err != nil {
 			return nil, err
 		}
-			for _, f := range files {
-				out = append(out, FileEntry{
-					ID:       f.FileId,
-					Name:     f.FileName,
-					IsDir:    f.Category == cloud115.TypeDir,
-					Size:     f.FileSize,
-					MTime:    f.Utime,
-					PickCode: f.PickCode,
-				})
-			}
+		for _, f := range files {
+			out = append(out, FileEntry{
+				ID:       f.FileId,
+				Name:     f.FileName,
+				IsDir:    f.Category == cloud115.TypeDir,
+				Size:     f.FileSize,
+				MTime:    f.Utime,
+				PickCode: f.PickCode,
+			})
+		}
 		if len(files) < pageSize {
 			break
 		}
@@ -104,6 +107,39 @@ func (p *openAPI115Provider) ResolveWithUA(ctx context.Context, fileRef, ua stri
 
 // OpenClient 暴露底层客户端（token 刷新用）。
 func (p *openAPI115Provider) OpenClient() *cloud115.OpenClient { return p.c }
+
+// PutFileNamed 把本地元数据上传到 115 指定父目录（parentCID 为父目录 cid）。
+// io.Reader 无法携带文件名，因此走独立的 named 上传接口。将内容落为临时文件后
+// 重命名为目标文件名，再交给 115 上传（/open/upload/init 的 file_name 取真实文件名）。
+func (p *openAPI115Provider) PutFileNamed(ctx context.Context, parentCID, fileName string, r io.Reader) error {
+	tmp, err := os.CreateTemp("", "mmtl-upload-*")
+	if err != nil {
+		return fmt.Errorf("115: 创建临时文件失败：%w", err)
+	}
+	tmpPath := tmp.Name()
+	defer func() {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+	}()
+	if _, err := io.Copy(tmp, r); err != nil {
+		return fmt.Errorf("115: 写入临时文件失败：%w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("115: 关闭临时文件失败：%w", err)
+	}
+	// 重命名为目标文件名，保证上传到 115 后保留原始文件名
+	if fileName != "" && fileName != filepath.Base(tmpPath) {
+		namedPath := filepath.Join(filepath.Dir(tmpPath), fileName)
+		if err := os.Rename(tmpPath, namedPath); err == nil {
+			tmpPath = namedPath
+		}
+	}
+	_, err = p.c.Upload(ctx, tmpPath, parentCID, "", "")
+	if err != nil {
+		return err
+	}
+	return nil
+}
 
 // RefreshToken 刷新访问令牌并返回新令牌；refresh_token 失效时返回
 // cloud115.IsRefreshTokenDead(err) 为 true 的错误。

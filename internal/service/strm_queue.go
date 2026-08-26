@@ -157,7 +157,7 @@ func (s *StrmService) processUploadTask(ctx context.Context, task *model.StrmUpl
 		}
 	}
 	if task.Provider == model.StrmProvider115 {
-		finish(model.StrmTaskFailed, "115 网盘暂不支持元数据上传")
+		s.processUpload115(ctx, task)
 		return
 	}
 	acct, err := s.repo.StrmAccount.FindByID(ctx, task.AccountID)
@@ -188,6 +188,48 @@ func (s *StrmService) processUploadTask(ctx context.Context, task *model.StrmUpl
 		return
 	}
 	if err := putter.PutFile(ctx, task.RemotePath, f); err != nil {
+		_ = f.Close()
+		s.uploadTaskFailWithRetry(task, "上传失败："+err.Error())
+		return
+	}
+	_ = f.Close()
+	finish(model.StrmTaskDone, "")
+}
+
+// processUpload115 115 元数据上传：task.RemotePath 存的是父目录 cid，FileName 为远端文件名。
+func (s *StrmService) processUpload115(ctx context.Context, task *model.StrmUploadTask) {
+	finish := func(status, message string) {
+		now := time.Now()
+		task.Status = status
+		task.Error = message
+		task.FinishedAt = &now
+		if err := s.repo.StrmUpload.Update(context.Background(), task); err != nil {
+			s.log.Warn("update strm upload task failed", zap.Error(err))
+		}
+	}
+	acct, err := s.repo.StrmAccount.FindByID(ctx, task.AccountID)
+	if err != nil || acct == nil {
+		finish(model.StrmTaskFailed, "网盘账号不存在")
+		return
+	}
+	provider, err := s.providerFor(ctx, acct)
+	if err != nil {
+		s.uploadTaskFailWithRetry(task, err.Error())
+		return
+	}
+	named, ok := provider.(interface {
+		PutFileNamed(ctx context.Context, parentCID, fileName string, r io.Reader) error
+	})
+	if !ok {
+		finish(model.StrmTaskFailed, "该网盘不支持元数据上传")
+		return
+	}
+	f, err := os.Open(task.LocalPath)
+	if err != nil {
+		s.uploadTaskFailWithRetry(task, "打开本地文件失败："+err.Error())
+		return
+	}
+	if err := named.PutFileNamed(ctx, task.RemotePath, task.FileName, f); err != nil {
 		_ = f.Close()
 		s.uploadTaskFailWithRetry(task, "上传失败："+err.Error())
 		return

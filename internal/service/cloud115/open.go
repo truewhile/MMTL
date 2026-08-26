@@ -185,7 +185,6 @@ func (d *RemoteFileDetail) RelativePath(rootCID string) string {
 	return strings.Join(segments, "/")
 }
 
-
 // ─── 下载直链 ──────────────────────────────────────────────────────────────────
 
 type downloadURLData struct {

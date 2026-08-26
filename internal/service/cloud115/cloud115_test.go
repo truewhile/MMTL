@@ -371,62 +371,61 @@ func TestThrottleCodeHandling(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected throttle error")
 	}
-		if !tm.IsThrottled() {
-			t.Fatal("code 770004 should trigger throttle status")
-		}
+	if !tm.IsThrottled() {
+		t.Fatal("code 770004 should trigger throttle status")
+	}
+}
+
+func TestRemoteFileDetailRelativePath(t *testing.T) {
+	rootCID := "3238787832374488117" // 影视库
+
+	// 场景 1：115 目录 paths 中只有祖先目录链，不包含自身
+	d1 := &RemoteFileDetail{
+		FileId:   "3251154147730910635",
+		FileName: "出包王女",
+		Paths: []struct {
+			FileId string `json:"file_id"`
+			Name   string `json:"file_name"`
+		}{
+			{FileId: "0", Name: "根目录"},
+			{FileId: "3238787832374488117", Name: "影视库"},
+			{FileId: "3238787913223892116", Name: "动漫"},
+		},
+	}
+	if got := d1.RelativePath(rootCID); got != "动漫/出包王女" {
+		t.Errorf("d1.RelativePath = %q, want %q", got, "动漫/出包王女")
 	}
 
-	func TestRemoteFileDetailRelativePath(t *testing.T) {
-		rootCID := "3238787832374488117" // 影视库
-
-		// 场景 1：115 目录 paths 中只有祖先目录链，不包含自身
-		d1 := &RemoteFileDetail{
-			FileId:   "3251154147730910635",
-			FileName: "出包王女",
-			Paths: []struct {
-				FileId string `json:"file_id"`
-				Name   string `json:"file_name"`
-			}{
-				{FileId: "0", Name: "根目录"},
-				{FileId: "3238787832374488117", Name: "影视库"},
-				{FileId: "3238787913223892116", Name: "动漫"},
-			},
-		}
-		if got := d1.RelativePath(rootCID); got != "动漫/出包王女" {
-			t.Errorf("d1.RelativePath = %q, want %q", got, "动漫/出包王女")
-		}
-
-		// 场景 2：祖先中间目录，自身在 paths 末尾
-		d2 := &RemoteFileDetail{
-			FileId:   "3238787913223892116",
-			FileName: "动漫",
-			Paths: []struct {
-				FileId string `json:"file_id"`
-				Name   string `json:"file_name"`
-			}{
-				{FileId: "0", Name: "根目录"},
-				{FileId: "3238787832374488117", Name: "影视库"},
-				{FileId: "3238787913223892116", Name: "动漫"},
-			},
-		}
-		if got := d2.RelativePath(rootCID); got != "动漫" {
-			t.Errorf("d2.RelativePath = %q, want %q", got, "动漫")
-		}
-
-		// 场景 3：根同步目录自身
-		d3 := &RemoteFileDetail{
-			FileId:   rootCID,
-			FileName: "影视库",
-			Paths: []struct {
-				FileId string `json:"file_id"`
-				Name   string `json:"file_name"`
-			}{
-				{FileId: "0", Name: "根目录"},
-				{FileId: rootCID, Name: "影视库"},
-			},
-		}
-		if got := d3.RelativePath(rootCID); got != "" {
-			t.Errorf("d3.RelativePath = %q, want %q", got, "")
-		}
+	// 场景 2：祖先中间目录，自身在 paths 末尾
+	d2 := &RemoteFileDetail{
+		FileId:   "3238787913223892116",
+		FileName: "动漫",
+		Paths: []struct {
+			FileId string `json:"file_id"`
+			Name   string `json:"file_name"`
+		}{
+			{FileId: "0", Name: "根目录"},
+			{FileId: "3238787832374488117", Name: "影视库"},
+			{FileId: "3238787913223892116", Name: "动漫"},
+		},
+	}
+	if got := d2.RelativePath(rootCID); got != "动漫" {
+		t.Errorf("d2.RelativePath = %q, want %q", got, "动漫")
 	}
 
+	// 场景 3：根同步目录自身
+	d3 := &RemoteFileDetail{
+		FileId:   rootCID,
+		FileName: "影视库",
+		Paths: []struct {
+			FileId string `json:"file_id"`
+			Name   string `json:"file_name"`
+		}{
+			{FileId: "0", Name: "根目录"},
+			{FileId: rootCID, Name: "影视库"},
+		},
+	}
+	if got := d3.RelativePath(rootCID); got != "" {
+		t.Errorf("d3.RelativePath = %q, want %q", got, "")
+	}
+}

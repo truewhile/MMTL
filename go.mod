@@ -3,6 +3,7 @@ module github.com/ShukeBta/MMTL
 go 1.25.0
 
 require (
+	github.com/aliyun/alibabacloud-oss-go-sdk-v2 v1.5.2
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/gin-gonic/gin v1.9.1
 	github.com/glebarez/sqlite v1.11.0
@@ -16,6 +17,7 @@ require (
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.21.0
 	golang.org/x/sys v0.20.0
+	golang.org/x/time v0.15.0
 	gorm.io/driver/postgres v1.5.7
 	gorm.io/gorm v1.30.0
 )
@@ -72,7 +74,6 @@ require (
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9 // indirect
 	golang.org/x/net v0.21.0 // indirect
 	golang.org/x/text v0.20.0 // indirect
-	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

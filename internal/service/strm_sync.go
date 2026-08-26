@@ -46,7 +46,10 @@ type strmSyncState struct {
 	activeUploadPaths   map[string]bool // 本地已在排队/进行的上传任务路径（内存去重）
 	pendingDownloads    []*model.StrmDownloadTask
 	pendingUploads      []*model.StrmUploadTask
-	dirCache            sync.Map // dirID (string) -> relativePath (string)
+	dirCache            sync.Map          // dirID (string) -> relativePath (string)
+	dirPathToID         map[string]string // relativePath (string) -> dirID（115 上传父目录寻址用，walk 后构建）
+
+	scanIncomplete atomic.Bool // 远端目录树/文件列表本次扫描不完整 → 禁止增量 prune 误删本地文件
 }
 
 // StartSync 启动一次同步（异步执行，同一目录同时只允许一个任务）。
@@ -280,7 +283,21 @@ func (st *strmSyncState) run() error {
 	}
 	st.flushPendingDownloads()
 	st.flushProgress()
-	if st.cfg.UploadMeta && st.provider != nil && st.p.Provider != model.StrmProvider115 {
+	if st.cfg.UploadMeta && st.provider != nil {
+		// 115 上传需要父目录 cid，先用 dirCache 构建「路径 → cid」反向索引
+		if st.p.Provider == model.StrmProvider115 {
+			reversed := map[string]string{}
+			st.dirCache.Range(func(key, value any) bool {
+				path, ok := value.(string)
+				if ok && path != "" {
+					if id, ok2 := key.(string); ok2 {
+						reversed[path] = id
+					}
+				}
+				return true
+			})
+			st.dirPathToID = reversed
+		}
 		if err := st.scanLocalMetaForUpload(); err != nil {
 			return err
 		}
@@ -439,6 +456,29 @@ func (st *strmSyncState) isMetaExt(ext string) bool {
 	return false
 }
 
+// cleanDirRel 对 115 扁平化拉取的目录相对路径逐段套用目录级文件名清洗，
+// 确保与 walkRemote / joinLocalRel（sanitizeRelativePath）使用同一套清洗规则。
+// 若不清洗，目录名中的冒号等非法字符会直达 rel，而 seenVideo/seenMeta 的 key
+// 与磁盘实际路径不一致，导致 pruneLocal 误删已下载的 strm / 元数据。
+// 空 rel（根目录）原样返回。
+func cleanDirRel(rel string) string {
+	if rel == "" {
+		return ""
+	}
+	parts := strings.Split(rel, "/")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+		clean := cleanEntryName(part, true)
+		if clean != "" && clean != "." && clean != ".." {
+			out = append(out, clean)
+		}
+	}
+	return strings.Join(out, "/")
+}
+
 // walk115Flat 使用 115 开放平台扁平化分页批量拉取机制与目录拓扑缓存（参考 QMediaSync）。
 // 极大地降低 API 请求次数并支持毫秒级/秒级增量同步。
 func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
@@ -456,23 +496,23 @@ func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
 		if err := st.s.repo.StrmDirCache.DeleteBySyncPathID(ctx, st.p.ID); err != nil {
 			st.s.log.Warn("delete strm dir cache failed", zap.Error(err))
 		}
-		} else {
-			// 增量同步：预加载历史目录缓存（过滤历史一对多塌陷冲突的脏数据以自愈刷新）
-			cached, err := st.s.repo.StrmDirCache.ListBySyncPathID(ctx, st.p.ID)
-			if err == nil {
-				pathCounts := make(map[string]int, len(cached))
-				for _, item := range cached {
-					pathCounts[item.Path]++
+	} else {
+		// 增量同步：预加载历史目录缓存（过滤历史一对多塌陷冲突的脏数据以自愈刷新）
+		cached, err := st.s.repo.StrmDirCache.ListBySyncPathID(ctx, st.p.ID)
+		if err == nil {
+			pathCounts := make(map[string]int, len(cached))
+			for _, item := range cached {
+				pathCounts[item.Path]++
+			}
+			for _, item := range cached {
+				// 若同一个 path 对应了多个不同 dir_id，说明包含历史层级塌陷的脏数据，不预加载，让后续步骤重新向 115 获取精确路径
+				if pathCounts[item.Path] > 1 {
+					continue
 				}
-				for _, item := range cached {
-					// 若同一个 path 对应了多个不同 dir_id，说明包含历史层级塌陷的脏数据，不预加载，让后续步骤重新向 115 获取精确路径
-					if pathCounts[item.Path] > 1 {
-						continue
-					}
-					st.dirCache.Store(item.DirID, item.Path)
-				}
+				st.dirCache.Store(item.DirID, cleanDirRel(item.Path))
 			}
 		}
+	}
 
 	// 2. 探测文件总数
 	const pageSize = 1150
@@ -602,9 +642,12 @@ func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
 					detail, err := open115.GetFsDetailByCid(ctx, pid)
 					if err != nil {
 						st.s.log.Warn("115: 获取目录详情失败", zap.String("pid", pid), zap.Error(err))
+						// 目录详情解析失败会导致下游文件 rel 无法还原真实父路径，
+						// seen key 与磁盘路径对不上，增量 prune 会误删本地文件，标记本次扫描不完整。
+						st.scanIncomplete.Store(true)
 					} else if detail != nil {
 						// 解析相对路径
-						relPath := detail.RelativePath(rootCID)
+						relPath := cleanDirRel(detail.RelativePath(rootCID))
 						st.dirCache.Store(pid, relPath)
 						_ = st.s.repo.StrmDirCache.Set(ctx, st.p.ID, pid, relPath)
 
@@ -625,7 +668,7 @@ func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
 										break
 									}
 								}
-								ancestorRel := subDetail.RelativePath(rootCID)
+								ancestorRel := cleanDirRel(subDetail.RelativePath(rootCID))
 								st.dirCache.Store(ancestor.FileId, ancestorRel)
 								_ = st.s.repo.StrmDirCache.Set(ctx, st.p.ID, ancestor.FileId, ancestorRel)
 							}
@@ -653,8 +696,13 @@ func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
 			rel = cleanName
 		} else {
 			if parentVal, ok := st.dirCache.Load(f.Pid); ok && parentVal.(string) != "" {
-				rel = parentVal.(string) + "/" + cleanName
+				rel = cleanDirRel(parentVal.(string)) + "/" + cleanName
 			} else {
+				// 父目录不在目录缓存（目录详情先前解析失败），无法还原真实相对路径。
+				// 该文件会落到根/错误路径，seen key 与磁盘路径不符，增量 prune 会误删，标记扫描不完整。
+				if st.syncType == model.StrmSyncTypeIncremental {
+					st.scanIncomplete.Store(true)
+				}
 				rel = cleanName
 			}
 		}
@@ -966,124 +1014,124 @@ func (st *strmSyncState) walkLocalSource() error {
 		if err != nil {
 			return nil
 		}
-			target, err := joinLocalRel(st.p.LocalPath, relSansExt+".strm")
-			if err != nil {
-				return nil
-			}
-			mTime := info.ModTime()
-			if st.syncType == model.StrmSyncTypeIncremental {
-				if tInfo, err := os.Stat(target); err == nil && tInfo.Size() > 0 && tInfo.ModTime().Unix() == mTime.Unix() {
-					st.mu.Lock()
-					st.rec.Skipped++
-					st.mu.Unlock()
-					st.touchProgress()
-					return nil
-				}
-			}
-			if data, err := os.ReadFile(target); err == nil && string(data) == content {
-				_ = os.Chtimes(target, mTime, mTime)
+		target, err := joinLocalRel(st.p.LocalPath, relSansExt+".strm")
+		if err != nil {
+			return nil
+		}
+		mTime := info.ModTime()
+		if st.syncType == model.StrmSyncTypeIncremental {
+			if tInfo, err := os.Stat(target); err == nil && tInfo.Size() > 0 && tInfo.ModTime().Unix() == mTime.Unix() {
 				st.mu.Lock()
 				st.rec.Skipped++
 				st.mu.Unlock()
 				st.touchProgress()
 				return nil
 			}
-			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-				return nil
-			}
-			tmp := target + ".tmp"
-			if err := os.WriteFile(tmp, []byte(content), 0o644); err == nil {
-				_ = os.Rename(tmp, target)
-				_ = os.Chtimes(target, mTime, mTime)
-			} else {
-				_ = os.Remove(tmp)
-			}
+		}
+		if data, err := os.ReadFile(target); err == nil && string(data) == content {
+			_ = os.Chtimes(target, mTime, mTime)
 			st.mu.Lock()
-			st.rec.NewStrm++
+			st.rec.Skipped++
 			st.mu.Unlock()
 			st.touchProgress()
 			return nil
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return nil
+		}
+		tmp := target + ".tmp"
+		if err := os.WriteFile(tmp, []byte(content), 0o644); err == nil {
+			_ = os.Rename(tmp, target)
+			_ = os.Chtimes(target, mTime, mTime)
+		} else {
+			_ = os.Remove(tmp)
+		}
+		st.mu.Lock()
+		st.rec.NewStrm++
+		st.mu.Unlock()
+		st.touchProgress()
+		return nil
 	})
 }
 
-	// scanLocalMetaForUpload 扫描本地元数据，与远端比对后入上传队列。
-	func (st *strmSyncState) scanLocalMetaForUpload() error {
-		defer st.flushPendingUploads()
-		if st.activeUploadPaths == nil {
-			if active, err := st.s.repo.StrmUpload.GetActiveLocalPathMap(st.ctx, st.p.ID); err == nil {
-				st.activeUploadPaths = active
-			} else {
-				st.activeUploadPaths = map[string]bool{}
-			}
+// scanLocalMetaForUpload 扫描本地元数据，与远端比对后入上传队列。
+func (st *strmSyncState) scanLocalMetaForUpload() error {
+	defer st.flushPendingUploads()
+	if st.activeUploadPaths == nil {
+		if active, err := st.s.repo.StrmUpload.GetActiveLocalPathMap(st.ctx, st.p.ID); err == nil {
+			st.activeUploadPaths = active
+		} else {
+			st.activeUploadPaths = map[string]bool{}
 		}
-		localRoot := filepath.Clean(st.p.LocalPath)
-		return filepath.WalkDir(localRoot, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return nil
-			}
-			if path == localRoot {
-				return nil
-			}
-			select {
-			case <-st.ctx.Done():
-				return st.ctx.Err()
-			default:
-			}
-			if d.IsDir() {
-				return nil
-			}
-			rel, err := filepath.Rel(localRoot, path)
-			if err != nil {
-				return nil
-			}
-			rel = filepath.ToSlash(rel)
-			ext := strings.ToLower(filepath.Ext(rel))
-			if !st.isMetaExt(ext) {
-				return nil
-			}
-			info, err := d.Info()
-			if err != nil {
-				return nil
-			}
-			st.mu.Lock()
-			_, exists := st.remoteMeta["m:"+rel]
-			st.mu.Unlock()
-			if exists {
-				// 网盘端已存在该元数据文件，跳过上传
-				return nil
-			}
-			st.mu.Lock()
-			if st.activeUploadPaths != nil && st.activeUploadPaths[path] {
-				st.mu.Unlock()
-				return nil
-			}
-			if st.activeUploadPaths != nil {
-				st.activeUploadPaths[path] = true
-			}
-			st.mu.Unlock()
-
-			task := &model.StrmUploadTask{
-				SyncPathID: st.p.ID,
-				AccountID:  st.p.AccountID,
-				Provider:   st.p.Provider,
-				FileName:   filepath.Base(rel),
-				LocalPath:  path,
-				RemotePath: st.remoteUploadPath(rel),
-				Size:       info.Size(),
-				Status:     model.StrmTaskPending,
-			}
-			st.mu.Lock()
-			st.pendingUploads = append(st.pendingUploads, task)
-			shouldFlush := len(st.pendingUploads) >= 100
-			st.rec.Uploaded++
-			st.mu.Unlock()
-
-			if shouldFlush {
-				st.flushPendingUploads()
-			}
-			return nil
-		})
 	}
+	localRoot := filepath.Clean(st.p.LocalPath)
+	return filepath.WalkDir(localRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if path == localRoot {
+			return nil
+		}
+		select {
+		case <-st.ctx.Done():
+			return st.ctx.Err()
+		default:
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(localRoot, path)
+		if err != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		ext := strings.ToLower(filepath.Ext(rel))
+		if !st.isMetaExt(ext) {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		st.mu.Lock()
+		_, exists := st.remoteMeta["m:"+rel]
+		st.mu.Unlock()
+		if exists {
+			// 网盘端已存在该元数据文件，跳过上传
+			return nil
+		}
+		st.mu.Lock()
+		if st.activeUploadPaths != nil && st.activeUploadPaths[path] {
+			st.mu.Unlock()
+			return nil
+		}
+		if st.activeUploadPaths != nil {
+			st.activeUploadPaths[path] = true
+		}
+		st.mu.Unlock()
+
+		task := &model.StrmUploadTask{
+			SyncPathID: st.p.ID,
+			AccountID:  st.p.AccountID,
+			Provider:   st.p.Provider,
+			FileName:   filepath.Base(rel),
+			LocalPath:  path,
+			RemotePath: st.uploadRemoteTarget(rel),
+			Size:       info.Size(),
+			Status:     model.StrmTaskPending,
+		}
+		st.mu.Lock()
+		st.pendingUploads = append(st.pendingUploads, task)
+		shouldFlush := len(st.pendingUploads) >= 100
+		st.rec.Uploaded++
+		st.mu.Unlock()
+
+		if shouldFlush {
+			st.flushPendingUploads()
+		}
+		return nil
+	})
+}
 
 // remoteUploadPath 远端元数据目标路径 = 同步目录远端根 + 相对路径。
 func (st *strmSyncState) remoteUploadPath(rel string) string {
@@ -1092,6 +1140,31 @@ func (st *strmSyncState) remoteUploadPath(rel string) string {
 		return "/" + rel
 	}
 	return root + "/" + rel
+}
+
+// uploadRemoteTarget 返回上传任务的目标远端描述。
+//   - 115：返回父目录 cid（供 PutFileNamed 定位），基于 dirPathToID 把父目录相对路径映射到 cid。
+//   - 网盘桥接（clouddrive2/openlist）：返回完整远端路径。
+func (st *strmSyncState) uploadRemoteTarget(rel string) string {
+	if st.p.Provider == model.StrmProvider115 {
+		dir := rel
+		if idx := strings.LastIndexByte(dir, '/'); idx >= 0 {
+			dir = dir[:idx]
+		} else {
+			dir = ""
+		}
+		if dir == "" {
+			// 文件在同步根目录下，父目录即 115 同步根目录 ID
+			return st.p.RemotePath
+		}
+		if cid, ok := st.dirPathToID[dir]; ok && cid != "" {
+			return cid
+		}
+		// 父目录未在缓存中（父目录可能本次未扫描到），降级为用户配置的同步根 cid，
+		// 由上传端尽力处理（可能失败记日志，不影响下载）。
+		return st.p.RemotePath
+	}
+	return st.remoteUploadPath(rel)
 }
 
 // taskExists 检查是否已有同目录、同目标的进行中/已完成任务（避免重复入队）。
@@ -1109,6 +1182,14 @@ func (st *strmSyncState) taskExists(kind, syncPathID, localPath string) bool {
 
 // pruneLocal 清理本地多余 .strm 与元数据（远端已不存在），可选删除空目录。
 func (st *strmSyncState) pruneLocal() error {
+	// 增量同步保护：本次远端扫描不完整（目录详情解析失败 / 文件父路径降级）时，
+	// seenVideo/seenMeta 覆盖不全，按"远端不存在"清理会误删刚下载或已存在的本地文件，
+	// 进而触发"下次增量重新下载"的循环。此时跳过清理，仅做进度落库。
+	if st.syncType == model.StrmSyncTypeIncremental && st.scanIncomplete.Load() {
+		st.s.log.Warn("strm 增量同步跳过清理：本次远端扫描不完整，prune 已禁用",
+			zap.String("path_id", st.p.ID))
+		return nil
+	}
 	localRoot := filepath.Clean(st.p.LocalPath)
 	var dirs []string
 	err := filepath.WalkDir(localRoot, func(path string, d os.DirEntry, err error) error {
