@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -27,7 +28,10 @@ const (
 )
 
 // downloadWorker 下载队列 worker：认领 → 解析直链 → 下载 → 落盘。
+// 每次批量认领数个任务，并对这批任务并发下载，让「换直链」和「实际下载」
+// 在不同任务间重叠，从而充分利用多线程与 115 换链 QPS。
 func (s *StrmService) downloadWorker(ctx context.Context) {
+	const claimBatch = 12 // 每次批量认领的任务数
 	for {
 		select {
 		case <-ctx.Done():
@@ -42,7 +46,7 @@ func (s *StrmService) downloadWorker(ctx context.Context) {
 			sleepContext(ctx, left)
 			continue
 		}
-		tasks, err := s.repo.StrmDownload.ClaimPendingDownload(ctx, 1)
+		tasks, err := s.repo.StrmDownload.ClaimPendingDownload(ctx, claimBatch)
 		if err != nil {
 			s.log.Warn("claim strm download task failed", zap.Error(err))
 			sleepContext(ctx, 3*time.Second)
@@ -52,9 +56,16 @@ func (s *StrmService) downloadWorker(ctx context.Context) {
 			sleepContext(ctx, 2*time.Second)
 			continue
 		}
+		// 并发处理本批认领到的任务，充分利用多线程下载 & 直链换取并发
+		var wg sync.WaitGroup
 		for i := range tasks {
-			s.processDownloadTask(ctx, &tasks[i])
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				s.processDownloadTask(ctx, &tasks[i])
+			}(i)
 		}
+		wg.Wait()
 	}
 }
 

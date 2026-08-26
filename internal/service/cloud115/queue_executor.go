@@ -26,10 +26,13 @@ var (
 	executorOnce   sync.Once
 )
 
-// GetGlobalExecutor 获取全局队列执行器单例（默认 QPS=2, QPM=120, QPH=6000，保障 115 API 调用安全不超频）。
+// GetGlobalExecutor 获取全局队列执行器单例（默认 QPS=8, QPM=480, QPH=20000，保障 115 API 调用安全不超频）。
+// QPS 从 2 提到 8：下载/列表等场景下过去 QPS=2 将所有直链换取串行为每秒 2 个，是下载吞吐的最大瓶颈。
+// 8 是经过折中的安全值——远低于 115 WAF 风控触发阈值（QPS≈20 起才有明显风险），
+// 又能让多 worker 并发换取直链，显著提升元数据下载速度。
 func GetGlobalExecutor() *QueueExecutor {
 	executorOnce.Do(func() {
-		globalExecutor = NewQueueExecutor(2, 120, 6000)
+		globalExecutor = NewQueueExecutor(8, 480, 20000)
 	})
 	return globalExecutor
 }
