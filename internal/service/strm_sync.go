@@ -40,8 +40,10 @@ type strmSyncState struct {
 	seenVideo           map[string]bool  // "v:"+去掉扩展名的相对路径 → 远端存在该视频
 	seenMeta            map[string]bool  // "m:"+相对路径 → 远端存在该元数据
 	remoteMeta          map[string]int64 // 远端元数据大小（上传比对用）
-	activeDownloadPaths map[string]bool  // 本地已在排队/进行的下载任务路径（内存去重）
-	activeUploadPaths   map[string]bool  // 本地已在排队/进行的上传任务路径（内存去重）
+	seenMetaTarget      map[string]cloud.FileEntry
+	seenVideoTarget     map[string]cloud.FileEntry
+	activeDownloadPaths map[string]bool // 本地已在排队/进行的下载任务路径（内存去重）
+	activeUploadPaths   map[string]bool // 本地已在排队/进行的上传任务路径（内存去重）
 	pendingDownloads    []*model.StrmDownloadTask
 	pendingUploads      []*model.StrmUploadTask
 	dirCache            sync.Map // dirID (string) -> relativePath (string)
@@ -172,15 +174,17 @@ func (s *StrmService) runSync(ctx context.Context, p *model.StrmSyncPath, rec *m
 		return
 	}
 	st := &strmSyncState{
-		s:          s,
-		ctx:        ctx,
-		p:          p,
-		cfg:        cfg,
-		rec:        rec,
-		syncType:   rec.SyncType,
-		seenVideo:  map[string]bool{},
-		seenMeta:   map[string]bool{},
-		remoteMeta: map[string]int64{},
+		s:               s,
+		ctx:             ctx,
+		p:               p,
+		cfg:             cfg,
+		rec:             rec,
+		syncType:        rec.SyncType,
+		seenVideo:       map[string]bool{},
+		seenMeta:        map[string]bool{},
+		remoteMeta:      map[string]int64{},
+		seenMetaTarget:  map[string]cloud.FileEntry{},
+		seenVideoTarget: map[string]cloud.FileEntry{},
 	}
 	if p.Provider != model.StrmProviderLocal {
 		acct, err := s.repo.StrmAccount.FindByID(ctx, p.AccountID)
@@ -686,6 +690,18 @@ func (st *strmSyncState) handleVideo(entry cloud.FileEntry, rel, ext string) {
 		return
 	}
 
+	st.mu.Lock()
+	if st.seenVideoTarget == nil {
+		st.seenVideoTarget = map[string]cloud.FileEntry{}
+	}
+	if _, exists := st.seenVideoTarget[target]; exists {
+		st.mu.Unlock()
+		st.touchProgress()
+		return
+	}
+	st.seenVideoTarget[target] = entry
+	st.mu.Unlock()
+
 	// 增量同步模式快速检查：本地 strm 文件存在、非空且修改时间与远端 mtime 一致，直接跳过无需读磁盘
 	if st.syncType == model.StrmSyncTypeIncremental && entry.MTime > 0 {
 		if info, err := os.Stat(target); err == nil && info.Size() > 0 && info.ModTime().Unix() == entry.MTime {
@@ -835,6 +851,20 @@ func (st *strmSyncState) handleMeta(entry cloud.FileEntry, rel, ext string) {
 	if err != nil {
 		return
 	}
+
+	st.mu.Lock()
+	if st.seenMetaTarget == nil {
+		st.seenMetaTarget = map[string]cloud.FileEntry{}
+	}
+	if _, exists := st.seenMetaTarget[target]; exists {
+		// 该本地目标路径在当前批次中已被处理（存在同名/重名冲突），直接忽略重复项，避免多份不同大小的文件在本地交替覆盖导致增量死循环
+		st.mu.Unlock()
+		st.touchProgress()
+		return
+	}
+	st.seenMetaTarget[target] = entry
+	st.mu.Unlock()
+
 	if info, err := os.Stat(target); err == nil && info.Size() == entry.Size {
 		st.touchProgress()
 		return

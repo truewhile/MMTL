@@ -554,8 +554,82 @@ func TestWalkRemoteConcurrent(t *testing.T) {
 		}
 		wg.Wait()
 
-		if claimedCount != 200 {
-			t.Fatalf("expected all 200 tasks claimed, got %d", claimedCount)
+			if claimedCount != 200 {
+				t.Fatalf("expected all 200 tasks claimed, got %d", claimedCount)
+			}
+		}
+
+	// TestStrmDuplicateFileConflictResolution 测试远端存在多个同名不同大小文件时，本地确定性仲裁，避免增量死循环
+	func TestStrmDuplicateFileConflictResolution(t *testing.T) {
+		svc := testStrmService(t)
+		localDir := t.TempDir()
+
+		p := &model.StrmSyncPath{
+			Base:         model.Base{ID: "dup-test-path"},
+			Provider:     model.StrmProvider115,
+			RemotePath:   "root",
+			LocalPath:    localDir,
+			DownloadMeta: true,
+		}
+
+		st := &strmSyncState{
+			s:               svc,
+			ctx:             context.Background(),
+			p:               p,
+			cfg:             &strmPathConfig{DownloadMeta: true, MetaExt: []string{"nfo"}},
+			rec:             &model.StrmSyncRecord{},
+			seenMeta:        map[string]bool{},
+			remoteMeta:      map[string]int64{},
+			seenMetaTarget:  map[string]cloud.FileEntry{},
+			seenVideoTarget: map[string]cloud.FileEntry{},
+		}
+
+		// 模拟远端同目录下存在两个同名不同大小的 nfo 文件 (115 历史重复上传)
+		// entry1: 较早文件 (MTime: 1000, Size: 100)
+		entry1 := cloud.FileEntry{ID: "f1", Name: "test.nfo", Size: 100, MTime: 1000, PickCode: "p1"}
+		// entry2: 较新文件 (MTime: 2000, Size: 200)
+		entry2 := cloud.FileEntry{ID: "f2", Name: "test.nfo", Size: 200, MTime: 2000, PickCode: "p2"}
+
+		// 第一次全量处理：两者都在列表中
+		st.handleMeta(entry1, "test.nfo", ".nfo")
+		st.handleMeta(entry2, "test.nfo", ".nfo")
+		st.flushPendingDownloads()
+
+		// 验证仲裁结果：最终只产生 1 个下载任务，且使用的是首个匹配项 (Size 100/p1)
+		tasks, _, err := svc.repo.StrmDownload.List(context.Background(), "", 1, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(tasks) != 1 {
+			t.Fatalf("expected 1 download task after conflict resolution, got %d", len(tasks))
+		}
+		if tasks[0].Size != 100 || tasks[0].RemoteRef != "p1" {
+			t.Fatalf("expected task with size 100/p1, got size=%d ref=%s", tasks[0].Size, tasks[0].RemoteRef)
+		}
+
+		// 模拟该任务下载落盘完成
+		writeFile(t, filepath.Join(localDir, "test.nfo"), strings.Repeat("x", 100))
+
+		// 第二次增量同步：两者再次依次扫描
+		st2 := &strmSyncState{
+			s:               svc,
+			ctx:             context.Background(),
+			p:               p,
+			cfg:             &strmPathConfig{DownloadMeta: true, MetaExt: []string{"nfo"}},
+			rec:             &model.StrmSyncRecord{},
+			seenMeta:        map[string]bool{},
+			remoteMeta:      map[string]int64{},
+			seenMetaTarget:  map[string]cloud.FileEntry{},
+			seenVideoTarget: map[string]cloud.FileEntry{},
+		}
+		st2.handleMeta(entry1, "test.nfo", ".nfo")
+		st2.handleMeta(entry2, "test.nfo", ".nfo")
+		st2.flushPendingDownloads()
+
+		// 验证：不会新增任何下载任务，NewMeta 为 0，增量跳过
+		if st2.rec.NewMeta != 0 {
+			t.Fatalf("expected 0 new meta on incremental sync, got %d", st2.rec.NewMeta)
 		}
 	}
+
 
