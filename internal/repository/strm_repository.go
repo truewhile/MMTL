@@ -334,13 +334,13 @@ func (r *StrmDownloadTaskRepository) RetryAllFailed(ctx context.Context) (int64,
 	return count, err
 }
 
-// CancelPending 批量取消所有排队中的任务。
+// CancelPending 批量取消所有排队中和进行中的任务。
 func (r *StrmDownloadTaskRepository) CancelPending(ctx context.Context) (int64, error) {
 	now := time.Now()
 	var count int64
 	err := withSQLiteBusyRetry(ctx, func() error {
 		res := r.db.WithContext(ctx).Model(&model.StrmDownloadTask{}).
-			Where("status = ?", model.StrmTaskPending).
+			Where("status IN ?", []string{model.StrmTaskPending, model.StrmTaskRunning}).
 			Updates(map[string]any{
 				"status":      model.StrmTaskCanceled,
 				"error":       "已批量取消",
@@ -524,6 +524,25 @@ func (r *StrmUploadTaskRepository) Delete(ctx context.Context, id string) error 
 	return withSQLiteBusyRetry(ctx, func() error {
 		return r.db.WithContext(ctx).Where("id = ?", id).Delete(&model.StrmUploadTask{}).Error
 	})
+}
+
+// CancelPending 批量取消所有排队中和进行中的任务。
+func (r *StrmUploadTaskRepository) CancelPending(ctx context.Context) (int64, error) {
+	now := time.Now()
+	var count int64
+	err := withSQLiteBusyRetry(ctx, func() error {
+		res := r.db.WithContext(ctx).Model(&model.StrmUploadTask{}).
+			Where("status IN ?", []string{model.StrmTaskPending, model.StrmTaskRunning}).
+			Updates(map[string]any{
+				"status":      model.StrmTaskCanceled,
+				"error":       "已批量取消",
+				"finished_at": now,
+				"updated_at":  now,
+			})
+		count = res.RowsAffected
+		return res.Error
+	})
+	return count, err
 }
 
 // CountActive 统计某同步目录下目标仍在排队/进行的任务数（用于去重）。

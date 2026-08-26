@@ -414,6 +414,17 @@ func cancelPendingDownloadsHandler(svc *service.Container) gin.HandlerFunc {
 	}
 }
 
+func cancelPendingUploadsHandler(svc *service.Container) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		n, err := svc.Strm.CancelPendingUploadTasks(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"canceled": n})
+	}
+}
+
 // ─── 公开播放端点 ──────────────────────────────────────────────────────────────
 
 // strmPlayHandler 处理 strm 文件指向的播放请求（Emby/Infuse 直接请求，无 JWT）。

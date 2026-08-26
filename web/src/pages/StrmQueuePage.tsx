@@ -96,7 +96,7 @@ function StrmQueuePanel({ kind }: { kind: 'download' | 'upload' }) {
     }
   }
 
-  const batchBtn = (title: string, cls: string, onClick: () => void) => (
+  const batchBtn = (title: string, icon: 'trash' | 'ban' | 'refresh', cls: string, onClick: () => void) => (
     <button
       type="button"
       disabled={batchBusy}
@@ -105,33 +105,45 @@ function StrmQueuePanel({ kind }: { kind: 'download' | 'upload' }) {
         'ml-auto inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition disabled:opacity-50 ' + cls
       }
     >
-      <Trash2 size={12} />
+      {icon === 'trash' && <Trash2 size={12} />}
+      {icon === 'ban' && <Ban size={12} />}
+      {icon === 'refresh' && <RefreshCw size={12} />}
       {title}
     </button>
   )
 
+  const cancelAllPendingAction = () => {
+    const action = isDownload
+      ? () => strmAPI.cancelPendingDownloads()
+      : () => strmAPI.cancelPendingUploads()
+    return runBatch(action, `确定取消所有排队中及进行中的${isDownload ? '下载' : '上传'}任务？`)
+  }
+
   const batchActionByFilter = () => {
+    if (filter === 'pending' || filter === 'running')
+      return batchBtn(
+        '全部取消',
+        'ban',
+        'border-amber-200 text-amber-600 hover:bg-amber-50',
+        cancelAllPendingAction,
+      )
     if (!isDownload) return null
     if (filter === 'done')
       return batchBtn(
         '清空成功记录',
+        'trash',
         'border-gray-200 text-rose-500 hover:bg-rose-50',
         () => runBatch(() => strmAPI.clearDoneDownloads(), '确定清空所有已完成下载记录？'),
       )
     if (filter === 'failed')
-      return batchBtn('批量重试', 'border-gray-200 text-brand-500 hover:bg-brand-50', () =>
+      return batchBtn('批量重试', 'refresh', 'border-gray-200 text-brand-500 hover:bg-brand-50', () =>
         runBatch(() => strmAPI.retryFailedDownloads(), '确定重新入队所有失败下载任务？'),
-      )
-    if (filter === 'pending')
-      return batchBtn(
-        '批量取消',
-        'border-gray-200 text-amber-600 hover:bg-amber-50',
-        () => runBatch(() => strmAPI.cancelPendingDownloads(), '确定取消所有排队中的下载任务？'),
       )
     return null
   }
 
   const counts = snapshot?.counts
+  const activeTaskCount = (counts?.pending ?? 0) + (counts?.running ?? 0)
   const tasks = snapshot?.tasks.filter((t) => filter === 'all' || t.status === filter) ?? []
   const isDownload = kind === 'download'
   const Icon = isDownload ? Download : Upload
@@ -152,23 +164,36 @@ function StrmQueuePanel({ kind }: { kind: 'download' | 'upload' }) {
               : 'STRM 元数据上传情况（本地 → 远端网盘，3 秒自动刷新）'}
           </p>
         </div>
-        {isDownload && (
-          <button
-            type="button"
-            disabled={batchBusy}
-            onClick={() =>
-              runBatch(() => strmAPI.clearFinishedDownloads(), '确定清空所有失败和成功的下载记录？')
-            }
-            className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-500 transition hover:bg-rose-50 disabled:opacity-50"
-          >
-            <Trash2 size={14} />
-            清空失败与完成记录
+        <div className="ml-auto flex items-center gap-2">
+          {activeTaskCount > 0 && (
+            <button
+              type="button"
+              disabled={batchBusy}
+              onClick={cancelAllPendingAction}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-600 transition hover:bg-amber-500/20 disabled:opacity-50"
+            >
+              <Ban size={14} />
+              全部取消 ({activeTaskCount})
+            </button>
+          )}
+          {isDownload && (
+            <button
+              type="button"
+              disabled={batchBusy}
+              onClick={() =>
+                runBatch(() => strmAPI.clearFinishedDownloads(), '确定清空所有失败和成功的下载记录？')
+              }
+              className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-500 transition hover:bg-rose-50 disabled:opacity-50"
+            >
+              <Trash2 size={14} />
+              清空完成与失败
+            </button>
+          )}
+          <button type="button" onClick={refresh} className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-ink-100 hover:bg-gray-50">
+            <RefreshCw size={14} />
+            刷新
           </button>
-        )}
-        <button type="button" onClick={refresh} className="ml-auto inline-flex items-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-ink-100 hover:bg-gray-50">
-          <RefreshCw size={14} />
-          刷新
-        </button>
+        </div>
       </header>
 
       <div className="flex flex-wrap items-center gap-2">

@@ -159,6 +159,9 @@ export const strmAPI = {
   cancelUpload: (id: string) =>
     api.post(`/admin/strm/uploads/${id}/cancel`).then((r) => r.data),
 
+  cancelPendingUploads: () =>
+    api.post<{ canceled: number }>('/admin/strm/uploads/cancel-pending').then((r) => r.data),
+
   retryUpload: (id: string) =>
     api.post(`/admin/strm/uploads/${id}/retry`).then((r) => r.data),
 }

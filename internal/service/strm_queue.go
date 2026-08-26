@@ -511,6 +511,11 @@ func (s *StrmService) CancelPendingDownloadTasks(ctx context.Context) (int64, er
 	return s.repo.StrmDownload.CancelPending(ctx)
 }
 
+// CancelPendingUploadTasks 批量取消所有排队上传任务，返回取消数量。
+func (s *StrmService) CancelPendingUploadTasks(ctx context.Context) (int64, error) {
+	return s.repo.StrmUpload.CancelPending(ctx)
+}
+
 func sleepContext(ctx context.Context, d time.Duration) {
 	select {
 	case <-ctx.Done():

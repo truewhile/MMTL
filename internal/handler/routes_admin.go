@@ -55,6 +55,7 @@ func registerAdminStrmRoutes(admin *gin.RouterGroup, svc *service.Container) {
 	admin.GET("/strm/uploads", uploadQueueHandler(svc))
 	admin.POST("/strm/uploads/:id/cancel", cancelStrmUploadHandler(svc))
 	admin.POST("/strm/uploads/:id/retry", retryStrmUploadHandler(svc))
+	admin.POST("/strm/uploads/cancel-pending", cancelPendingUploadsHandler(svc))
 }
 
 func registerAdminUserRoutes(admin *gin.RouterGroup, svc *service.Container) {
