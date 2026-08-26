@@ -267,3 +267,111 @@ func TestReadLocalMetadataWithoutNFOStillFindsArtwork(t *testing.T) {
 		t.Fatalf("unexpected artwork metadata: %+v", got)
 	}
 }
+
+// TestReadLocalMetadataRecoversFromTruncatedShowNFO mirrors a real-world issue:
+// some anime tvshow.nfo files are truncated mid-URL (unexpected EOF). Before the
+// fix this discarded the whole series, leaving episodes pending with per-episode
+// titles and no poster. The recoverable fields (title/year) and the matching
+// episode NFO + local artwork must still be applied.
+func TestReadLocalMetadataRecoversFromTruncatedShowNFO(t *testing.T) {
+	root := t.TempDir()
+	showDir := filepath.Join(root, "夏日重现 (2022)")
+	seasonDir := filepath.Join(showDir, "Season 1")
+	if err := os.MkdirAll(seasonDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mediaPath := filepath.Join(seasonDir, "S01E01.mkv")
+	if err := os.WriteFile(mediaPath, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// tvshow.nfo cut off inside a <thumb> URL, like the broken real files.
+	truncated := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<tvshow>
+  <title>夏日重现</title>
+  <originaltitle>サマータイムレンダ</originaltitle>
+  <year>2022</year>
+  <plot>听闻自己青梅竹马死讯。</plot>
+  <thumb aspect="poster">https://image.tmdb.org/t/p/original/2koyWLm6iVn5OTEExTjKzVms5Iz.jpg</thumb>
+  <fanart>
+    <thumb>https://image.tmdb.org/t/p/original/p2eZlGwd8OjkWpwD2hSoBiIlHBZ.jpg</thu`
+	if err := os.WriteFile(filepath.Join(showDir, "tvshow.nfo"), []byte(truncated), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// The episode sidecar NFO is complete and should still be merged.
+	if err := os.WriteFile(nfoPath(mediaPath), []byte(`<episodedetails><title>再见了夏日</title><season>1</season><episode>1</episode></episodedetails>`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Local artwork next to the show folder.
+	poster := filepath.Join(showDir, "poster.jpg")
+	if err := os.WriteFile(poster, []byte("jpg"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := ReadLocalMetadata(mediaPath, root, true)
+	if err != nil {
+		t.Fatalf("ReadLocalMetadata returned error on truncated show NFO: %v", err)
+	}
+	if got == nil {
+		t.Fatal("metadata is nil; truncated show NFO discarded the series")
+	}
+	// The recovered show title takes precedence over the episode title.
+	if got.Title != "夏日重现" {
+		t.Fatalf("Title = %q, want recovered show title 夏日重现", got.Title)
+	}
+	if got.Year != 2022 {
+		t.Fatalf("Year = %d, want 2022", got.Year)
+	}
+	if got.EpisodeTitle != "再见了夏日" || got.SeasonNum != 1 || got.EpisodeNum != 1 {
+		t.Fatalf("episode metadata not preserved: %+v", got)
+	}
+	// Prior to the fix the episode metadata was dropped entirely; the poster comes
+	// from the local poster.jpg next to the show.
+	if got.PosterURL != poster {
+		t.Fatalf("PosterURL = %q, want local poster %q", got.PosterURL, poster)
+	}
+	// A truncated show NFO must not be treated as an authoritative match by
+	// itself; since the episode NFO is valid we still mark it matched so the
+	// recovered series title participates in grouping.
+	if !got.HasNFO {
+		t.Fatalf("HasNFO = false, want true (episode NFO is valid)")
+	}
+}
+
+// TestReadLocalMetadataKeepsArtworkOnlyWhenNoUsableNFO verifies that when a show
+// NFO is truncated AND yields no recoverable fields, we still fall back to local
+// artwork instead of returning an error.
+func TestReadLocalMetadataArtworkFallbackOnGarbageShowNFO(t *testing.T) {
+	root := t.TempDir()
+	showDir := filepath.Join(root, "Some Show")
+	seasonDir := filepath.Join(showDir, "Season 1")
+	if err := os.MkdirAll(seasonDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mediaPath := filepath.Join(seasonDir, "S01E01.mkv")
+	if err := os.WriteFile(mediaPath, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Severely truncated: no recoverable title/fields at all.
+	if err := os.WriteFile(filepath.Join(showDir, "tvshow.nfo"), []byte(`<tvshow><title>半截`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Episode-level backdrop sits next to the episode file.
+	backdrop := filepath.Join(seasonDir, "S01E01-backdrop.jpg")
+	if err := os.WriteFile(backdrop, []byte("jpg"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := ReadLocalMetadata(mediaPath, root, true)
+	if err != nil {
+		t.Fatalf("ReadLocalMetadata should not error when NFO is unusable: %v", err)
+	}
+	if got == nil {
+		t.Fatal("metadata is nil; artwork fallback missing")
+	}
+	if got.HasNFO {
+		t.Fatalf("HasNFO = true, want false for unusable NFO")
+	}
+	if got.BackdropURL != backdrop {
+		t.Fatalf("expected episode artwork fallback, got %+v", got)
+	}
+}
