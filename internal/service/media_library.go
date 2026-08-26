@@ -43,10 +43,10 @@ func (s *MediaService) DeleteLibrary(ctx context.Context, id string) error {
 		if err := tx.Unscoped().Where("library_id = ?", id).Delete(&model.Media{}).Error; err != nil {
 			return err
 		}
-		if err := hardDeleteLibraryRoots(ctx, tx, id); err != nil {
-			return err
-		}
-		return tx.Delete(&model.Library{}, "id = ?", id).Error
+			if err := hardDeleteLibraryRoots(ctx, tx, id); err != nil {
+				return err
+			}
+			return tx.Unscoped().Delete(&model.Library{}, "id = ?", id).Error
 	})
 	if err == nil {
 		s.invalidateMediaCache(ctx)

@@ -501,6 +501,16 @@ func (s *StrmService) ClearFinishedDownloadTasks(ctx context.Context) (int64, er
 	return s.repo.StrmDownload.ClearFinished(ctx)
 }
 
+// ClearCanceledDownloadTasks 清空全部已取消的下载记录，返回删除数量。
+func (s *StrmService) ClearCanceledDownloadTasks(ctx context.Context) (int64, error) {
+	return s.repo.StrmDownload.ClearCanceled(ctx)
+}
+
+// ClearCanceledUploadTasks 清空全部已取消的上传记录，返回删除数量。
+func (s *StrmService) ClearCanceledUploadTasks(ctx context.Context) (int64, error) {
+	return s.repo.StrmUpload.ClearCanceled(ctx)
+}
+
 // RetryAllFailedDownloadTasks 批量重试所有失败下载任务，返回重新入队数量。
 func (s *StrmService) RetryAllFailedDownloadTasks(ctx context.Context) (int64, error) {
 	return s.repo.StrmDownload.RetryAllFailed(ctx)

@@ -116,12 +116,12 @@ func (r *MediaRepository) ListByLibrariesFiltered(ctx context.Context, libraryID
 
 // DeleteByLibrary purges all media tied to a library.
 func (r *MediaRepository) DeleteByLibrary(ctx context.Context, libraryID string) error {
-	// FTS 行由 media 表上的触发器同步清理（软删/硬删都覆盖）。
-	return r.db.WithContext(ctx).Where("library_id = ?", libraryID).Delete(&model.Media{}).Error
+	// FTS 行由 media 表上的触发器同步清理（物理删除触发 FTS 清理）。
+	return r.db.WithContext(ctx).Unscoped().Where("library_id = ?", libraryID).Delete(&model.Media{}).Error
 }
 
 func (r *MediaRepository) DeleteByLibraryRoot(ctx context.Context, libraryID, rootID string) error {
-	return r.db.WithContext(ctx).
+	return r.db.WithContext(ctx).Unscoped().
 		Where("library_id = ? AND library_root_id = ?", libraryID, rootID).
 		Delete(&model.Media{}).Error
 }

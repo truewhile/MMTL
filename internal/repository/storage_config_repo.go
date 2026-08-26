@@ -66,9 +66,9 @@ func (r *StorageConfigRepository) Upsert(ctx context.Context, c *model.StorageCo
 	}).Error
 }
 
-// Delete removes a storage config by ID.
+// Delete 物理删除存储配置。
 func (r *StorageConfigRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&model.StorageConfig{}).Error
+	return r.db.WithContext(ctx).Unscoped().Where("id = ?", id).Delete(&model.StorageConfig{}).Error
 }
 
 // FindByID returns a storage config by ID.

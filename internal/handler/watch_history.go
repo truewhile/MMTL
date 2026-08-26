@@ -163,7 +163,7 @@ func historyDeleteHandler(svc *service.Container) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "status must be completed or incomplete"})
 			return
 		}
-		res := q.Delete(&model.PlaybackHistory{})
+			res := q.Unscoped().Delete(&model.PlaybackHistory{})
 		if err := res.Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

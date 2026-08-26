@@ -97,7 +97,7 @@ func (o *OrganizerService) deleteMediaRowForPath(ctx context.Context, path strin
 	if o == nil || o.repo == nil || o.repo.DB == nil {
 		return
 	}
-	_ = o.repo.DB.WithContext(ctx).Where("path = ?", path).Delete(&model.Media{}).Error
+	_ = o.repo.DB.WithContext(ctx).Unscoped().Where("path = ?", path).Delete(&model.Media{}).Error
 }
 
 func (o *OrganizerService) mediaPathExists(ctx context.Context, path string) bool {

@@ -196,18 +196,18 @@ func (p *PlaybackService) AddToPlaylist(ctx context.Context, playlistID, mediaID
 	return p.repo.DB.Create(item).Error
 }
 
-// RemoveFromPlaylist removes a media item from a playlist (idempotent).
+// RemoveFromPlaylist 物理删除播放列表项（幂等）。
 func (p *PlaybackService) RemoveFromPlaylist(ctx context.Context, playlistID, mediaID string) error {
-	return p.repo.DB.
+	return p.repo.DB.WithContext(ctx).Unscoped().
 		Where("playlist_id = ? AND media_id = ?", playlistID, mediaID).
 		Delete(&model.PlaylistItem{}).Error
 }
 
-// DeletePlaylist removes a playlist and all of its items.
+// DeletePlaylist 物理删除播放列表及其全部条目。
 func (p *PlaybackService) DeletePlaylist(ctx context.Context, playlistID string) error {
-	if err := p.repo.DB.Where("playlist_id = ?", playlistID).
+	if err := p.repo.DB.WithContext(ctx).Unscoped().Where("playlist_id = ?", playlistID).
 		Delete(&model.PlaylistItem{}).Error; err != nil {
 		return err
 	}
-	return p.repo.DB.Where("id = ?", playlistID).Delete(&model.Playlist{}).Error
+	return p.repo.DB.WithContext(ctx).Unscoped().Where("id = ?", playlistID).Delete(&model.Playlist{}).Error
 }

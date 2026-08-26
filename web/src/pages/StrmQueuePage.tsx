@@ -127,6 +127,19 @@ function StrmQueuePanel({ kind }: { kind: 'download' | 'upload' }) {
         'border-amber-200 text-amber-600 hover:bg-amber-50',
         cancelAllPendingAction,
       )
+    if (filter === 'canceled')
+      return batchBtn(
+        '清空已取消记录',
+        'trash',
+        'border-gray-200 text-rose-500 hover:bg-rose-50',
+        () =>
+          runBatch(
+            isDownload
+              ? () => strmAPI.clearCanceledDownloads()
+              : () => strmAPI.clearCanceledUploads(),
+            `确定清空所有已取消的${isDownload ? '下载' : '上传'}记录？`,
+          ),
+      )
     if (!isDownload) return null
     if (filter === 'done')
       return batchBtn(

@@ -79,10 +79,9 @@ func (r *LibraryRepository) FindByID(ctx context.Context, id string) (*model.Lib
 	return &l, nil
 }
 
-// Delete removes a library and (soft) cascades to its media via repository
-// callers; we do not run CASCADE here to keep this method narrow.
+// Delete 物理删除媒体库。
 func (r *LibraryRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&model.Library{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Unscoped().Delete(&model.Library{}, "id = ?", id).Error
 }
 
 func (r *LibraryRepository) ListRoots(ctx context.Context, libraryID string) ([]model.LibraryRoot, error) {
@@ -149,7 +148,7 @@ func (r *LibraryRepository) DeleteRoot(ctx context.Context, libraryID, rootID st
 	if !r.hasLibraryRootsTable() {
 		return nil
 	}
-	return r.db.WithContext(ctx).Where("library_id = ?", libraryID).Delete(&model.LibraryRoot{}, "id = ?", rootID).Error
+	return r.db.WithContext(ctx).Unscoped().Where("library_id = ?", libraryID).Delete(&model.LibraryRoot{}, "id = ?", rootID).Error
 }
 
 func (r *LibraryRepository) hasLibraryRootsTable() bool {

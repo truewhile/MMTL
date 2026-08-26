@@ -11,13 +11,12 @@ import (
 	"github.com/ShukeBta/MMTL/internal/model"
 )
 
-// RemovePath deletes the media row for a path that has disappeared from disk
-// (incremental delete used by the watcher on Remove/Rename events).
+// RemovePath 物理删除磁盘上已不存在的媒体记录。
 func (s *ScannerService) RemovePath(ctx context.Context, path string) (int64, error) {
 	if _, err := os.Stat(path); err == nil {
 		return 0, nil // still exists; nothing to remove
 	}
-	res := s.repo.DB.WithContext(ctx).
+	res := s.repo.DB.WithContext(ctx).Unscoped().
 		Where("path = ?", path).
 		Delete(&model.Media{})
 	if res.Error == nil && res.RowsAffected > 0 {
@@ -55,7 +54,7 @@ func (s *ScannerService) pruneMissingMedia(ctx context.Context, libraryID string
 		}
 		stale = append(stale, row.ID)
 	}
-	return s.deleteMediaByIDs(ctx, stale, false)
+	return s.deleteMediaByIDs(ctx, stale, true)
 }
 
 func (s *ScannerService) pruneMissingMediaForRoot(ctx context.Context, libraryID, rootID, rootPath string, seen map[string]struct{}) (int64, error) {
@@ -92,7 +91,7 @@ func (s *ScannerService) pruneMissingMediaForRoot(ctx context.Context, libraryID
 		}
 		stale = append(stale, row.ID)
 	}
-	return s.deleteMediaByIDs(ctx, stale, false)
+	return s.deleteMediaByIDs(ctx, stale, true)
 }
 
 func pathBelongsToRoot(pathValue, rootPath string) bool {

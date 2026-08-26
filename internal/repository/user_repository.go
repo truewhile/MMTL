@@ -133,26 +133,17 @@ func (r *UserRepository) TouchLogin(ctx context.Context, id string) error {
 	})
 }
 
-// Delete removes a user (soft-delete via gorm.DeletedAt), releases the unique
-// username, and drops Telegram bindings so future re-created users bind cleanly.
+// Delete 物理删除用户并级联清理其关联记录。
 func (r *UserRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var user model.User
-		if err := tx.Where("id = ?", id).First(&user).Error; err != nil {
-			return err
-		}
-		released := user.Username + "__deleted__" + time.Now().Format("20060102150405.000000000")
-		if len(released) > 64 {
-			sum := sha256.Sum256([]byte(user.ID + user.Username))
-			base := user.Username
-			if len(base) > 43 {
-				base = base[:43]
-			}
-			released = base + "__deleted__" + hex.EncodeToString(sum[:])[:10]
-		}
-		if err := tx.Model(&model.User{}).Where("id = ?", id).Update("username", released).Error; err != nil {
-			return err
-		}
-		return tx.Delete(&model.User{}, "id = ?", id).Error
+	return withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			_ = tx.Unscoped().Where("user_id = ?", id).Delete(&model.RefreshToken{})
+			_ = tx.Unscoped().Where("user_id = ?", id).Delete(&model.UserPermission{})
+			_ = tx.Unscoped().Where("user_id = ?", id).Delete(&model.PlayProfile{})
+			_ = tx.Unscoped().Where("user_id = ?", id).Delete(&model.PlaybackHistory{})
+			_ = tx.Unscoped().Where("user_id = ?", id).Delete(&model.Favorite{})
+			_ = tx.Unscoped().Where("user_id = ?", id).Delete(&model.UserDevice{})
+			return tx.Unscoped().Delete(&model.User{}, "id = ?", id).Error
+		})
 	})
 }

@@ -72,10 +72,10 @@ func (r *RefreshTokenRepository) RevokeOldestActiveByUserID(ctx context.Context,
 	})
 }
 
-// DeleteExpired removes all expired refresh tokens.
+// DeleteExpired 物理清理所有过期的 refresh tokens。
 func (r *RefreshTokenRepository) DeleteExpired(ctx context.Context) error {
 	return withSQLiteBusyRetry(ctx, func() error {
-		return r.db.WithContext(ctx).Where("expires_at < ?", time.Now()).Delete(&model.RefreshToken{}).Error
+		return r.db.WithContext(ctx).Unscoped().Where("expires_at < ?", time.Now()).Delete(&model.RefreshToken{}).Error
 	})
 }
 

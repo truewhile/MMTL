@@ -50,12 +50,14 @@ func registerAdminStrmRoutes(admin *gin.RouterGroup, svc *service.Container) {
 	admin.POST("/strm/downloads/:id/retry", retryStrmDownloadHandler(svc))
 	admin.POST("/strm/downloads/clear-done", clearDoneDownloadsHandler(svc))
 	admin.POST("/strm/downloads/clear-finished", clearFinishedDownloadsHandler(svc))
+	admin.POST("/strm/downloads/clear-canceled", clearCanceledDownloadsHandler(svc))
 	admin.POST("/strm/downloads/retry-failed", retryAllFailedDownloadsHandler(svc))
 	admin.POST("/strm/downloads/cancel-pending", cancelPendingDownloadsHandler(svc))
 	admin.GET("/strm/uploads", uploadQueueHandler(svc))
 	admin.POST("/strm/uploads/:id/cancel", cancelStrmUploadHandler(svc))
 	admin.POST("/strm/uploads/:id/retry", retryStrmUploadHandler(svc))
 	admin.POST("/strm/uploads/cancel-pending", cancelPendingUploadsHandler(svc))
+	admin.POST("/strm/uploads/clear-canceled", clearCanceledUploadsHandler(svc))
 }
 
 func registerAdminUserRoutes(admin *gin.RouterGroup, svc *service.Container) {

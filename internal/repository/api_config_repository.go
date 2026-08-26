@@ -62,9 +62,9 @@ func (r *ApiConfigRepository) Update(ctx context.Context, c *model.ApiConfig) er
 	}).Error
 }
 
-// Delete removes an API config.
+// Delete 物理删除 API 配置。
 func (r *ApiConfigRepository) Delete(ctx context.Context, provider string) error {
-	return r.db.WithContext(ctx).Where("provider = ?", provider).Delete(&model.ApiConfig{}).Error
+	return r.db.WithContext(ctx).Unscoped().Where("provider = ?", provider).Delete(&model.ApiConfig{}).Error
 }
 
 // UpdateTestResult 更新测试结果。

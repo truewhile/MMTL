@@ -29,9 +29,9 @@ func (r *SettingRepository) Set(ctx context.Context, key, value string) error {
 	return r.db.WithContext(ctx).Save(&s).Error
 }
 
-// Delete removes a setting key.
+// Delete 物理删除设置键。
 func (r *SettingRepository) Delete(ctx context.Context, key string) error {
-	return r.db.WithContext(ctx).Where("key = ?", key).Delete(&model.Setting{}).Error
+	return r.db.WithContext(ctx).Unscoped().Where("key = ?", key).Delete(&model.Setting{}).Error
 }
 
 // All returns every key/value pair (used by the admin UI).

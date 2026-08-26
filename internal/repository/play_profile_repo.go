@@ -59,9 +59,9 @@ func (r *PlayProfileRepository) Update(ctx context.Context, id string, patch map
 		Where("id = ?", id).Updates(patch).Error
 }
 
-// Delete soft-deletes a profile.
+// Delete 物理删除播放档案。
 func (r *PlayProfileRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&model.PlayProfile{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Unscoped().Delete(&model.PlayProfile{}, "id = ?", id).Error
 }
 
 // ClearDefaultsFor resets is_default for all of a user's profiles.

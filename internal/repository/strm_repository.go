@@ -59,7 +59,7 @@ func (r *StrmAccountRepository) Update(ctx context.Context, a *model.StrmAccount
 
 func (r *StrmAccountRepository) Delete(ctx context.Context, id string) error {
 	return withSQLiteBusyRetry(ctx, func() error {
-		return r.db.WithContext(ctx).Where("id = ?", id).Delete(&model.StrmAccount{}).Error
+		return r.db.WithContext(ctx).Unscoped().Where("id = ?", id).Delete(&model.StrmAccount{}).Error
 	})
 }
 
@@ -123,7 +123,7 @@ func (r *StrmSyncPathRepository) Update(ctx context.Context, p *model.StrmSyncPa
 
 func (r *StrmSyncPathRepository) Delete(ctx context.Context, id string) error {
 	return withSQLiteBusyRetry(ctx, func() error {
-		return r.db.WithContext(ctx).Where("id = ?", id).Delete(&model.StrmSyncPath{}).Error
+		return r.db.WithContext(ctx).Unscoped().Where("id = ?", id).Delete(&model.StrmSyncPath{}).Error
 	})
 }
 
@@ -286,7 +286,7 @@ func (r *StrmDownloadTaskRepository) Update(ctx context.Context, t *model.StrmDo
 
 func (r *StrmDownloadTaskRepository) Delete(ctx context.Context, id string) error {
 	return withSQLiteBusyRetry(ctx, func() error {
-		return r.db.WithContext(ctx).Where("id = ?", id).Delete(&model.StrmDownloadTask{}).Error
+		return r.db.WithContext(ctx).Unscoped().Where("id = ?", id).Delete(&model.StrmDownloadTask{}).Error
 	})
 }
 
@@ -294,7 +294,7 @@ func (r *StrmDownloadTaskRepository) Delete(ctx context.Context, id string) erro
 func (r *StrmDownloadTaskRepository) ClearDone(ctx context.Context) (int64, error) {
 	var count int64
 	err := withSQLiteBusyRetry(ctx, func() error {
-		res := r.db.WithContext(ctx).Where("status = ?", model.StrmTaskDone).Delete(&model.StrmDownloadTask{})
+		res := r.db.WithContext(ctx).Unscoped().Where("status = ?", model.StrmTaskDone).Delete(&model.StrmDownloadTask{})
 		count = res.RowsAffected
 		return res.Error
 	})
@@ -305,8 +305,19 @@ func (r *StrmDownloadTaskRepository) ClearDone(ctx context.Context) (int64, erro
 func (r *StrmDownloadTaskRepository) ClearFinished(ctx context.Context) (int64, error) {
 	var count int64
 	err := withSQLiteBusyRetry(ctx, func() error {
-		res := r.db.WithContext(ctx).Where("status IN ?", []string{model.StrmTaskDone, model.StrmTaskFailed}).
+		res := r.db.WithContext(ctx).Unscoped().Where("status IN ?", []string{model.StrmTaskDone, model.StrmTaskFailed, model.StrmTaskCanceled}).
 			Delete(&model.StrmDownloadTask{})
+		count = res.RowsAffected
+		return res.Error
+	})
+	return count, err
+}
+
+// ClearCanceled 清空全部已取消下载任务。
+func (r *StrmDownloadTaskRepository) ClearCanceled(ctx context.Context) (int64, error) {
+	var count int64
+	err := withSQLiteBusyRetry(ctx, func() error {
+		res := r.db.WithContext(ctx).Unscoped().Where("status = ?", model.StrmTaskCanceled).Delete(&model.StrmDownloadTask{})
 		count = res.RowsAffected
 		return res.Error
 	})
@@ -381,7 +392,7 @@ func (r *StrmDownloadTaskRepository) GetActiveLocalPathMap(ctx context.Context, 
 
 func (r *StrmDownloadTaskRepository) DeleteFinishedOlderThan(ctx context.Context, before time.Time) error {
 	return withSQLiteBusyRetry(ctx, func() error {
-		return r.db.WithContext(ctx).Where("status IN ? AND finished_at < ?",
+		return r.db.WithContext(ctx).Unscoped().Where("status IN ? AND finished_at < ?",
 			[]string{model.StrmTaskDone, model.StrmTaskFailed, model.StrmTaskCanceled}, before).
 			Delete(&model.StrmDownloadTask{}).Error
 	})
@@ -522,8 +533,19 @@ func (r *StrmUploadTaskRepository) Update(ctx context.Context, t *model.StrmUplo
 
 func (r *StrmUploadTaskRepository) Delete(ctx context.Context, id string) error {
 	return withSQLiteBusyRetry(ctx, func() error {
-		return r.db.WithContext(ctx).Where("id = ?", id).Delete(&model.StrmUploadTask{}).Error
+		return r.db.WithContext(ctx).Unscoped().Where("id = ?", id).Delete(&model.StrmUploadTask{}).Error
 	})
+}
+
+// ClearCanceled 清空全部已取消上传任务。
+func (r *StrmUploadTaskRepository) ClearCanceled(ctx context.Context) (int64, error) {
+	var count int64
+	err := withSQLiteBusyRetry(ctx, func() error {
+		res := r.db.WithContext(ctx).Unscoped().Where("status = ?", model.StrmTaskCanceled).Delete(&model.StrmUploadTask{})
+		count = res.RowsAffected
+		return res.Error
+	})
+	return count, err
 }
 
 // CancelPending 批量取消所有排队中和进行中的任务。
@@ -573,7 +595,7 @@ func (r *StrmUploadTaskRepository) GetActiveLocalPathMap(ctx context.Context, sy
 
 func (r *StrmUploadTaskRepository) DeleteFinishedOlderThan(ctx context.Context, before time.Time) error {
 	return withSQLiteBusyRetry(ctx, func() error {
-		return r.db.WithContext(ctx).Where("status IN ? AND finished_at < ?",
+		return r.db.WithContext(ctx).Unscoped().Where("status IN ? AND finished_at < ?",
 			[]string{model.StrmTaskDone, model.StrmTaskFailed, model.StrmTaskCanceled}, before).
 			Delete(&model.StrmUploadTask{}).Error
 	})
@@ -614,7 +636,7 @@ func (r *StrmDirCacheRepository) Set(ctx context.Context, syncPathID, dirID, pat
 
 func (r *StrmDirCacheRepository) DeleteBySyncPathID(ctx context.Context, syncPathID string) error {
 	return withSQLiteBusyRetry(ctx, func() error {
-		return r.db.WithContext(ctx).Where("sync_path_id = ?", syncPathID).Delete(&model.StrmDirCache{}).Error
+		return r.db.WithContext(ctx).Unscoped().Where("sync_path_id = ?", syncPathID).Delete(&model.StrmDirCache{}).Error
 	})
 }
 

@@ -50,10 +50,16 @@ func TestStrmAdminRoutesAreRegistered(t *testing.T) {
 		"GET /api/admin/strm/downloads",
 		"POST /api/admin/strm/downloads/:id/cancel",
 		"POST /api/admin/strm/downloads/:id/retry",
-		"GET /api/admin/strm/uploads",
-		"POST /api/admin/strm/uploads/:id/cancel",
-		"POST /api/admin/strm/uploads/:id/retry",
-		"GET /api/strm/play/:provider/:file",
+			"POST /api/admin/strm/downloads/clear-finished",
+			"POST /api/admin/strm/downloads/clear-canceled",
+			"POST /api/admin/strm/downloads/retry-failed",
+			"POST /api/admin/strm/downloads/cancel-pending",
+			"GET /api/admin/strm/uploads",
+			"POST /api/admin/strm/uploads/:id/cancel",
+			"POST /api/admin/strm/uploads/:id/retry",
+			"POST /api/admin/strm/uploads/cancel-pending",
+			"POST /api/admin/strm/uploads/clear-canceled",
+			"GET /api/strm/play/:provider/:file",
 	} {
 		if !routes[want] {
 			t.Fatalf("%s route is not registered", want)

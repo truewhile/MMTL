@@ -51,9 +51,9 @@ func (r *PermissionRepository) Upsert(ctx context.Context, p *model.UserPermissi
 	})
 }
 
-// Delete removes a permission record.
+// Delete 物理删除权限记录。
 func (r *PermissionRepository) Delete(ctx context.Context, userID string) error {
 	return withSQLiteBusyRetry(ctx, func() error {
-		return r.db.WithContext(ctx).Where("user_id = ?", userID).Delete(&model.UserPermission{}).Error
+		return r.db.WithContext(ctx).Unscoped().Where("user_id = ?", userID).Delete(&model.UserPermission{}).Error
 	})
 }
