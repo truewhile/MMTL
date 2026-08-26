@@ -28,8 +28,10 @@ const (
 )
 
 // downloadWorker 下载队列 worker：认领 → 解析直链 → 下载 → 落盘。
-// 每次批量认领数个任务，并对这批任务并发下载，让「换直链」和「实际下载」
-// 在不同任务间重叠，从而充分利用多线程与 115 换链 QPS。
+//
+// 采用「批量认领 + 全局并发限流」：一次认领数个任务，用 StrmService 上的全局信号量
+// 限制整个进程「同时换直链+下载」的并发数（与 115 换链风控匹配，见 strmDownloadSemCap），
+// 同时让下载充分并行。换链走全局令牌桶（QPS=3）兜底，下载走 CDN 不限速。
 func (s *StrmService) downloadWorker(ctx context.Context) {
 	const claimBatch = 12 // 每次批量认领的任务数
 	for {
@@ -56,12 +58,17 @@ func (s *StrmService) downloadWorker(ctx context.Context) {
 			sleepContext(ctx, 2*time.Second)
 			continue
 		}
-		// 并发处理本批认领到的任务，充分利用多线程下载 & 直链换取并发
+		// 并发处理本批任务：每个任务先获取全局下载槽位，槽位内部执行换链+下载。
+		// 信号量与令牌桶双重限速，确保任意时刻并发换链请求不超过安全阈值。
 		var wg sync.WaitGroup
 		for i := range tasks {
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()
+				if !s.acquireDownloadSlot(ctx) {
+					return
+				}
+				defer s.releaseDownloadSlot()
 				s.processDownloadTask(ctx, &tasks[i])
 			}(i)
 		}

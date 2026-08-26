@@ -90,10 +90,47 @@ type StrmService struct {
 	running       map[string]context.CancelFunc // sync path id -> cancel
 	oauthSessions map[string]*strm115AuthSession
 	wafUntil      time.Time // 115 风控/限流熔断截止时间（由 mu 保护）
+
+	downloadSem chan struct{} // 全局下载并发信号量：限制整个进程同时进行「换直链+下载」的并发数
+	downloadSemOnce sync.Once
 }
 
 // strmWAFCooldown 检测到 115 风控/限流后下载队列的全局冷却时长。
 const strmWAFCooldown = 3 * time.Minute
+
+// strmDownloadSemCap 全局同时进行「换直链+下载」的并发上限。
+//
+// 115 对换直链接口（/open/ufile/downurl）风控极严：过去把全局 QPS 提到 8 或让多
+// worker 高并发换链，会瞬时撞上 WAF 返回 405 阻断页并触发 180 秒冷却，反而更慢。
+// 因此用信号量把整个进程同时换直链的并发数压到 3，与令牌桶限速共同兜底：
+// 宁可下载稍慢，也绝不触发风控。下载本身走 CDN 不限速。
+const strmDownloadSemCap = 3
+
+// ensureDownloadSem 惰性初始化全局共享的下载并发信号量。
+func (s *StrmService) ensureDownloadSem() {
+	s.downloadSemOnce.Do(func() {
+		s.downloadSem = make(chan struct{}, strmDownloadSemCap)
+	})
+}
+
+// acquireDownloadSlot 获取一个下载并发槽位（等待/取消安全）。
+func (s *StrmService) acquireDownloadSlot(ctx context.Context) bool {
+	s.ensureDownloadSem()
+	select {
+	case s.downloadSem <- struct{}{}:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+// releaseDownloadSlot 释放一个下载并发槽位。
+func (s *StrmService) releaseDownloadSlot() {
+	if s.downloadSem == nil {
+		return
+	}
+	<-s.downloadSem
+}
 
 // NewStrmService constructs the STRM service.
 func NewStrmService(cfg *config.Config, log *zap.Logger, repos *repository.Container, crypto *CryptoService) *StrmService {

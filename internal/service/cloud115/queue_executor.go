@@ -26,13 +26,15 @@ var (
 	executorOnce   sync.Once
 )
 
-// GetGlobalExecutor 获取全局队列执行器单例（默认 QPS=8, QPM=480, QPH=20000，保障 115 API 调用安全不超频）。
-// QPS 从 2 提到 8：下载/列表等场景下过去 QPS=2 将所有直链换取串行为每秒 2 个，是下载吞吐的最大瓶颈。
-// 8 是经过折中的安全值——远低于 115 WAF 风控触发阈值（QPS≈20 起才有明显风险），
-// 又能让多 worker 并发换取直链，显著提升元数据下载速度。
+// GetGlobalExecutor 获取全局队列执行器单例（默认 QPS=3, QPM=200, QPH=12000，保障 115 API 调用安全不超频）。
+//
+// 历史教训：QPS 提到 8 后，下载换直链接口（/open/ufile/downurl，WAF 重点盯防对象）
+// 瞬时突发撞上 115 风控，返回阿里云 405 阻断页（HTTP 405），导致全量同步失败。
+// 因此回调到 3——这是经过实测的安全上限：宁慢勿触发风控，一旦 405 冷却 180 秒，
+// 整体吞吐反而更低。下载实际走 CDN 不受此限速影响，瓶颈仅在换链环节。
 func GetGlobalExecutor() *QueueExecutor {
 	executorOnce.Do(func() {
-		globalExecutor = NewQueueExecutor(8, 480, 20000)
+		globalExecutor = NewQueueExecutor(3, 200, 12000)
 	})
 	return globalExecutor
 }
