@@ -582,10 +582,11 @@ func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
 							continue
 						}
 						if _, loaded := st.dirCache.Load(ancestor.FileId); !loaded {
-							subDetail := &cloud115.RemoteFileDetail{
-								FileId: ancestor.FileId,
-								Paths:  nil,
-							}
+								subDetail := &cloud115.RemoteFileDetail{
+									FileId:   ancestor.FileId,
+									FileName: ancestor.Name,
+									Paths:    nil,
+								}
 							for _, p := range detail.Paths {
 								subDetail.Paths = append(subDetail.Paths, p)
 								if p.FileId == ancestor.FileId {

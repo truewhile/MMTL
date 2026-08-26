@@ -145,11 +145,14 @@ type RemoteFileDetail struct {
 
 // RelativePath 计算该目录相对于根同步目录（rootCID）的相对路径。
 func (d *RemoteFileDetail) RelativePath(rootCID string) string {
-	if d == nil || len(d.Paths) == 0 {
+	if d == nil {
 		return ""
 	}
 	if rootCID == "" {
 		rootCID = "0"
+	}
+	if d.FileId == rootCID {
+		return ""
 	}
 	rootIdx := -1
 	for i, p := range d.Paths {
@@ -165,11 +168,19 @@ func (d *RemoteFileDetail) RelativePath(rootCID string) string {
 	} else if len(d.Paths) > 0 && (d.Paths[0].FileId == "0" || d.Paths[0].FileId == "") {
 		start = 1
 	}
+	hasSelf := false
 	for i := start; i < len(d.Paths); i++ {
+		if d.Paths[i].FileId == d.FileId {
+			hasSelf = true
+		}
 		name := strings.TrimSpace(d.Paths[i].Name)
 		if name != "" {
 			segments = append(segments, name)
 		}
+	}
+	// 若 115 返回的 paths 祖先链未包含当前目录自身，则将其自身目录名 FileName 补在末尾
+	if !hasSelf && strings.TrimSpace(d.FileName) != "" && d.FileId != rootCID {
+		segments = append(segments, strings.TrimSpace(d.FileName))
 	}
 	return strings.Join(segments, "/")
 }
