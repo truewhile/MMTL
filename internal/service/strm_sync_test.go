@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -493,7 +494,68 @@ func TestWalkRemoteConcurrent(t *testing.T) {
 	if walkErr != nil {
 		t.Fatal(walkErr)
 	}
-	if strmCount != 5 {
-		t.Errorf("生成的 .strm 数量 = %d，期望 5", strmCount)
+		if strmCount != 5 {
+			t.Errorf("生成的 .strm 数量 = %d，期望 5", strmCount)
+		}
 	}
-}
+
+	// TestStrmBatchEnqueueAndConcurrentClaim 测试大规模批量入库及多协程并发认领无死锁
+	func TestStrmBatchEnqueueAndConcurrentClaim(t *testing.T) {
+		svc := testStrmService(t)
+		ctx := context.Background()
+
+		// 1. 批量插入 200 个下载任务
+		tasks := make([]*model.StrmDownloadTask, 0, 200)
+		for i := 0; i < 200; i++ {
+			tasks = append(tasks, &model.StrmDownloadTask{
+				SyncPathID: "test-sync-path",
+				AccountID:  "test-acct",
+				Provider:   model.StrmProvider115,
+				FileName:   filepath.Base(string(rune('a'+i%26))) + ".nfo",
+				LocalPath:  filepath.Join(t.TempDir(), string(rune('a'+i%26)), "test.nfo"),
+				Status:     model.StrmTaskPending,
+			})
+		}
+		if err := svc.repo.StrmDownload.CreateInBatches(ctx, tasks, 50); err != nil {
+			t.Fatalf("CreateInBatches failed: %v", err)
+		}
+
+		// 2. 验证 ActiveLocalPathMap
+		activeMap, err := svc.repo.StrmDownload.GetActiveLocalPathMap(ctx, "test-sync-path")
+		if err != nil {
+			t.Fatalf("GetActiveLocalPathMap failed: %v", err)
+		}
+		if len(activeMap) == 0 {
+			t.Fatal("expected active local path map to have entries")
+		}
+
+		// 3. 模拟 6 个 worker 并发 ClaimPendingDownload
+		claimedCount := 0
+		var claimMu sync.Mutex
+		var wg sync.WaitGroup
+		for w := 0; w < 6; w++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for {
+					batch, err := svc.repo.StrmDownload.ClaimPendingDownload(ctx, 10)
+					if err != nil {
+						t.Errorf("concurrent ClaimPendingDownload failed: %v", err)
+						return
+					}
+					if len(batch) == 0 {
+						return
+					}
+					claimMu.Lock()
+					claimedCount += len(batch)
+					claimMu.Unlock()
+				}
+			}()
+		}
+		wg.Wait()
+
+		if claimedCount != 200 {
+			t.Fatalf("expected all 200 tasks claimed, got %d", claimedCount)
+		}
+	}
+

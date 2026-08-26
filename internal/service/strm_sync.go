@@ -34,12 +34,17 @@ type strmSyncState struct {
 	rec      *model.StrmSyncRecord
 	syncType string
 
-	mu         sync.Mutex
-	processed  int              // 已处理文件计数（用于定期落库进度）
-	seenVideo  map[string]bool  // "v:"+去掉扩展名的相对路径 → 远端存在该视频
-	seenMeta   map[string]bool  // "m:"+相对路径 → 远端存在该元数据
-	remoteMeta map[string]int64 // 远端元数据大小（上传比对用）
-	dirCache   sync.Map         // dirID (string) -> relativePath (string)
+	mu                  sync.Mutex
+	processed           int              // 已处理文件计数（用于定期落库进度）
+	lastProgressFlush   time.Time        // 上次进度落库时间
+	seenVideo           map[string]bool  // "v:"+去掉扩展名的相对路径 → 远端存在该视频
+	seenMeta            map[string]bool  // "m:"+相对路径 → 远端存在该元数据
+	remoteMeta          map[string]int64 // 远端元数据大小（上传比对用）
+	activeDownloadPaths map[string]bool  // 本地已在排队/进行的下载任务路径（内存去重）
+	activeUploadPaths   map[string]bool  // 本地已在排队/进行的上传任务路径（内存去重）
+	pendingDownloads    []*model.StrmDownloadTask
+	pendingUploads      []*model.StrmUploadTask
+	dirCache            sync.Map // dirID (string) -> relativePath (string)
 }
 
 // StartSync 启动一次同步（异步执行，同一目录同时只允许一个任务）。
@@ -227,6 +232,21 @@ func (st *strmSyncState) run() error {
 	if err := ensureLocalDir(st.p.LocalPath); err != nil {
 		return fmt.Errorf("创建输出目录失败：%w", err)
 	}
+	if st.cfg.DownloadMeta {
+		if active, err := st.s.repo.StrmDownload.GetActiveLocalPathMap(st.ctx, st.p.ID); err == nil {
+			st.activeDownloadPaths = active
+		} else {
+			st.activeDownloadPaths = map[string]bool{}
+		}
+	}
+	if st.cfg.UploadMeta {
+		if active, err := st.s.repo.StrmUpload.GetActiveLocalPathMap(st.ctx, st.p.ID); err == nil {
+			st.activeUploadPaths = active
+		} else {
+			st.activeUploadPaths = map[string]bool{}
+		}
+	}
+
 	if st.provider != nil {
 		if open115, ok := st.provider.(cloud.OpenAPI115Provider); ok && st.p.Provider == model.StrmProvider115 {
 			if err := st.walk115Flat(open115.OpenClient()); err != nil {
@@ -242,11 +262,13 @@ func (st *strmSyncState) run() error {
 			return err
 		}
 	}
+	st.flushPendingDownloads()
 	st.flushProgress()
 	if st.cfg.UploadMeta && st.provider != nil && st.p.Provider != model.StrmProvider115 {
 		if err := st.scanLocalMetaForUpload(); err != nil {
 			return err
 		}
+		st.flushPendingUploads()
 	}
 	if err := st.pruneLocal(); err != nil {
 		return err
@@ -265,6 +287,7 @@ const strmScanWorkers = 8
 // 多个 worker 并行执行 List（受全局 115 令牌桶限流约束），子目录动态
 // 入队；任一目录失败则取消其余 worker 并返回错误（与旧串行版语义一致）。
 func (st *strmSyncState) walkRemote() error {
+	defer st.flushPendingDownloads()
 	root := strings.TrimSpace(st.p.RemotePath)
 	if root == "" {
 		root = "/"
@@ -403,6 +426,7 @@ func (st *strmSyncState) isMetaExt(ext string) bool {
 // walk115Flat 使用 115 开放平台扁平化分页批量拉取机制与目录拓扑缓存（参考 QMediaSync）。
 // 极大地降低 API 请求次数并支持毫秒级/秒级增量同步。
 func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
+	defer st.flushPendingDownloads()
 	ctx := st.ctx
 	rootCID := strings.TrimSpace(st.p.RemotePath)
 	if rootCID == "" {
@@ -738,6 +762,36 @@ func (st *strmSyncState) recordRemoteMeta(entry cloud.FileEntry, rel string) {
 	st.mu.Unlock()
 }
 
+func (st *strmSyncState) flushPendingDownloads() {
+	st.mu.Lock()
+	if len(st.pendingDownloads) == 0 {
+		st.mu.Unlock()
+		return
+	}
+	batch := st.pendingDownloads
+	st.pendingDownloads = nil
+	st.mu.Unlock()
+
+	if err := st.s.repo.StrmDownload.CreateInBatches(st.ctx, batch, 100); err != nil {
+		st.s.log.Warn("batch enqueue strm download tasks failed", zap.Error(err))
+	}
+}
+
+func (st *strmSyncState) flushPendingUploads() {
+	st.mu.Lock()
+	if len(st.pendingUploads) == 0 {
+		st.mu.Unlock()
+		return
+	}
+	batch := st.pendingUploads
+	st.pendingUploads = nil
+	st.mu.Unlock()
+
+	if err := st.s.repo.StrmUpload.CreateInBatches(st.ctx, batch, 100); err != nil {
+		st.s.log.Warn("batch enqueue strm upload tasks failed", zap.Error(err))
+	}
+}
+
 // handleMeta 元数据入下载队列（本地已存在且大小一致则跳过）。
 func (st *strmSyncState) handleMeta(entry cloud.FileEntry, rel, ext string) {
 	st.recordRemoteMeta(entry, rel)
@@ -750,10 +804,22 @@ func (st *strmSyncState) handleMeta(entry cloud.FileEntry, rel, ext string) {
 		st.touchProgress()
 		return
 	}
-	if st.taskExists("download", st.p.ID, target) {
+	st.mu.Lock()
+	if st.activeDownloadPaths == nil {
+		if active, err := st.s.repo.StrmDownload.GetActiveLocalPathMap(st.ctx, st.p.ID); err == nil {
+			st.activeDownloadPaths = active
+		} else {
+			st.activeDownloadPaths = map[string]bool{}
+		}
+	}
+	if st.activeDownloadPaths[target] {
+		st.mu.Unlock()
 		st.touchProgress()
 		return
 	}
+	st.activeDownloadPaths[target] = true
+	st.mu.Unlock()
+
 	task := &model.StrmDownloadTask{
 		SyncPathID: st.p.ID,
 		AccountID:  st.p.AccountID,
@@ -772,13 +838,16 @@ func (st *strmSyncState) handleMeta(entry cloud.FileEntry, rel, ext string) {
 	if st.p.Provider != model.StrmProvider115 {
 		task.RemoteRef = entry.ID
 	}
-	if err := st.s.repo.StrmDownload.Create(st.ctx, task); err != nil {
-		st.s.log.Warn("enqueue strm download task failed", zap.Error(err))
-		return
-	}
+
 	st.mu.Lock()
+	st.pendingDownloads = append(st.pendingDownloads, task)
+	shouldFlush := len(st.pendingDownloads) >= 100
 	st.rec.NewMeta++
 	st.mu.Unlock()
+
+	if shouldFlush {
+		st.flushPendingDownloads()
+	}
 	st.touchProgress()
 }
 
@@ -872,67 +941,84 @@ func (st *strmSyncState) walkLocalSource() error {
 	})
 }
 
-// scanLocalMetaForUpload 扫描本地元数据，与远端比对后入上传队列。
-func (st *strmSyncState) scanLocalMetaForUpload() error {
-	localRoot := filepath.Clean(st.p.LocalPath)
-	return filepath.WalkDir(localRoot, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
+	// scanLocalMetaForUpload 扫描本地元数据，与远端比对后入上传队列。
+	func (st *strmSyncState) scanLocalMetaForUpload() error {
+		defer st.flushPendingUploads()
+		if st.activeUploadPaths == nil {
+			if active, err := st.s.repo.StrmUpload.GetActiveLocalPathMap(st.ctx, st.p.ID); err == nil {
+				st.activeUploadPaths = active
+			} else {
+				st.activeUploadPaths = map[string]bool{}
+			}
+		}
+		localRoot := filepath.Clean(st.p.LocalPath)
+		return filepath.WalkDir(localRoot, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if path == localRoot {
+				return nil
+			}
+			select {
+			case <-st.ctx.Done():
+				return st.ctx.Err()
+			default:
+			}
+			if d.IsDir() {
+				return nil
+			}
+			rel, err := filepath.Rel(localRoot, path)
+			if err != nil {
+				return nil
+			}
+			rel = filepath.ToSlash(rel)
+			ext := strings.ToLower(filepath.Ext(rel))
+			if !st.isMetaExt(ext) {
+				return nil
+			}
+			info, err := d.Info()
+			if err != nil {
+				return nil
+			}
+			st.mu.Lock()
+			_, exists := st.remoteMeta["m:"+rel]
+			st.mu.Unlock()
+			if exists {
+				// 网盘端已存在该元数据文件，跳过上传
+				return nil
+			}
+			st.mu.Lock()
+			if st.activeUploadPaths != nil && st.activeUploadPaths[path] {
+				st.mu.Unlock()
+				return nil
+			}
+			if st.activeUploadPaths != nil {
+				st.activeUploadPaths[path] = true
+			}
+			st.mu.Unlock()
+
+			task := &model.StrmUploadTask{
+				SyncPathID: st.p.ID,
+				AccountID:  st.p.AccountID,
+				Provider:   st.p.Provider,
+				FileName:   filepath.Base(rel),
+				LocalPath:  path,
+				RemotePath: st.remoteUploadPath(rel),
+				Size:       info.Size(),
+				Status:     model.StrmTaskPending,
+			}
+			st.mu.Lock()
+			st.pendingUploads = append(st.pendingUploads, task)
+			shouldFlush := len(st.pendingUploads) >= 100
+			st.rec.Uploaded++
+			st.mu.Unlock()
+
+			if shouldFlush {
+				st.flushPendingUploads()
+			}
 			return nil
-		}
-		if path == localRoot {
-			return nil
-		}
-		select {
-		case <-st.ctx.Done():
-			return st.ctx.Err()
-		default:
-		}
-		if d.IsDir() {
-			return nil
-		}
-		rel, err := filepath.Rel(localRoot, path)
-		if err != nil {
-			return nil
-		}
-		rel = filepath.ToSlash(rel)
-		ext := strings.ToLower(filepath.Ext(rel))
-		if !st.isMetaExt(ext) {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			return nil
-		}
-		st.mu.Lock()
-		_, exists := st.remoteMeta["m:"+rel]
-		st.mu.Unlock()
-		if exists {
-			// 网盘端已存在该元数据文件，跳过上传
-			return nil
-		}
-		if st.taskExists("upload", st.p.ID, path) {
-			return nil
-		}
-		task := &model.StrmUploadTask{
-			SyncPathID: st.p.ID,
-			AccountID:  st.p.AccountID,
-			Provider:   st.p.Provider,
-			FileName:   filepath.Base(rel),
-			LocalPath:  path,
-			RemotePath: st.remoteUploadPath(rel),
-			Size:       info.Size(),
-			Status:     model.StrmTaskPending,
-		}
-		if err := st.s.repo.StrmUpload.Create(st.ctx, task); err != nil {
-			st.s.log.Warn("enqueue strm upload task failed", zap.Error(err))
-			return nil
-		}
-		st.mu.Lock()
-		st.rec.Uploaded++
-		st.mu.Unlock()
-		return nil
-	})
-}
+		})
+	}
 
 // remoteUploadPath 远端元数据目标路径 = 同步目录远端根 + 相对路径。
 func (st *strmSyncState) remoteUploadPath(rel string) string {
@@ -1018,12 +1104,16 @@ func (st *strmSyncState) pruneLocal() error {
 	return nil
 }
 
-// touchProgress 每处理若干个文件落库一次进度。
+// touchProgress 进度计数并限流防抖落库（避免高频写 SQLite 导致锁竞争）。
 func (st *strmSyncState) touchProgress() {
 	st.mu.Lock()
 	st.rec.Total++
 	st.processed++
-	flush := st.processed%100 == 0
+	now := time.Now()
+	flush := st.processed%100 == 0 || (st.processed%20 == 0 && now.Sub(st.lastProgressFlush) >= 2*time.Second)
+	if flush {
+		st.lastProgressFlush = now
+	}
 	st.mu.Unlock()
 	if flush {
 		st.flushProgress()

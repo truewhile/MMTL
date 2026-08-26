@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -10,13 +11,17 @@ import (
 	"github.com/ShukeBta/MMTL/internal/model"
 )
 
+var strmClaimMu sync.Mutex
+
 // ─── StrmAccount ───────────────────────────────────────────────────────────────
 
 // StrmAccountRepository persists model.StrmAccount.
 type StrmAccountRepository struct{ db *gorm.DB }
 
 func (r *StrmAccountRepository) Create(ctx context.Context, a *model.StrmAccount) error {
-	return r.db.WithContext(ctx).Create(a).Error
+	return withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).Create(a).Error
+	})
 }
 
 func (r *StrmAccountRepository) FindByID(ctx context.Context, id string) (*model.StrmAccount, error) {
@@ -38,20 +43,24 @@ func (r *StrmAccountRepository) List(ctx context.Context) ([]model.StrmAccount, 
 }
 
 func (r *StrmAccountRepository) Update(ctx context.Context, a *model.StrmAccount) error {
-	return r.db.WithContext(ctx).Model(&model.StrmAccount{}).Where("id = ?", a.ID).Updates(map[string]any{
-		"name":             a.Name,
-		"provider":         a.Provider,
-		"config":           a.Config,
-		"enabled":          a.Enabled,
-		"last_test_at":     a.LastTestAt,
-		"last_test_result": a.LastTestResult,
-		"last_test_ok":     a.LastTestOK,
-		"updated_at":       time.Now(),
-	}).Error
+	return withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).Model(&model.StrmAccount{}).Where("id = ?", a.ID).Updates(map[string]any{
+			"name":             a.Name,
+			"provider":         a.Provider,
+			"config":           a.Config,
+			"enabled":          a.Enabled,
+			"last_test_at":     a.LastTestAt,
+			"last_test_result": a.LastTestResult,
+			"last_test_ok":     a.LastTestOK,
+			"updated_at":       time.Now(),
+		}).Error
+	})
 }
 
 func (r *StrmAccountRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&model.StrmAccount{}).Error
+	return withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).Where("id = ?", id).Delete(&model.StrmAccount{}).Error
+	})
 }
 
 // ─── StrmSyncPath ──────────────────────────────────────────────────────────────
@@ -60,7 +69,9 @@ func (r *StrmAccountRepository) Delete(ctx context.Context, id string) error {
 type StrmSyncPathRepository struct{ db *gorm.DB }
 
 func (r *StrmSyncPathRepository) Create(ctx context.Context, p *model.StrmSyncPath) error {
-	return r.db.WithContext(ctx).Create(p).Error
+	return withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).Create(p).Error
+	})
 }
 
 func (r *StrmSyncPathRepository) FindByID(ctx context.Context, id string) (*model.StrmSyncPath, error) {
@@ -82,34 +93,38 @@ func (r *StrmSyncPathRepository) List(ctx context.Context) ([]model.StrmSyncPath
 }
 
 func (r *StrmSyncPathRepository) Update(ctx context.Context, p *model.StrmSyncPath) error {
-	return r.db.WithContext(ctx).Model(&model.StrmSyncPath{}).Where("id = ?", p.ID).Updates(map[string]any{
-		"name":              p.Name,
-		"account_id":        p.AccountID,
-		"provider":          p.Provider,
-		"remote_path":       p.RemotePath,
-		"local_path":        p.LocalPath,
-		"strm_base_url":     p.StrmBaseURL,
-		"video_ext":         p.VideoExt,
-		"meta_ext":          p.MetaExt,
-		"exclude_name":      p.ExcludeName,
-		"min_video_size_mb": p.MinVideoSizeMB,
-		"add_path":          p.AddPath,
-		"download_meta":     p.DownloadMeta,
-		"upload_meta":       p.UploadMeta,
+	return withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).Model(&model.StrmSyncPath{}).Where("id = ?", p.ID).Updates(map[string]any{
+			"name":              p.Name,
+			"account_id":        p.AccountID,
+			"provider":          p.Provider,
+			"remote_path":       p.RemotePath,
+			"local_path":        p.LocalPath,
+			"strm_base_url":     p.StrmBaseURL,
+			"video_ext":         p.VideoExt,
+			"meta_ext":          p.MetaExt,
+			"exclude_name":      p.ExcludeName,
+			"min_video_size_mb": p.MinVideoSizeMB,
+			"add_path":          p.AddPath,
+			"download_meta":     p.DownloadMeta,
+			"upload_meta":       p.UploadMeta,
 			"delete_dir":        p.DeleteDir,
 			"cron":              p.Cron,
 			"enable_cron":       p.EnableCron,
 			"sync_mode":         p.SyncMode,
 			"enabled":           p.Enabled,
 			"last_sync_at":      p.LastSyncAt,
-		"last_sync_status":  p.LastSyncStatus,
-		"last_sync_message": p.LastSyncMessage,
-		"updated_at":        time.Now(),
-	}).Error
+			"last_sync_status":  p.LastSyncStatus,
+			"last_sync_message": p.LastSyncMessage,
+			"updated_at":        time.Now(),
+		}).Error
+	})
 }
 
 func (r *StrmSyncPathRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&model.StrmSyncPath{}).Error
+	return withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).Where("id = ?", id).Delete(&model.StrmSyncPath{}).Error
+	})
 }
 
 // ─── StrmSyncRecord ────────────────────────────────────────────────────────────
@@ -118,24 +133,28 @@ func (r *StrmSyncPathRepository) Delete(ctx context.Context, id string) error {
 type StrmSyncRecordRepository struct{ db *gorm.DB }
 
 func (r *StrmSyncRecordRepository) Create(ctx context.Context, rec *model.StrmSyncRecord) error {
-	return r.db.WithContext(ctx).Create(rec).Error
+	return withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).Create(rec).Error
+	})
 }
 
 func (r *StrmSyncRecordRepository) Update(ctx context.Context, rec *model.StrmSyncRecord) error {
-	return r.db.WithContext(ctx).Model(&model.StrmSyncRecord{}).Where("id = ?", rec.ID).Updates(map[string]any{
-		"sync_type":   rec.SyncType,
-		"status":      rec.Status,
-		"total":       rec.Total,
-		"new_strm":    rec.NewStrm,
-		"new_meta":    rec.NewMeta,
-		"uploaded":    rec.Uploaded,
-		"pruned":      rec.Pruned,
-		"skipped":     rec.Skipped,
-		"message":     rec.Message,
-		"started_at":  rec.StartedAt,
-		"finished_at": rec.FinishedAt,
-		"updated_at":  time.Now(),
-	}).Error
+	return withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).Model(&model.StrmSyncRecord{}).Where("id = ?", rec.ID).Updates(map[string]any{
+			"sync_type":   rec.SyncType,
+			"status":      rec.Status,
+			"total":       rec.Total,
+			"new_strm":    rec.NewStrm,
+			"new_meta":    rec.NewMeta,
+			"uploaded":    rec.Uploaded,
+			"pruned":      rec.Pruned,
+			"skipped":     rec.Skipped,
+			"message":     rec.Message,
+			"started_at":  rec.StartedAt,
+			"finished_at": rec.FinishedAt,
+			"updated_at":  time.Now(),
+		}).Error
+	})
 }
 
 func (r *StrmSyncRecordRepository) List(ctx context.Context, syncPathID string, limit int) ([]model.StrmSyncRecord, error) {
@@ -157,7 +176,21 @@ func (r *StrmSyncRecordRepository) List(ctx context.Context, syncPathID string, 
 type StrmDownloadTaskRepository struct{ db *gorm.DB }
 
 func (r *StrmDownloadTaskRepository) Create(ctx context.Context, t *model.StrmDownloadTask) error {
-	return r.db.WithContext(ctx).Create(t).Error
+	return withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).Create(t).Error
+	})
+}
+
+func (r *StrmDownloadTaskRepository) CreateInBatches(ctx context.Context, tasks []*model.StrmDownloadTask, batchSize int) error {
+	if len(tasks) == 0 {
+		return nil
+	}
+	if batchSize <= 0 {
+		batchSize = 100
+	}
+	return withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).CreateInBatches(tasks, batchSize).Error
+	})
 }
 
 func (r *StrmDownloadTaskRepository) FindByID(ctx context.Context, id string) (*model.StrmDownloadTask, error) {
@@ -207,24 +240,29 @@ func (r *StrmDownloadTaskRepository) CountByStatus(ctx context.Context) (map[str
 // ClaimPendingDownload picks the oldest pending task and marks it running.
 // Returns (nil, nil) when the queue is empty.
 func (r *StrmDownloadTaskRepository) ClaimPendingDownload(ctx context.Context, limit int) ([]model.StrmDownloadTask, error) {
+	strmClaimMu.Lock()
+	defer strmClaimMu.Unlock()
+
 	var rows []model.StrmDownloadTask
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("status = ? AND (next_try_at IS NULL OR next_try_at <= ?)", model.StrmTaskPending, time.Now()).
-			Order("created_at asc").Limit(limit).Find(&rows).Error; err != nil {
-			return err
-		}
-		if len(rows) == 0 {
-			return nil
-		}
-		ids := make([]string, 0, len(rows))
-		now := time.Now()
-		for i := range rows {
-			ids = append(ids, rows[i].ID)
-			rows[i].Status = model.StrmTaskRunning
-			rows[i].StartedAt = &now
-		}
-		return tx.Model(&model.StrmDownloadTask{}).Where("id IN ?", ids).
-			Updates(map[string]any{"status": model.StrmTaskRunning, "started_at": now}).Error
+	err := withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := tx.Where("status = ? AND (next_try_at IS NULL OR next_try_at <= ?)", model.StrmTaskPending, time.Now()).
+				Order("created_at asc").Limit(limit).Find(&rows).Error; err != nil {
+				return err
+			}
+			if len(rows) == 0 {
+				return nil
+			}
+			ids := make([]string, 0, len(rows))
+			now := time.Now()
+			for i := range rows {
+				ids = append(ids, rows[i].ID)
+				rows[i].Status = model.StrmTaskRunning
+				rows[i].StartedAt = &now
+			}
+			return tx.Model(&model.StrmDownloadTask{}).Where("id IN ?", ids).
+				Updates(map[string]any{"status": model.StrmTaskRunning, "started_at": now}).Error
+		})
 	})
 	if err != nil {
 		return nil, err
@@ -233,62 +271,86 @@ func (r *StrmDownloadTaskRepository) ClaimPendingDownload(ctx context.Context, l
 }
 
 func (r *StrmDownloadTaskRepository) Update(ctx context.Context, t *model.StrmDownloadTask) error {
-	return r.db.WithContext(ctx).Model(&model.StrmDownloadTask{}).Where("id = ?", t.ID).Updates(map[string]any{
-		"status":      t.Status,
-		"error":       t.Error,
-		"retry_count": t.RetryCount,
-		"next_try_at": t.NextTryAt,
-		"started_at":  t.StartedAt,
-		"finished_at": t.FinishedAt,
-		"updated_at":  time.Now(),
-	}).Error
+	return withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).Model(&model.StrmDownloadTask{}).Where("id = ?", t.ID).Updates(map[string]any{
+			"status":      t.Status,
+			"error":       t.Error,
+			"retry_count": t.RetryCount,
+			"next_try_at": t.NextTryAt,
+			"started_at":  t.StartedAt,
+			"finished_at": t.FinishedAt,
+			"updated_at":  time.Now(),
+		}).Error
+	})
 }
 
 func (r *StrmDownloadTaskRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&model.StrmDownloadTask{}).Error
+	return withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).Where("id = ?", id).Delete(&model.StrmDownloadTask{}).Error
+	})
 }
 
 // ClearDone 清空全部已完成下载任务。
 func (r *StrmDownloadTaskRepository) ClearDone(ctx context.Context) (int64, error) {
-	res := r.db.WithContext(ctx).Where("status = ?", model.StrmTaskDone).Delete(&model.StrmDownloadTask{})
-	return res.RowsAffected, res.Error
+	var count int64
+	err := withSQLiteBusyRetry(ctx, func() error {
+		res := r.db.WithContext(ctx).Where("status = ?", model.StrmTaskDone).Delete(&model.StrmDownloadTask{})
+		count = res.RowsAffected
+		return res.Error
+	})
+	return count, err
 }
 
 // ClearFinished 清空全部已完成与失败下载任务。
 func (r *StrmDownloadTaskRepository) ClearFinished(ctx context.Context) (int64, error) {
-	res := r.db.WithContext(ctx).Where("status IN ?", []string{model.StrmTaskDone, model.StrmTaskFailed}).
-		Delete(&model.StrmDownloadTask{})
-	return res.RowsAffected, res.Error
+	var count int64
+	err := withSQLiteBusyRetry(ctx, func() error {
+		res := r.db.WithContext(ctx).Where("status IN ?", []string{model.StrmTaskDone, model.StrmTaskFailed}).
+			Delete(&model.StrmDownloadTask{})
+		count = res.RowsAffected
+		return res.Error
+	})
+	return count, err
 }
 
 // RetryAllFailed 把所有失败任务重置回待处理，清空错误与重试计数。
 func (r *StrmDownloadTaskRepository) RetryAllFailed(ctx context.Context) (int64, error) {
-	res := r.db.WithContext(ctx).Model(&model.StrmDownloadTask{}).
-		Where("status = ?", model.StrmTaskFailed).
-		Updates(map[string]any{
-			"status":      model.StrmTaskPending,
-			"error":       "",
-			"retry_count": 0,
-			"next_try_at": nil,
-			"started_at":  nil,
-			"finished_at": nil,
-			"updated_at":  time.Now(),
-		})
-	return res.RowsAffected, res.Error
+	var count int64
+	err := withSQLiteBusyRetry(ctx, func() error {
+		res := r.db.WithContext(ctx).Model(&model.StrmDownloadTask{}).
+			Where("status = ?", model.StrmTaskFailed).
+			Updates(map[string]any{
+				"status":      model.StrmTaskPending,
+				"error":       "",
+				"retry_count": 0,
+				"next_try_at": nil,
+				"started_at":  nil,
+				"finished_at": nil,
+				"updated_at":  time.Now(),
+			})
+		count = res.RowsAffected
+		return res.Error
+	})
+	return count, err
 }
 
 // CancelPending 批量取消所有排队中的任务。
 func (r *StrmDownloadTaskRepository) CancelPending(ctx context.Context) (int64, error) {
 	now := time.Now()
-	res := r.db.WithContext(ctx).Model(&model.StrmDownloadTask{}).
-		Where("status = ?", model.StrmTaskPending).
-		Updates(map[string]any{
-			"status":      model.StrmTaskCanceled,
-			"error":       "已批量取消",
-			"finished_at": now,
-			"updated_at":  now,
-		})
-	return res.RowsAffected, res.Error
+	var count int64
+	err := withSQLiteBusyRetry(ctx, func() error {
+		res := r.db.WithContext(ctx).Model(&model.StrmDownloadTask{}).
+			Where("status = ?", model.StrmTaskPending).
+			Updates(map[string]any{
+				"status":      model.StrmTaskCanceled,
+				"error":       "已批量取消",
+				"finished_at": now,
+				"updated_at":  now,
+			})
+		count = res.RowsAffected
+		return res.Error
+	})
+	return count, err
 }
 
 // CountActive 统计某同步目录下目标仍在排队/进行的任务数（用于去重）。
@@ -301,10 +363,28 @@ func (r *StrmDownloadTaskRepository) CountActive(ctx context.Context, syncPathID
 	return count
 }
 
+// GetActiveLocalPathMap 一次性获取某同步目录下正在排队或执行中的 local_path 集合，供同步时 O(1) 内存去重。
+func (r *StrmDownloadTaskRepository) GetActiveLocalPathMap(ctx context.Context, syncPathID string) (map[string]bool, error) {
+	var paths []string
+	err := r.db.WithContext(ctx).Model(&model.StrmDownloadTask{}).
+		Where("sync_path_id = ? AND status IN ?", syncPathID, []string{model.StrmTaskPending, model.StrmTaskRunning}).
+		Pluck("local_path", &paths).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		out[p] = true
+	}
+	return out, nil
+}
+
 func (r *StrmDownloadTaskRepository) DeleteFinishedOlderThan(ctx context.Context, before time.Time) error {
-	return r.db.WithContext(ctx).Where("status IN ? AND finished_at < ?",
-		[]string{model.StrmTaskDone, model.StrmTaskFailed, model.StrmTaskCanceled}, before).
-		Delete(&model.StrmDownloadTask{}).Error
+	return withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).Where("status IN ? AND finished_at < ?",
+			[]string{model.StrmTaskDone, model.StrmTaskFailed, model.StrmTaskCanceled}, before).
+			Delete(&model.StrmDownloadTask{}).Error
+	})
 }
 
 // ─── StrmUploadTask ────────────────────────────────────────────────────────────
@@ -313,7 +393,21 @@ func (r *StrmDownloadTaskRepository) DeleteFinishedOlderThan(ctx context.Context
 type StrmUploadTaskRepository struct{ db *gorm.DB }
 
 func (r *StrmUploadTaskRepository) Create(ctx context.Context, t *model.StrmUploadTask) error {
-	return r.db.WithContext(ctx).Create(t).Error
+	return withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).Create(t).Error
+	})
+}
+
+func (r *StrmUploadTaskRepository) CreateInBatches(ctx context.Context, tasks []*model.StrmUploadTask, batchSize int) error {
+	if len(tasks) == 0 {
+		return nil
+	}
+	if batchSize <= 0 {
+		batchSize = 100
+	}
+	return withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).CreateInBatches(tasks, batchSize).Error
+	})
 }
 
 func (r *StrmUploadTaskRepository) FindByID(ctx context.Context, id string) (*model.StrmUploadTask, error) {
@@ -382,24 +476,29 @@ func (r *StrmUploadTaskRepository) CountByStatus(ctx context.Context) (map[strin
 // ClaimPendingUpload picks the oldest pending task and marks it running.
 // Returns (nil, nil) when the queue is empty.
 func (r *StrmUploadTaskRepository) ClaimPendingUpload(ctx context.Context, limit int) ([]model.StrmUploadTask, error) {
+	strmClaimMu.Lock()
+	defer strmClaimMu.Unlock()
+
 	var rows []model.StrmUploadTask
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("status = ? AND (next_try_at IS NULL OR next_try_at <= ?)", model.StrmTaskPending, time.Now()).
-			Order("created_at asc").Limit(limit).Find(&rows).Error; err != nil {
-			return err
-		}
-		if len(rows) == 0 {
-			return nil
-		}
-		ids := make([]string, 0, len(rows))
-		now := time.Now()
-		for i := range rows {
-			ids = append(ids, rows[i].ID)
-			rows[i].Status = model.StrmTaskRunning
-			rows[i].StartedAt = &now
-		}
-		return tx.Model(&model.StrmUploadTask{}).Where("id IN ?", ids).
-			Updates(map[string]any{"status": model.StrmTaskRunning, "started_at": now}).Error
+	err := withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := tx.Where("status = ? AND (next_try_at IS NULL OR next_try_at <= ?)", model.StrmTaskPending, time.Now()).
+				Order("created_at asc").Limit(limit).Find(&rows).Error; err != nil {
+				return err
+			}
+			if len(rows) == 0 {
+				return nil
+			}
+			ids := make([]string, 0, len(rows))
+			now := time.Now()
+			for i := range rows {
+				ids = append(ids, rows[i].ID)
+				rows[i].Status = model.StrmTaskRunning
+				rows[i].StartedAt = &now
+			}
+			return tx.Model(&model.StrmUploadTask{}).Where("id IN ?", ids).
+				Updates(map[string]any{"status": model.StrmTaskRunning, "started_at": now}).Error
+		})
 	})
 	if err != nil {
 		return nil, err
@@ -408,19 +507,23 @@ func (r *StrmUploadTaskRepository) ClaimPendingUpload(ctx context.Context, limit
 }
 
 func (r *StrmUploadTaskRepository) Update(ctx context.Context, t *model.StrmUploadTask) error {
-	return r.db.WithContext(ctx).Model(&model.StrmUploadTask{}).Where("id = ?", t.ID).Updates(map[string]any{
-		"status":      t.Status,
-		"error":       t.Error,
-		"retry_count": t.RetryCount,
-		"next_try_at": t.NextTryAt,
-		"started_at":  t.StartedAt,
-		"finished_at": t.FinishedAt,
-		"updated_at":  time.Now(),
-	}).Error
+	return withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).Model(&model.StrmUploadTask{}).Where("id = ?", t.ID).Updates(map[string]any{
+			"status":      t.Status,
+			"error":       t.Error,
+			"retry_count": t.RetryCount,
+			"next_try_at": t.NextTryAt,
+			"started_at":  t.StartedAt,
+			"finished_at": t.FinishedAt,
+			"updated_at":  time.Now(),
+		}).Error
+	})
 }
 
 func (r *StrmUploadTaskRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&model.StrmUploadTask{}).Error
+	return withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).Where("id = ?", id).Delete(&model.StrmUploadTask{}).Error
+	})
 }
 
 // CountActive 统计某同步目录下目标仍在排队/进行的任务数（用于去重）。
@@ -433,10 +536,28 @@ func (r *StrmUploadTaskRepository) CountActive(ctx context.Context, syncPathID, 
 	return count
 }
 
+// GetActiveLocalPathMap 一次性获取某同步目录下正在排队或执行中的 local_path 集合，供同步时 O(1) 内存去重。
+func (r *StrmUploadTaskRepository) GetActiveLocalPathMap(ctx context.Context, syncPathID string) (map[string]bool, error) {
+	var paths []string
+	err := r.db.WithContext(ctx).Model(&model.StrmUploadTask{}).
+		Where("sync_path_id = ? AND status IN ?", syncPathID, []string{model.StrmTaskPending, model.StrmTaskRunning}).
+		Pluck("local_path", &paths).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		out[p] = true
+	}
+	return out, nil
+}
+
 func (r *StrmUploadTaskRepository) DeleteFinishedOlderThan(ctx context.Context, before time.Time) error {
-	return r.db.WithContext(ctx).Where("status IN ? AND finished_at < ?",
-		[]string{model.StrmTaskDone, model.StrmTaskFailed, model.StrmTaskCanceled}, before).
-		Delete(&model.StrmUploadTask{}).Error
+	return withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).Where("status IN ? AND finished_at < ?",
+			[]string{model.StrmTaskDone, model.StrmTaskFailed, model.StrmTaskCanceled}, before).
+			Delete(&model.StrmUploadTask{}).Error
+	})
 }
 
 // ─── StrmDirCache ─────────────────────────────────────────────────────────────
@@ -451,26 +572,31 @@ func (r *StrmDirCacheRepository) ListBySyncPathID(ctx context.Context, syncPathI
 }
 
 func (r *StrmDirCacheRepository) Set(ctx context.Context, syncPathID, dirID, path string) error {
-	var row model.StrmDirCache
-	err := r.db.WithContext(ctx).Where("sync_path_id = ? AND dir_id = ?", syncPathID, dirID).First(&row).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		row = model.StrmDirCache{
-			SyncPathID: syncPathID,
-			DirID:      dirID,
-			Path:       path,
+	return withSQLiteBusyRetry(ctx, func() error {
+		var row model.StrmDirCache
+		err := r.db.WithContext(ctx).Where("sync_path_id = ? AND dir_id = ?", syncPathID, dirID).First(&row).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			row = model.StrmDirCache{
+				SyncPathID: syncPathID,
+				DirID:      dirID,
+				Path:       path,
+			}
+			return r.db.WithContext(ctx).Create(&row).Error
 		}
-		return r.db.WithContext(ctx).Create(&row).Error
-	}
-	if err != nil {
-		return err
-	}
-	return r.db.WithContext(ctx).Model(&model.StrmDirCache{}).Where("id = ?", row.ID).Updates(map[string]any{
-		"path":       path,
-		"updated_at": time.Now(),
-	}).Error
+		if err != nil {
+			return err
+		}
+		return r.db.WithContext(ctx).Model(&model.StrmDirCache{}).Where("id = ?", row.ID).Updates(map[string]any{
+			"path":       path,
+			"updated_at": time.Now(),
+		}).Error
+	})
 }
 
 func (r *StrmDirCacheRepository) DeleteBySyncPathID(ctx context.Context, syncPathID string) error {
-	return r.db.WithContext(ctx).Where("sync_path_id = ?", syncPathID).Delete(&model.StrmDirCache{}).Error
+	return withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).Where("sync_path_id = ?", syncPathID).Delete(&model.StrmDirCache{}).Error
+	})
 }
+
 
