@@ -21,13 +21,14 @@ var (
 
 const (
 	// 业务错误码
-	AccessTokenAuthFail   = 40140126 // 访问过期，需刷新
-	AccessTokenExpiryCode = 40140125 // 访问过期，需刷新
-	AccessAuthInvalid     = 40140124 // 访问无效，需刷新
-	RefreshTokenInvalid   = 40140116 // 需重新授权
-	TokenRefreshFail      = 40140121 // 刷新失败，可重试
-	RequestMaxLimitCode   = 770004   // 访问频率过高
-	RequestRateLimitCode  = 406      // 达到访问上限
+	AccessTokenAuthFail      = 40140126 // 访问过期，需刷新
+	AccessTokenExpiryCode    = 40140125 // 访问过期，需刷新
+	AccessAuthInvalid        = 40140124 // 访问无效，需刷新
+	AccessTokenFormatInvalid = 40140123 // access_token 格式错误，需刷新
+	RefreshTokenInvalid      = 40140116 // 需重新授权
+	TokenRefreshFail         = 40140121 // 刷新失败，可重试
+	RequestMaxLimitCode      = 770004   // 访问频率过高
+	RequestRateLimitCode     = 406      // 达到访问上限
 
 	// 刷新 token 的错误码
 	RefreshTokenFormatInvalid = 40140114

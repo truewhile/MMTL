@@ -281,7 +281,7 @@ func IsThrottleCode(code int) bool {
 
 func isTokenCode(code int) bool {
 	switch code {
-	case AccessTokenAuthFail, AccessAuthInvalid, AccessTokenExpiryCode, RefreshTokenInvalid:
+	case AccessTokenAuthFail, AccessAuthInvalid, AccessTokenExpiryCode, AccessTokenFormatInvalid, RefreshTokenInvalid:
 		return true
 	}
 	return false

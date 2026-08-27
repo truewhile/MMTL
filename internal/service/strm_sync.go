@@ -483,7 +483,8 @@ func cleanDirRel(rel string) string {
 // 极大地降低 API 请求次数并支持毫秒级/秒级增量同步。
 func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
 	defer st.flushPendingDownloads()
-	ctx := st.ctx
+	ctx, cancel := context.WithCancel(st.ctx)
+	defer cancel()
 	rootCID := strings.TrimSpace(st.p.RemotePath)
 	if rootCID == "" {
 		rootCID = "0"
@@ -618,6 +619,8 @@ func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
 			dirWorkers = 8
 			doneDirs   atomic.Int64
 			totalDirs  = len(pidList)
+			errMu      sync.Mutex
+			firstErr   error
 		)
 		if len(pidList) < dirWorkers {
 			dirWorkers = len(pidList)
@@ -641,10 +644,19 @@ func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
 					}
 					detail, err := open115.GetFsDetailByCid(ctx, pid)
 					if err != nil {
-						st.s.log.Warn("115: 获取目录详情失败", zap.String("pid", pid), zap.Error(err))
 						// 目录详情解析失败会导致下游文件 rel 无法还原真实父路径，
-						// seen key 与磁盘路径对不上，增量 prune 会误删本地文件，标记本次扫描不完整。
+						// seen key 与磁盘路径对不上：增量 prune 会误删本地文件、上传会
+						// 误传本地未变文件、下载会重复下载。这里不是降级容错，而是
+						// 直接中止整个同步——宁可本次同步失败，也不带着损坏的相对路径
+						// 继续执行造成大规模误删/误传/重下（参考用户反馈"云盘没动却重下重传"）。
+						errMu.Lock()
+						if firstErr == nil {
+							firstErr = fmt.Errorf("115: 解析目录树失败（file_id=%s）：%w", pid, err)
+						}
+						errMu.Unlock()
 						st.scanIncomplete.Store(true)
+						cancel()
+						return
 					} else if detail != nil {
 						// 解析相对路径
 						relPath := cleanDirRel(detail.RelativePath(rootCID))
@@ -681,6 +693,12 @@ func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
 			}()
 		}
 		pwg.Wait()
+		if firstErr != nil {
+			// 目录树解析失败会导致 rel 塌缩，若继续处理会让大量本地文件
+			// 被错误判定为"云端不存在"而重复下载/上传，并可能误删本地文件。
+			// 中止本次同步，避免在损坏的相对路径上执行任何写操作。
+			return firstErr
+		}
 	}
 
 	st.updateSyncMessage(fmt.Sprintf("正在生成 STRM 与同步文件 (共 %d 个)...", len(allFiles)))
@@ -698,12 +716,10 @@ func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
 			if parentVal, ok := st.dirCache.Load(f.Pid); ok && parentVal.(string) != "" {
 				rel = cleanDirRel(parentVal.(string)) + "/" + cleanName
 			} else {
-				// 父目录不在目录缓存（目录详情先前解析失败），无法还原真实相对路径。
-				// 该文件会落到根/错误路径，seen key 与磁盘路径不符，增量 prune 会误删，标记扫描不完整。
-				if st.syncType == model.StrmSyncTypeIncremental {
-					st.scanIncomplete.Store(true)
-				}
-				rel = cleanName
+				// 父目录不在目录缓存，无法还原真实相对路径。若继续用塌缩后的
+				// 根路径处理，该文件会被错误判定，导致重复下载/上传或误删本地文件。
+				// 目录树不完整时宁可中止本次同步，也不带着损坏的 rel 继续执行。
+				return fmt.Errorf("115: 文件 %s 的父目录未解析成功，目录树不完整，中止同步以防误删/误传", cleanName)
 			}
 		}
 		entry := cloud.FileEntry{

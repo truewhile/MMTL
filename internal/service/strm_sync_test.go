@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -19,6 +21,7 @@ import (
 	"github.com/ShukeBta/MMTL/internal/model"
 	"github.com/ShukeBta/MMTL/internal/repository"
 	"github.com/ShukeBta/MMTL/internal/service/cloud"
+	"github.com/ShukeBta/MMTL/internal/service/cloud115"
 )
 
 // testStrmService 构建带内存库的 StrmService。
@@ -35,10 +38,10 @@ func testStrmService(t *testing.T) *StrmService {
 		sqlDB.SetMaxOpenConns(4)
 		t.Cleanup(func() { _ = sqlDB.Close() })
 	}
-		if err := db.AutoMigrate(&model.StrmAccount{}, &model.StrmSyncPath{}, &model.StrmSyncRecord{},
-			&model.StrmDownloadTask{}, &model.StrmUploadTask{}, &model.StrmDirCache{}, &model.Setting{}); err != nil {
-			t.Fatal(err)
-		}
+	if err := db.AutoMigrate(&model.StrmAccount{}, &model.StrmSyncPath{}, &model.StrmSyncRecord{},
+		&model.StrmDownloadTask{}, &model.StrmUploadTask{}, &model.StrmDirCache{}, &model.Setting{}); err != nil {
+		t.Fatal(err)
+	}
 	repos := repository.New(db)
 	ctx := context.Background()
 	if err := repos.Setting.Set(ctx, StrmSettingBaseURL, "http://test.local:8096"); err != nil {
@@ -209,7 +212,6 @@ func TestStrmFullAndIncrementalSync(t *testing.T) {
 		t.Fatalf("full sync failed: status = %s, message = %s", record.Status, record.Message)
 	}
 }
-
 
 // TestStrmCronMatches cron 表达式匹配。
 func TestStrmCronMatches(t *testing.T) {
@@ -494,142 +496,215 @@ func TestWalkRemoteConcurrent(t *testing.T) {
 	if walkErr != nil {
 		t.Fatal(walkErr)
 	}
-		if strmCount != 5 {
-			t.Errorf("生成的 .strm 数量 = %d，期望 5", strmCount)
-		}
+	if strmCount != 5 {
+		t.Errorf("生成的 .strm 数量 = %d，期望 5", strmCount)
+	}
+}
+
+// TestStrmBatchEnqueueAndConcurrentClaim 测试大规模批量入库及多协程并发认领无死锁
+func TestStrmBatchEnqueueAndConcurrentClaim(t *testing.T) {
+	svc := testStrmService(t)
+	ctx := context.Background()
+
+	// 1. 批量插入 200 个下载任务
+	tasks := make([]*model.StrmDownloadTask, 0, 200)
+	for i := 0; i < 200; i++ {
+		tasks = append(tasks, &model.StrmDownloadTask{
+			SyncPathID: "test-sync-path",
+			AccountID:  "test-acct",
+			Provider:   model.StrmProvider115,
+			FileName:   filepath.Base(string(rune('a'+i%26))) + ".nfo",
+			LocalPath:  filepath.Join(t.TempDir(), string(rune('a'+i%26)), "test.nfo"),
+			Status:     model.StrmTaskPending,
+		})
+	}
+	if err := svc.repo.StrmDownload.CreateInBatches(ctx, tasks, 50); err != nil {
+		t.Fatalf("CreateInBatches failed: %v", err)
 	}
 
-	// TestStrmBatchEnqueueAndConcurrentClaim 测试大规模批量入库及多协程并发认领无死锁
-	func TestStrmBatchEnqueueAndConcurrentClaim(t *testing.T) {
-		svc := testStrmService(t)
-		ctx := context.Background()
+	// 2. 验证 ActiveLocalPathMap
+	activeMap, err := svc.repo.StrmDownload.GetActiveLocalPathMap(ctx, "test-sync-path")
+	if err != nil {
+		t.Fatalf("GetActiveLocalPathMap failed: %v", err)
+	}
+	if len(activeMap) == 0 {
+		t.Fatal("expected active local path map to have entries")
+	}
 
-		// 1. 批量插入 200 个下载任务
-		tasks := make([]*model.StrmDownloadTask, 0, 200)
-		for i := 0; i < 200; i++ {
-			tasks = append(tasks, &model.StrmDownloadTask{
-				SyncPathID: "test-sync-path",
-				AccountID:  "test-acct",
-				Provider:   model.StrmProvider115,
-				FileName:   filepath.Base(string(rune('a'+i%26))) + ".nfo",
-				LocalPath:  filepath.Join(t.TempDir(), string(rune('a'+i%26)), "test.nfo"),
-				Status:     model.StrmTaskPending,
-			})
-		}
-		if err := svc.repo.StrmDownload.CreateInBatches(ctx, tasks, 50); err != nil {
-			t.Fatalf("CreateInBatches failed: %v", err)
-		}
-
-		// 2. 验证 ActiveLocalPathMap
-		activeMap, err := svc.repo.StrmDownload.GetActiveLocalPathMap(ctx, "test-sync-path")
-		if err != nil {
-			t.Fatalf("GetActiveLocalPathMap failed: %v", err)
-		}
-		if len(activeMap) == 0 {
-			t.Fatal("expected active local path map to have entries")
-		}
-
-		// 3. 模拟 6 个 worker 并发 ClaimPendingDownload
-		claimedCount := 0
-		var claimMu sync.Mutex
-		var wg sync.WaitGroup
-		for w := 0; w < 6; w++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				for {
-					batch, err := svc.repo.StrmDownload.ClaimPendingDownload(ctx, 10)
-					if err != nil {
-						t.Errorf("concurrent ClaimPendingDownload failed: %v", err)
-						return
-					}
-					if len(batch) == 0 {
-						return
-					}
-					claimMu.Lock()
-					claimedCount += len(batch)
-					claimMu.Unlock()
+	// 3. 模拟 6 个 worker 并发 ClaimPendingDownload
+	claimedCount := 0
+	var claimMu sync.Mutex
+	var wg sync.WaitGroup
+	for w := 0; w < 6; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				batch, err := svc.repo.StrmDownload.ClaimPendingDownload(ctx, 10)
+				if err != nil {
+					t.Errorf("concurrent ClaimPendingDownload failed: %v", err)
+					return
 				}
-			}()
-		}
-		wg.Wait()
-
-			if claimedCount != 200 {
-				t.Fatalf("expected all 200 tasks claimed, got %d", claimedCount)
+				if len(batch) == 0 {
+					return
+				}
+				claimMu.Lock()
+				claimedCount += len(batch)
+				claimMu.Unlock()
 			}
-		}
+		}()
+	}
+	wg.Wait()
 
-	// TestStrmDuplicateFileConflictResolution 测试远端存在多个同名不同大小文件时，本地确定性仲裁，避免增量死循环
-	func TestStrmDuplicateFileConflictResolution(t *testing.T) {
-		svc := testStrmService(t)
-		localDir := t.TempDir()
+	if claimedCount != 200 {
+		t.Fatalf("expected all 200 tasks claimed, got %d", claimedCount)
+	}
+}
 
-		p := &model.StrmSyncPath{
-			Base:         model.Base{ID: "dup-test-path"},
-			Provider:     model.StrmProvider115,
-			RemotePath:   "root",
-			LocalPath:    localDir,
-			DownloadMeta: true,
-		}
+// TestStrmDuplicateFileConflictResolution 测试远端存在多个同名不同大小文件时，本地确定性仲裁，避免增量死循环
+func TestStrmDuplicateFileConflictResolution(t *testing.T) {
+	svc := testStrmService(t)
+	localDir := t.TempDir()
 
-		st := &strmSyncState{
-			s:               svc,
-			ctx:             context.Background(),
-			p:               p,
-			cfg:             &strmPathConfig{DownloadMeta: true, MetaExt: []string{"nfo"}},
-			rec:             &model.StrmSyncRecord{},
-			seenMeta:        map[string]bool{},
-			remoteMeta:      map[string]int64{},
-			seenMetaTarget:  map[string]cloud.FileEntry{},
-			seenVideoTarget: map[string]cloud.FileEntry{},
-		}
-
-		// 模拟远端同目录下存在两个同名不同大小的 nfo 文件 (115 历史重复上传)
-		// entry1: 较早文件 (MTime: 1000, Size: 100)
-		entry1 := cloud.FileEntry{ID: "f1", Name: "test.nfo", Size: 100, MTime: 1000, PickCode: "p1"}
-		// entry2: 较新文件 (MTime: 2000, Size: 200)
-		entry2 := cloud.FileEntry{ID: "f2", Name: "test.nfo", Size: 200, MTime: 2000, PickCode: "p2"}
-
-		// 第一次全量处理：两者都在列表中
-		st.handleMeta(entry1, "test.nfo", ".nfo")
-		st.handleMeta(entry2, "test.nfo", ".nfo")
-		st.flushPendingDownloads()
-
-		// 验证仲裁结果：最终只产生 1 个下载任务，且使用的是首个匹配项 (Size 100/p1)
-		tasks, _, err := svc.repo.StrmDownload.List(context.Background(), "", 1, 10)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(tasks) != 1 {
-			t.Fatalf("expected 1 download task after conflict resolution, got %d", len(tasks))
-		}
-		if tasks[0].Size != 100 || tasks[0].RemoteRef != "p1" {
-			t.Fatalf("expected task with size 100/p1, got size=%d ref=%s", tasks[0].Size, tasks[0].RemoteRef)
-		}
-
-		// 模拟该任务下载落盘完成
-		writeFile(t, filepath.Join(localDir, "test.nfo"), strings.Repeat("x", 100))
-
-		// 第二次增量同步：两者再次依次扫描
-		st2 := &strmSyncState{
-			s:               svc,
-			ctx:             context.Background(),
-			p:               p,
-			cfg:             &strmPathConfig{DownloadMeta: true, MetaExt: []string{"nfo"}},
-			rec:             &model.StrmSyncRecord{},
-			seenMeta:        map[string]bool{},
-			remoteMeta:      map[string]int64{},
-			seenMetaTarget:  map[string]cloud.FileEntry{},
-			seenVideoTarget: map[string]cloud.FileEntry{},
-		}
-		st2.handleMeta(entry1, "test.nfo", ".nfo")
-		st2.handleMeta(entry2, "test.nfo", ".nfo")
-		st2.flushPendingDownloads()
-
-		// 验证：不会新增任何下载任务，NewMeta 为 0，增量跳过
-		if st2.rec.NewMeta != 0 {
-			t.Fatalf("expected 0 new meta on incremental sync, got %d", st2.rec.NewMeta)
-		}
+	p := &model.StrmSyncPath{
+		Base:         model.Base{ID: "dup-test-path"},
+		Provider:     model.StrmProvider115,
+		RemotePath:   "root",
+		LocalPath:    localDir,
+		DownloadMeta: true,
 	}
 
+	st := &strmSyncState{
+		s:               svc,
+		ctx:             context.Background(),
+		p:               p,
+		cfg:             &strmPathConfig{DownloadMeta: true, MetaExt: []string{"nfo"}},
+		rec:             &model.StrmSyncRecord{},
+		seenMeta:        map[string]bool{},
+		remoteMeta:      map[string]int64{},
+		seenMetaTarget:  map[string]cloud.FileEntry{},
+		seenVideoTarget: map[string]cloud.FileEntry{},
+	}
 
+	// 模拟远端同目录下存在两个同名不同大小的 nfo 文件 (115 历史重复上传)
+	// entry1: 较早文件 (MTime: 1000, Size: 100)
+	entry1 := cloud.FileEntry{ID: "f1", Name: "test.nfo", Size: 100, MTime: 1000, PickCode: "p1"}
+	// entry2: 较新文件 (MTime: 2000, Size: 200)
+	entry2 := cloud.FileEntry{ID: "f2", Name: "test.nfo", Size: 200, MTime: 2000, PickCode: "p2"}
+
+	// 第一次全量处理：两者都在列表中
+	st.handleMeta(entry1, "test.nfo", ".nfo")
+	st.handleMeta(entry2, "test.nfo", ".nfo")
+	st.flushPendingDownloads()
+
+	// 验证仲裁结果：最终只产生 1 个下载任务，且使用的是首个匹配项 (Size 100/p1)
+	tasks, _, err := svc.repo.StrmDownload.List(context.Background(), "", 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 download task after conflict resolution, got %d", len(tasks))
+	}
+	if tasks[0].Size != 100 || tasks[0].RemoteRef != "p1" {
+		t.Fatalf("expected task with size 100/p1, got size=%d ref=%s", tasks[0].Size, tasks[0].RemoteRef)
+	}
+
+	// 模拟该任务下载落盘完成
+	writeFile(t, filepath.Join(localDir, "test.nfo"), strings.Repeat("x", 100))
+
+	// 第二次增量同步：两者再次依次扫描
+	st2 := &strmSyncState{
+		s:               svc,
+		ctx:             context.Background(),
+		p:               p,
+		cfg:             &strmPathConfig{DownloadMeta: true, MetaExt: []string{"nfo"}},
+		rec:             &model.StrmSyncRecord{},
+		seenMeta:        map[string]bool{},
+		remoteMeta:      map[string]int64{},
+		seenMetaTarget:  map[string]cloud.FileEntry{},
+		seenVideoTarget: map[string]cloud.FileEntry{},
+	}
+	st2.handleMeta(entry1, "test.nfo", ".nfo")
+	st2.handleMeta(entry2, "test.nfo", ".nfo")
+	st2.flushPendingDownloads()
+
+	// 验证：不会新增任何下载任务，NewMeta 为 0，增量跳过
+	if st2.rec.NewMeta != 0 {
+		t.Fatalf("expected 0 new meta on incremental sync, got %d", st2.rec.NewMeta)
+	}
+
+}
+
+// TestWalk115FlatAbortsOnDirResolveFailure 回归测试：115 开放平台 token 失效/目录详情
+// 解析失败时，同步必须中止而不是带着塌缩的 rel 继续处理，否则会导致本地大量元数据
+// 被误判为"云端不存在"而重复下载/上传，甚至误删本地文件（用户反馈"云盘没动却重下重传"）。
+func TestWalk115FlatAbortsOnDirResolveFailure(t *testing.T) {
+	svc := testStrmService(t)
+	localDir := t.TempDir()
+
+	acct := &model.StrmAccount{
+		Name:     "fake115",
+		Provider: "cloud115",
+		Config:   "{}",
+		Enabled:  true,
+	}
+	if err := svc.repo.StrmAccount.Create(context.Background(), acct); err != nil {
+		t.Fatal(err)
+	}
+	p := &model.StrmSyncPath{
+		Base:       model.Base{ID: "abort-path"},
+		AccountID:  acct.ID,
+		Provider:   model.StrmProvider115,
+		RemotePath: "0",
+		LocalPath:  localDir,
+	}
+
+	// 115 mock：文件列表返回一个视频（父目录 999 不在缓存，需要 get_info），
+	// get_info 恒返回 access_token 格式错误（40140123）→ 目录树解析失败。
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/open/ufile/files":
+			w.Write([]byte(`{"state":true,"count":1,"data":[{"fid":"100","pid":"999","fc":1,"fn":"movie.mkv","pc":"pc1","upt":1700000000,"fs":1024}]}`))
+		case "/open/folder/get_info":
+			w.Write([]byte(`{"state":false,"code":40140123,"message":"access_token 格式错误"}`))
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer api.Close()
+
+	oldPro := cloud115.ProAPIBase
+	cloud115.ProAPIBase = api.URL
+	defer func() { cloud115.ProAPIBase = oldPro }()
+
+	oc := cloud115.NewOpenClient("app", "at", "rt")
+	st := &strmSyncState{
+		s:          svc,
+		ctx:        context.Background(),
+		p:          p,
+		provider:   cloud.NewOpenAPI115("app", "at", "rt"),
+		cfg:        &strmPathConfig{VideoExt: []string{"mkv"}, MetaExt: []string{"nfo"}, AddPath: 1, DownloadMeta: false},
+		rec:        &model.StrmSyncRecord{},
+		syncType:   model.StrmSyncTypeFull,
+		dirCache:   sync.Map{},
+		seenVideo:  map[string]bool{},
+		seenMeta:   map[string]bool{},
+		remoteMeta: map[string]int64{},
+	}
+	err := st.walk115Flat(oc)
+	if err == nil {
+		t.Fatal("expected walk115Flat to abort on dir-resolve failure, got nil error")
+	}
+
+	// 中止后不允许产生任何部分写入（本地不允许生成 .strm 文件）。
+	var strmCount int
+	_ = filepath.WalkDir(localDir, func(path string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.HasSuffix(d.Name(), ".strm") {
+			strmCount++
+		}
+		return nil
+	})
+	if strmCount != 0 {
+		t.Fatalf("expected no .strm written after abort, got %d", strmCount)
+	}
+}
