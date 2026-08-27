@@ -39,6 +39,26 @@ func TestFileSHA1Partial(t *testing.T) {
 	}
 }
 
+// TestFileSHA1PartialSmallerThanWindow 回归测试：经典 bug 是 io.CopyN 在文件不足
+// length 字节时返回 io.EOF。115 上传固定用 [0,128*1024-1] 窗口计算 preid，导致所有
+// 小于 128 KiB 的元数据文件（如海报/缩略图）上传必然失败。
+func TestFileSHA1PartialSmallerThanWindow(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "small.bin")
+	// 6 字节小文件，不足 128 KiB 窗口
+	if err := os.WriteFile(path, []byte("abcdef"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sum, err := FileSHA1Partial(path, 0, 128*1024-1)
+	if err != nil {
+		t.Fatalf("compute partial sha1 for small file should not fail: %v", err)
+	}
+	// 应等于整个文件（6 字节）的 sha1
+	if sum != "1f8ac10f23c5b5bc1167bda84b833e5c057a77d2" {
+		t.Errorf("unexpected partial sha1: %s", sum)
+	}
+}
+
 func TestParseSignCheckRange(t *testing.T) {
 	rng, err := parseSignCheckRange("0-131071")
 	if err != nil {

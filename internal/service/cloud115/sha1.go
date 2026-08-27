@@ -40,7 +40,9 @@ func FileSHA1Partial(path string, start, end int64) (string, error) {
 	}
 	length := end - start + 1
 	h := sha1.New()
-	if _, err := io.CopyN(h, f, length); err != nil {
+	// io.CopyN 在文件不足 length 字节时会返回 io.EOF，导致小文件（如小于 128 KiB 的
+	// 元数据图片）无法上传。这里只拷贝实际读到的字节，文件尾对齐到区间终点即可。
+	if _, err := io.CopyN(h, f, length); err != nil && err != io.EOF {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
