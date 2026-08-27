@@ -50,6 +50,8 @@ func registerAdminStrmRoutes(admin *gin.RouterGroup, svc *service.Container) {
 	admin.GET("/strm/downloads", downloadQueueHandler(svc))
 	admin.POST("/strm/downloads/:id/cancel", cancelStrmDownloadHandler(svc))
 	admin.POST("/strm/downloads/:id/retry", retryStrmDownloadHandler(svc))
+	admin.DELETE("/strm/downloads/:id", deleteStrmDownloadHandler(svc))
+	admin.POST("/strm/downloads/batch", batchActionDownloadsHandler(svc))
 	admin.POST("/strm/downloads/clear-done", clearDoneDownloadsHandler(svc))
 	admin.POST("/strm/downloads/clear-finished", clearFinishedDownloadsHandler(svc))
 	admin.POST("/strm/downloads/clear-canceled", clearCanceledDownloadsHandler(svc))
@@ -58,6 +60,8 @@ func registerAdminStrmRoutes(admin *gin.RouterGroup, svc *service.Container) {
 	admin.GET("/strm/uploads", uploadQueueHandler(svc))
 	admin.POST("/strm/uploads/:id/cancel", cancelStrmUploadHandler(svc))
 	admin.POST("/strm/uploads/:id/retry", retryStrmUploadHandler(svc))
+	admin.DELETE("/strm/uploads/:id", deleteStrmUploadHandler(svc))
+	admin.POST("/strm/uploads/batch", batchActionUploadsHandler(svc))
 	admin.POST("/strm/uploads/cancel-pending", cancelPendingUploadsHandler(svc))
 	admin.POST("/strm/uploads/clear-canceled", clearCanceledUploadsHandler(svc))
 }

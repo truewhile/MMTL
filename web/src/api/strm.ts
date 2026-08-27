@@ -144,6 +144,12 @@ export const strmAPI = {
   retryDownload: (id: string) =>
     api.post(`/admin/strm/downloads/${id}/retry`).then((r) => r.data),
 
+  deleteDownload: (id: string) =>
+    api.delete(`/admin/strm/downloads/${id}`).then((r) => r.data),
+
+  batchActionDownloads: (action: 'delete' | 'retry' | 'cancel', ids: string[]) =>
+    api.post<{ affected: number; action: string }>('/admin/strm/downloads/batch', { action, ids }).then((r) => r.data),
+
   clearDoneDownloads: () =>
     api.post<{ deleted: number }>('/admin/strm/downloads/clear-done').then((r) => r.data),
 
@@ -169,12 +175,18 @@ export const strmAPI = {
   cancelUpload: (id: string) =>
     api.post(`/admin/strm/uploads/${id}/cancel`).then((r) => r.data),
 
+  retryUpload: (id: string) =>
+    api.post(`/admin/strm/uploads/${id}/retry`).then((r) => r.data),
+
+  deleteUpload: (id: string) =>
+    api.delete(`/admin/strm/uploads/${id}`).then((r) => r.data),
+
+  batchActionUploads: (action: 'delete' | 'retry' | 'cancel', ids: string[]) =>
+    api.post<{ affected: number; action: string }>('/admin/strm/uploads/batch', { action, ids }).then((r) => r.data),
+
   cancelPendingUploads: () =>
     api.post<{ canceled: number }>('/admin/strm/uploads/cancel-pending').then((r) => r.data),
 
   clearCanceledUploads: () =>
     api.post<{ deleted: number }>('/admin/strm/uploads/clear-canceled').then((r) => r.data),
-
-  retryUpload: (id: string) =>
-    api.post(`/admin/strm/uploads/${id}/retry`).then((r) => r.data),
 }

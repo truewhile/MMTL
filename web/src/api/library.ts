@@ -105,8 +105,16 @@ export const libraryAPI = {
   createPerSubfolder: (parentPath: string, type: string, coverURL = '') =>
     api.post<{ libraries: Library[] }>('/libraries', { path: parentPath, type, cover_url: coverURL, create_per_subfolder: true }).then((r) => r.data),
 
-  update: (id: string, payload: { cover_url: string }) =>
-    api.patch<Library>(`/libraries/${id}`, payload).then((r) => r.data),
+  update: (
+    id: string,
+    payload: {
+      cover_url?: string
+      sort_order?: number | null
+      carousel_enabled?: boolean | null
+    },
+  ) => api.patch<Library>(`/libraries/${id}`, payload).then((r) => r.data),
+
+  reorder: (ids: string[]) => api.put('/libraries/reorder', { ids }).then((r) => r.data),
 
   remove: (id: string) => api.delete(`/libraries/${id}`).then((r) => r.data),
 

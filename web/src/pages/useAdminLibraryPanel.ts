@@ -164,6 +164,18 @@ function useLibraryActions(refresh: () => Promise<void>) {
     else toast.success(`扫描完成，新增 ${result.added}，更新 ${result.updated ?? 0}`)
   }
 
+  const toggleCarouselLibrary = async (library: Library) => {
+    const next = !(library.carousel_enabled ?? true)
+    await libraryAPI.update(library.id, { carousel_enabled: next })
+    toast.success(next ? `「${library.name}」已加入首页轮播` : `「${library.name}」已移出首页轮播`)
+    await refresh()
+  }
+
+  const reorderLibraries = async (orderedLibs: Library[]) => {
+    await libraryAPI.reorder(orderedLibs.map((l) => l.id))
+    await refresh()
+  }
+
   const removeLibrary = async (library: Library) => {
     if (!(await confirmAction({ title: '删除媒体库', message: `确定删除「${library.name}」?`, confirmText: '删除' }))) return
     await libraryAPI.remove(library.id)
@@ -191,5 +203,5 @@ function useLibraryActions(refresh: () => Promise<void>) {
     await refresh()
   }
 
-  return { scanLibrary, removeLibrary, addLibraryRoot, editLibraryCover }
+  return { scanLibrary, removeLibrary, addLibraryRoot, editLibraryCover, toggleCarouselLibrary, reorderLibraries }
 }

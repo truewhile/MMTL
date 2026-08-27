@@ -16,6 +16,8 @@ export interface Library {
   type: string
   cover_url?: string
   enabled: boolean
+  sort_order?: number
+  carousel_enabled?: boolean
   roots?: LibraryRoot[]
   created_at: string
   updated_at: string

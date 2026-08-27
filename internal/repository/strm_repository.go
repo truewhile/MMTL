@@ -308,6 +308,66 @@ func (r *StrmDownloadTaskRepository) Delete(ctx context.Context, id string) erro
 	})
 }
 
+// DeleteBatch 批量删除指定 ID 的下载任务。
+func (r *StrmDownloadTaskRepository) DeleteBatch(ctx context.Context, ids []string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	var count int64
+	err := withSQLiteBusyRetry(ctx, func() error {
+		res := r.db.WithContext(ctx).Unscoped().Where("id IN ?", ids).Delete(&model.StrmDownloadTask{})
+		count = res.RowsAffected
+		return res.Error
+	})
+	return count, err
+}
+
+// RetryBatch 批量重试指定 ID 的失败/已取消下载任务。
+func (r *StrmDownloadTaskRepository) RetryBatch(ctx context.Context, ids []string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	var count int64
+	err := withSQLiteBusyRetry(ctx, func() error {
+		res := r.db.WithContext(ctx).Model(&model.StrmDownloadTask{}).
+			Where("id IN ? AND status IN ?", ids, []string{model.StrmTaskFailed, model.StrmTaskCanceled}).
+			Updates(map[string]any{
+				"status":      model.StrmTaskPending,
+				"error":       "",
+				"retry_count": 0,
+				"next_try_at": nil,
+				"started_at":  nil,
+				"finished_at": nil,
+				"updated_at":  time.Now(),
+			})
+		count = res.RowsAffected
+		return res.Error
+	})
+	return count, err
+}
+
+// CancelBatch 批量取消指定 ID 的排队/进行中下载任务。
+func (r *StrmDownloadTaskRepository) CancelBatch(ctx context.Context, ids []string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	now := time.Now()
+	var count int64
+	err := withSQLiteBusyRetry(ctx, func() error {
+		res := r.db.WithContext(ctx).Model(&model.StrmDownloadTask{}).
+			Where("id IN ? AND status IN ?", ids, []string{model.StrmTaskPending, model.StrmTaskRunning}).
+			Updates(map[string]any{
+				"status":      model.StrmTaskCanceled,
+				"error":       "已批量取消",
+				"finished_at": now,
+				"updated_at":  now,
+			})
+		count = res.RowsAffected
+		return res.Error
+	})
+	return count, err
+}
+
 // ClearDone 清空全部已完成下载任务。
 func (r *StrmDownloadTaskRepository) ClearDone(ctx context.Context) (int64, error) {
 	var count int64
@@ -553,6 +613,66 @@ func (r *StrmUploadTaskRepository) Delete(ctx context.Context, id string) error 
 	return withSQLiteBusyRetry(ctx, func() error {
 		return r.db.WithContext(ctx).Unscoped().Where("id = ?", id).Delete(&model.StrmUploadTask{}).Error
 	})
+}
+
+// DeleteBatch 批量删除指定 ID 的上传任务。
+func (r *StrmUploadTaskRepository) DeleteBatch(ctx context.Context, ids []string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	var count int64
+	err := withSQLiteBusyRetry(ctx, func() error {
+		res := r.db.WithContext(ctx).Unscoped().Where("id IN ?", ids).Delete(&model.StrmUploadTask{})
+		count = res.RowsAffected
+		return res.Error
+	})
+	return count, err
+}
+
+// RetryBatch 批量重试指定 ID 的失败/已取消上传任务。
+func (r *StrmUploadTaskRepository) RetryBatch(ctx context.Context, ids []string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	var count int64
+	err := withSQLiteBusyRetry(ctx, func() error {
+		res := r.db.WithContext(ctx).Model(&model.StrmUploadTask{}).
+			Where("id IN ? AND status IN ?", ids, []string{model.StrmTaskFailed, model.StrmTaskCanceled}).
+			Updates(map[string]any{
+				"status":      model.StrmTaskPending,
+				"error":       "",
+				"retry_count": 0,
+				"next_try_at": nil,
+				"started_at":  nil,
+				"finished_at": nil,
+				"updated_at":  time.Now(),
+			})
+		count = res.RowsAffected
+		return res.Error
+	})
+	return count, err
+}
+
+// CancelBatch 批量取消指定 ID 的排队/进行中上传任务。
+func (r *StrmUploadTaskRepository) CancelBatch(ctx context.Context, ids []string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	now := time.Now()
+	var count int64
+	err := withSQLiteBusyRetry(ctx, func() error {
+		res := r.db.WithContext(ctx).Model(&model.StrmUploadTask{}).
+			Where("id IN ? AND status IN ?", ids, []string{model.StrmTaskPending, model.StrmTaskRunning}).
+			Updates(map[string]any{
+				"status":      model.StrmTaskCanceled,
+				"error":       "已批量取消",
+				"finished_at": now,
+				"updated_at":  now,
+			})
+		count = res.RowsAffected
+		return res.Error
+	})
+	return count, err
 }
 
 // ClearCanceled 清空全部已取消上传任务。

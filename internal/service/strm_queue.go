@@ -551,6 +551,44 @@ func (s *StrmService) RetryUploadTask(ctx context.Context, id string) error {
 
 // ─── 下载队列批量操作（handler 使用） ─────────────────────────────────────────
 
+// DeleteDownloadTask 删除一个下载任务记录。
+func (s *StrmService) DeleteDownloadTask(ctx context.Context, id string) error {
+	return s.repo.StrmDownload.Delete(ctx, id)
+}
+
+// DeleteUploadTask 删除一个上传任务记录。
+func (s *StrmService) DeleteUploadTask(ctx context.Context, id string) error {
+	return s.repo.StrmUpload.Delete(ctx, id)
+}
+
+// BatchActionDownloadTasks 对选中的下载任务执行批量操作（delete / retry / cancel）。
+func (s *StrmService) BatchActionDownloadTasks(ctx context.Context, action string, ids []string) (int64, error) {
+	switch action {
+	case "delete":
+		return s.repo.StrmDownload.DeleteBatch(ctx, ids)
+	case "retry":
+		return s.repo.StrmDownload.RetryBatch(ctx, ids)
+	case "cancel":
+		return s.repo.StrmDownload.CancelBatch(ctx, ids)
+	default:
+		return 0, fmt.Errorf("不支持的批量操作: %s", action)
+	}
+}
+
+// BatchActionUploadTasks 对选中的上传任务执行批量操作（delete / retry / cancel）。
+func (s *StrmService) BatchActionUploadTasks(ctx context.Context, action string, ids []string) (int64, error) {
+	switch action {
+	case "delete":
+		return s.repo.StrmUpload.DeleteBatch(ctx, ids)
+	case "retry":
+		return s.repo.StrmUpload.RetryBatch(ctx, ids)
+	case "cancel":
+		return s.repo.StrmUpload.CancelBatch(ctx, ids)
+	default:
+		return 0, fmt.Errorf("不支持的批量操作: %s", action)
+	}
+}
+
 // ClearDoneDownloadTasks 清空全部已完成下载记录，返回删除数量。
 func (s *StrmService) ClearDoneDownloadTasks(ctx context.Context) (int64, error) {
 	return s.repo.StrmDownload.ClearDone(ctx)

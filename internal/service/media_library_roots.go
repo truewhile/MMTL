@@ -105,6 +105,27 @@ func (s *MediaService) UpdateLibraryCover(ctx context.Context, libraryID, coverU
 		Update("cover_url", strings.TrimSpace(coverURL)).Error
 }
 
+// UpdateLibraryFields updates sort_order / carousel_enabled on a library.
+func (s *MediaService) UpdateLibraryFields(ctx context.Context, libraryID string, sortOrder *int, carouselEnabled *bool) error {
+	updates := map[string]any{}
+	if sortOrder != nil {
+		updates["sort_order"] = *sortOrder
+	}
+	if carouselEnabled != nil {
+		updates["carousel_enabled"] = *carouselEnabled
+	}
+	if len(updates) == 0 || strings.TrimSpace(libraryID) == "" {
+		return nil
+	}
+	return s.repo.DB.WithContext(ctx).Model(&model.Library{}).
+		Where("id = ?", libraryID).Updates(updates).Error
+}
+
+// ReorderLibraries persists a full media-library ordering.
+func (s *MediaService) ReorderLibraries(ctx context.Context, ids []string) error {
+	return s.repo.Library.SetSortOrder(ctx, ids)
+}
+
 func (s *MediaService) findLogicalLibrary(ctx context.Context, name, kind string) (*model.Library, error) {
 	if s == nil || s.repo == nil || s.repo.Library == nil {
 		return nil, nil

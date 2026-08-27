@@ -1,5 +1,6 @@
-import { useState, type MouseEvent, type ReactNode } from 'react'
-import { Folder, Image, MoreVertical, Plus, Power, PowerOff, RefreshCw, Save, Trash2 } from 'lucide-react'
+import { useEffect, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
+import { Folder, GripVertical, Image, MoreVertical, Plus, Power, PowerOff, RefreshCw, Save, Trash2 } from 'lucide-react'
 
 import { LocalDirBrowserDialog } from '../components/LocalDirBrowserDialog'
 import type { Library, LibraryRoot } from '../types'
@@ -18,11 +19,15 @@ type LibraryTableProps = {
   onRemoveLibrary: (library: Library) => void
   onAddLibraryRoot: (library: Library, path?: string, name?: string) => void
   onEditLibraryCover: (library: Library) => void
+  onToggleCarousel: (library: Library) => void
+  onReorder: (orderedLibs: Library[]) => void
 }
 
 export function AdminLibraryTable({ libs, ...actions }: LibraryTableProps) {
   const [browsingRoot, setBrowsingRoot] = useState<{ libraryID: string; root: LibraryRoot; initialPath?: string } | null>(null)
   const [addingRootLib, setAddingRootLib] = useState<Library | null>(null)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const dragOverId = useRef<string | null>(null)
 
   const handleSelectRootPath = (selectedPath: string) => {
     if (browsingRoot) {
@@ -40,15 +45,39 @@ export function AdminLibraryTable({ libs, ...actions }: LibraryTableProps) {
     }
   }
 
+  const handleReorder = (fromId: string, overId: string) => {
+    if (fromId === overId) return
+    const copy = [...libs]
+    const fromIndex = copy.findIndex((l) => l.id === fromId)
+    const overIndex = copy.findIndex((l) => l.id === overId)
+    if (fromIndex < 0 || overIndex < 0) return
+    const [moved] = copy.splice(fromIndex, 1)
+    copy.splice(overIndex, 0, moved)
+    actions.onReorder(copy)
+  }
+
+  const handleDrop = (e: DragEvent, overId: string) => {
+    e.preventDefault()
+    dragOverId.current = null
+    setDraggingId(null)
+    if (draggingId && overId !== draggingId) {
+      handleReorder(draggingId, overId)
+    }
+  }
+
   return (
     <>
       <div className="glass-panel overflow-x-auto !p-3">
-        <table className="w-full min-w-[900px] text-left text-sm">
+        <table className="w-full min-w-[960px] text-left text-sm">
           <thead className="text-xs uppercase tracking-wider text-sand-500">
             <tr>
+              <th className="w-8 text-center" title="拖动排序">
+                <GripVertical size={13} className="mx-auto text-gray-300" />
+              </th>
               <th className="w-28 py-2">名称</th>
               <th>路径</th>
               <th className="w-20">类型</th>
+              <th className="w-24">轮播</th>
               <th className="w-12 text-right">操作</th>
             </tr>
           </thead>
@@ -59,6 +88,23 @@ export function AdminLibraryTable({ libs, ...actions }: LibraryTableProps) {
                 library={library}
                 onBrowseRoot={(root) => setBrowsingRoot({ libraryID: library.id, root, initialPath: root.path })}
                 onOpenAddRoot={() => setAddingRootLib(library)}
+                dragging={draggingId === library.id}
+                dragOver={dragOverId.current === library.id}
+                onDragStart={(e) => {
+                  e.dataTransfer.effectAllowed = 'move'
+                  dragOverId.current = null
+                  setDraggingId(library.id)
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  if (dragOverId.current !== library.id) dragOverId.current = library.id
+                }}
+                onDragEnd={() => {
+                  dragOverId.current = null
+                  setDraggingId(null)
+                }}
+                onDrop={(e) => handleDrop(e, library.id)}
                 {...actions}
               />
             ))}
@@ -90,11 +136,37 @@ type LibraryTableRowProps = Omit<LibraryTableProps, 'libs'> & {
   library: Library
   onBrowseRoot: (root: LibraryRoot) => void
   onOpenAddRoot: () => void
+  dragging?: boolean
+  dragOver?: boolean
+  onDragStart?: (e: DragEvent) => void
+  onDragOver?: (e: DragEvent) => void
+  onDragEnd?: () => void
+  onDrop?: (e: DragEvent) => void
 }
 
-function LibraryTableRow({ library, ...actions }: LibraryTableRowProps) {
+function LibraryTableRow({ library, dragging, dragOver, onDragStart, onDragOver, onDragEnd, onDrop, ...actions }: LibraryTableRowProps) {
   return (
-    <tr className="border-t border-gray-200">
+    <tr
+      draggable={false}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragEnd={onDragEnd}
+      onDrop={onDrop}
+      className={`border-t border-gray-200 transition-colors ${
+        dragging ? 'bg-primary-400/10 opacity-60' : dragOver ? 'bg-primary-400/5' : ''
+      }`}
+    >
+      <td className="py-2 text-center">
+        <button
+          type="button"
+          draggable
+          onDragStart={onDragStart}
+          className="inline-flex cursor-grab items-center justify-center rounded p-1 text-gray-400 transition hover:bg-gray-100 hover:text-brand-500 active:cursor-grabbing"
+          title="拖动以调整媒体库显示顺序"
+        >
+          <GripVertical size={16} />
+        </button>
+      </td>
       <td className="py-2 pr-3 font-medium text-ink-600">
         <div className="flex items-center gap-2">
           {library.cover_url && <img src={library.cover_url} alt="" className="h-10 w-8 rounded object-cover" />}
@@ -105,10 +177,32 @@ function LibraryTableRow({ library, ...actions }: LibraryTableRowProps) {
         <LibraryRootsCell library={library} {...actions} />
       </td>
       <td className="px-3 text-ink-100">{library.type}</td>
+      <td className="py-2 text-ink-100">
+        <CarouselToggle library={library} onToggleCarousel={actions.onToggleCarousel} />
+      </td>
       <td className="py-2 text-right">
         <LibraryActionsCell library={library} {...actions} />
       </td>
     </tr>
+  )
+}
+
+function CarouselToggle({ library, onToggleCarousel }: { library: Library; onToggleCarousel: (library: Library) => void }) {
+  const on = library.carousel_enabled ?? true
+  return (
+    <button
+      type="button"
+      onClick={() => onToggleCarousel(library)}
+      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition ${
+        on
+          ? 'border-brand-500/50 bg-brand-500/10 text-brand-500'
+          : 'border-gray-300 bg-white text-ink-50 hover:border-gray-400'
+      }`}
+      title={on ? '参与首页海报轮播（点击关闭）' : '未参与首页海报轮播（点击开启）'}
+    >
+      <span className={`h-3.5 w-3.5 rounded-full ${on ? 'bg-brand-500' : 'bg-gray-300'}`} />
+      {on ? '参与轮播' : '未参与'}
+    </button>
   )
 }
 
@@ -255,18 +349,90 @@ function LibraryActionsCell({ library, onScanLibrary, onRemoveLibrary, onOpenAdd
 }
 
 function ActionMenu({ label, children }: { label: string; children: ReactNode }) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [coords, setCoords] = useState<{ top?: number; bottom?: number; right: number } | null>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  const toggleMenu = (e: MouseEvent) => {
+    e.stopPropagation()
+    if (isOpen) {
+      setIsOpen(false)
+      return
+    }
+    if (triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect()
+      const spaceBelow = window.innerHeight - rect.bottom
+      const estimatedHeight = 180
+      const openUpward = spaceBelow < estimatedHeight && rect.top > estimatedHeight
+      setCoords({
+        top: openUpward ? undefined : rect.bottom + 4,
+        bottom: openUpward ? window.innerHeight - rect.top + 4 : undefined,
+        right: window.innerWidth - rect.right,
+      })
+      setIsOpen(true)
+    }
+  }
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleClickOutside = (e: globalThis.MouseEvent) => {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(e.target as Node) &&
+        triggerRef.current &&
+        !triggerRef.current.contains(e.target as Node)
+      ) {
+        setIsOpen(false)
+      }
+    }
+    const handleScrollOrResize = () => setIsOpen(false)
+    window.addEventListener('mousedown', handleClickOutside)
+    window.addEventListener('scroll', handleScrollOrResize, true)
+    window.addEventListener('resize', handleScrollOrResize)
+    return () => {
+      window.removeEventListener('mousedown', handleClickOutside)
+      window.removeEventListener('scroll', handleScrollOrResize, true)
+      window.removeEventListener('resize', handleScrollOrResize)
+    }
+  }, [isOpen])
+
   return (
-    <details className="group relative inline-flex justify-end">
-      <summary
-        className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-lg border border-gray-200 bg-white text-ink-50 transition hover:border-primary-400/50 hover:text-brand-500 [&::-webkit-details-marker]:hidden"
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={toggleMenu}
+        className={`inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border transition ${
+          isOpen
+            ? 'border-brand-500 bg-brand-500/10 text-brand-500'
+            : 'border-gray-200 bg-white text-ink-50 hover:border-primary-400/50 hover:text-brand-500'
+        }`}
         title={label}
       >
         <MoreVertical size={16} />
-      </summary>
-      <div className="absolute right-0 top-9 z-30 min-w-28 rounded-lg border border-gray-200 bg-white p-1 shadow-lg">
-        {children}
-      </div>
-    </details>
+      </button>
+
+      {isOpen &&
+        coords &&
+        createPortal(
+          <div
+            ref={menuRef}
+            style={{
+              position: 'fixed',
+              top: coords.top !== undefined ? `${coords.top}px` : undefined,
+              bottom: coords.bottom !== undefined ? `${coords.bottom}px` : undefined,
+              right: `${coords.right}px`,
+              zIndex: 99999,
+            }}
+            className="min-w-32 rounded-xl border border-gray-200/90 bg-white p-1.5 shadow-2xl backdrop-blur"
+            onClick={() => setIsOpen(false)}
+          >
+            {children}
+          </div>,
+          document.body,
+        )}
+    </>
   )
 }
 
@@ -283,17 +449,19 @@ function MenuButton({
   onClick: () => void
   children: ReactNode
 }) {
-  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
-    event.currentTarget.closest('details')?.removeAttribute('open')
-    onClick()
-  }
   return (
     <button
-      className={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs transition ${
-        danger ? 'text-red-500 hover:bg-red-50' : 'text-ink-100 hover:bg-gray-50 hover:text-brand-500'
+      type="button"
+      className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium transition ${
+        danger
+          ? 'text-red-500 hover:bg-red-50'
+          : 'text-ink-100 hover:bg-gray-100 hover:text-brand-500'
       }`}
       title={label}
-      onClick={handleClick}
+      onClick={(e) => {
+        e.stopPropagation()
+        onClick()
+      }}
     >
       {icon}
       <span>{children}</span>

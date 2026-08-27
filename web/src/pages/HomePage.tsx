@@ -13,21 +13,12 @@ import {
   HomeLoadingState,
 } from './HomePageSections'
 
-const CAROUSEL_STORAGE_KEY = 'mmtl.home.carousel_libraries'
 const hasArtwork = (media?: Media | null) => !!(media?.poster_url || media?.backdrop_url)
 const asArray = <T,>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : [])
 
 export function HomePage() {
   const [libraries, setLibraries] = useState<Library[]>([])
   const [libraryData, setLibraryData] = useState<Record<string, { cards: SeriesCard[]; items: Media[]; total: number }>>({})
-  const [selectedLibraryIds, setSelectedLibraryIds] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem(CAROUSEL_STORAGE_KEY)
-      return saved ? JSON.parse(saved) : []
-    } catch {
-      return []
-    }
-  })
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -45,18 +36,6 @@ export function HomePage() {
         if (cancelled) return
         setLibraries(libs)
         setHistory(hist.filter((h) => h && !h.completed && !!h.media))
-
-        // Set default selected libraries if none saved yet
-        setSelectedLibraryIds((current) => {
-          if (current.length > 0) return current
-          const allIds = libs.map((l) => l.id)
-          try {
-            localStorage.setItem(CAROUSEL_STORAGE_KEY, JSON.stringify(allIds))
-          } catch {
-            // ignore
-          }
-          return allIds
-        })
 
         // Fetch media items for all libraries in parallel
         const isSeriesType = (type?: string) => type === 'tv' || type === 'anime' || type === 'variety'
@@ -132,16 +111,18 @@ export function HomePage() {
     return counts
   }, [libraries, libraryData])
 
-  // Compute items to show in the Hero Carousel
+  // Compute items to show in the Hero Carousel. Only libraries flagged
+  // carousel_enabled contribute; a library's items array is empty for
+  // series-type libs (loaded via /series), so gate on cards instead.
   const carouselItems = useMemo(() => {
     const candidateMedia: Media[] = []
-    const effectiveSelectedIds =
-      selectedLibraryIds.length > 0 ? selectedLibraryIds : libraries.map((l) => l.id)
+    const effectiveSelectedIds = libraries
+      .filter((l) => l.carousel_enabled !== false)
+      .map((l) => l.id)
 
     for (const libId of effectiveSelectedIds) {
       const data = libraryData[libId]
-      if (data && data.items.length > 0) {
-        // Pick representative items from series cards or raw items
+      if (data && data.cards.length > 0) {
         for (const card of data.cards) {
           if (hasArtwork(card.rep)) {
             candidateMedia.push(card.rep)
@@ -150,9 +131,8 @@ export function HomePage() {
       }
     }
 
-    // Sort by artwork score / rating or shuffle / interleave
+    // Fallback to all loaded items with artwork
     if (candidateMedia.length === 0) {
-      // Fallback to all loaded items with artwork
       for (const lib of libraries) {
         const data = libraryData[lib.id]
         if (data) {
@@ -164,7 +144,7 @@ export function HomePage() {
     }
 
     return candidateMedia.slice(0, 10)
-  }, [selectedLibraryIds, libraries, libraryData])
+  }, [libraries, libraryData])
 
   const empty =
     !loading &&

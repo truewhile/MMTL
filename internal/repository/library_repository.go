@@ -50,7 +50,7 @@ func (r *LibraryRepository) CreateWithRoots(ctx context.Context, l *model.Librar
 // List returns all enabled+disabled libraries.
 func (r *LibraryRepository) List(ctx context.Context) ([]model.Library, error) {
 	var ls []model.Library
-	q := r.db.WithContext(ctx).Order("created_at asc")
+	q := r.db.WithContext(ctx).Order("sort_order asc, created_at asc")
 	if r.hasLibraryRootsTable() {
 		q = q.Preload("Roots", func(db *gorm.DB) *gorm.DB {
 			return db.Order("sort_order asc, created_at asc")
@@ -58,6 +58,23 @@ func (r *LibraryRepository) List(ctx context.Context) ([]model.Library, error) {
 	}
 	err := q.Find(&ls).Error
 	return ls, err
+}
+
+// SetSortOrder assigns sort_order to libraries, preserving position order for
+// any library not present in the provided map.
+func (r *LibraryRepository) SetSortOrder(ctx context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for i, id := range ids {
+			if err := tx.Model(&model.Library{}).Where("id = ?", id).
+				Update("sort_order", i).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // FindByID returns the library, or (nil, nil) when missing.

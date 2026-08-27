@@ -147,7 +147,9 @@ roots = append(roots, service.LibraryRootInput{Path: req.Path})
 }
 
 type updateLibraryReq struct {
-	CoverURL string `json:"cover_url"`
+	CoverURL        *string `json:"cover_url"`
+	SortOrder       *int    `json:"sort_order"`
+	CarouselEnabled *bool   `json:"carousel_enabled"`
 }
 
 func updateLibraryHandler(svc *service.Container) gin.HandlerFunc {
@@ -157,9 +159,17 @@ func updateLibraryHandler(svc *service.Container) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		if err := svc.Media.UpdateLibraryCover(c.Request.Context(), c.Param("id"), req.CoverURL); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
+		if req.CoverURL != nil {
+			if err := svc.Media.UpdateLibraryCover(c.Request.Context(), c.Param("id"), *req.CoverURL); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+		}
+		if req.SortOrder != nil || req.CarouselEnabled != nil {
+			if err := svc.Media.UpdateLibraryFields(c.Request.Context(), c.Param("id"), req.SortOrder, req.CarouselEnabled); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
 		}
 		lib, err := svc.Repo.Library.FindByID(c.Request.Context(), c.Param("id"))
 		if err != nil || lib == nil {
@@ -167,6 +177,25 @@ func updateLibraryHandler(svc *service.Container) gin.HandlerFunc {
 			return
 		}
 		c.JSON(http.StatusOK, lib)
+	}
+}
+
+type reorderLibrariesReq struct {
+	IDs []string `json:"ids" binding:"required"`
+}
+
+func reorderLibrariesHandler(svc *service.Container) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req reorderLibrariesReq
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if err := svc.Media.ReorderLibraries(c.Request.Context(), req.IDs); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"updated": len(req.IDs)})
 	}
 }
 

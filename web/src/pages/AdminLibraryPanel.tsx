@@ -35,6 +35,8 @@ export function AdminLibraryPanel() {
         onRemoveLibrary={libraryActions.removeLibrary}
         onAddLibraryRoot={libraryActions.addLibraryRoot}
         onEditLibraryCover={libraryActions.editLibraryCover}
+        onToggleCarousel={libraryActions.toggleCarouselLibrary}
+        onReorder={libraryActions.reorderLibraries}
       />
       <LibraryStorageStats />
     </div>

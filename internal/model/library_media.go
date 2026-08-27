@@ -3,12 +3,14 @@ package model
 // Library 表示一个逻辑媒体库。Path 保留为兼容字段，指向第一条 LibraryRoot。
 type Library struct {
 	Base
-	Name     string        `gorm:"size:128;not null" json:"name"`
-	Path     string        `gorm:"size:1024;not null" json:"path"`
-	Type     string        `gorm:"size:16;not null;default:movie" json:"type"` // movie / tv / anime / music
-	CoverURL string        `gorm:"size:1024" json:"cover_url,omitempty"`
-	Enabled  bool          `gorm:"default:true" json:"enabled"`
-	Roots    []LibraryRoot `gorm:"foreignKey:LibraryID" json:"roots,omitempty"`
+	Name            string        `gorm:"size:128;not null" json:"name"`
+	Path            string        `gorm:"size:1024;not null" json:"path"`
+	Type            string        `gorm:"size:16;not null;default:movie" json:"type"` // movie / tv / anime / music
+	CoverURL        string        `gorm:"size:1024" json:"cover_url,omitempty"`
+	Enabled         bool          `gorm:"default:true" json:"enabled"`
+	SortOrder       int           `gorm:"index;default:0" json:"sort_order"`            // 手动拖拽排序用，越小越靠前
+	CarouselEnabled bool          `gorm:"default:true" json:"carousel_enabled"`         // 是否参与首页海报轮播
+	Roots           []LibraryRoot `gorm:"foreignKey:LibraryID" json:"roots,omitempty"`
 }
 
 // LibraryRoot 是逻辑媒体库下的一条真实物理/挂载路径。

@@ -8,7 +8,6 @@ import { libraryAPI } from '../api/library'
 import type { Library, Setting } from '../types'
 import { APIConfigsPanel } from '../components/APIConfigsPanel'
 import { AdultSettingsPanel } from './AdultSettingsPanel'
-import { LibrarySettingsPanel } from './LibrarySettingsPanel'
 import { RecognitionWordsPanel } from './RecognitionWordsPanel'
 import { SettingRow } from './SettingsRow'
 import { ALL_KEYS, GROUPS } from './settingsGroups'
@@ -168,7 +167,6 @@ export function SettingsPage() {
 
       {!loading && (
         <div className="space-y-4">
-          {group.key === 'library' && <LibrarySettingsPanel />}
           {group.key === 'api-configs' && <APIConfigsPanel />}
           {group.key === 'recognition-words' && <RecognitionWordsPanel />}
           {group.key === 'adult' && <AdultSettingsPanel />}

@@ -393,6 +393,63 @@ func retryStrmUploadHandler(svc *service.Container) gin.HandlerFunc {
 	}
 }
 
+func deleteStrmDownloadHandler(svc *service.Container) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if err := svc.Strm.DeleteDownloadTask(c.Request.Context(), c.Param("id")); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	}
+}
+
+func deleteStrmUploadHandler(svc *service.Container) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if err := svc.Strm.DeleteUploadTask(c.Request.Context(), c.Param("id")); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	}
+}
+
+type queueBatchReq struct {
+	Action string   `json:"action" binding:"required"`
+	IDs    []string `json:"ids" binding:"required"`
+}
+
+func batchActionDownloadsHandler(svc *service.Container) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req queueBatchReq
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		n, err := svc.Strm.BatchActionDownloadTasks(c.Request.Context(), req.Action, req.IDs)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"affected": n, "action": req.Action})
+	}
+}
+
+func batchActionUploadsHandler(svc *service.Container) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req queueBatchReq
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		n, err := svc.Strm.BatchActionUploadTasks(c.Request.Context(), req.Action, req.IDs)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"affected": n, "action": req.Action})
+	}
+}
+
 // ─── 下载队列批量操作 ─────────────────────────────────────────────────────────
 
 func clearDoneDownloadsHandler(svc *service.Container) gin.HandlerFunc {
