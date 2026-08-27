@@ -52,7 +52,7 @@ func TestServeSPANoCachesIndexAndServesRoutes(t *testing.T) {
 	}
 
 	router := gin.New()
-	serveSPA(router, webDir)
+	serveSPA(router, os.DirFS(webDir))
 
 	for _, path := range []string{"/", "/login", "/library/e1c3507e-2878-40ae-a0e1-6b6e44b7fa7a", "/media/abc"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -93,7 +93,7 @@ func TestServeSPAServesAssetsImmutableAndBypassesAPIRoutes(t *testing.T) {
 	}
 
 	router := gin.New()
-	serveSPA(router, webDir)
+	serveSPA(router, os.DirFS(webDir))
 
 	assetReq := httptest.NewRequest(http.MethodGet, "/assets/app.js", nil)
 	assetResp := httptest.NewRecorder()
@@ -155,7 +155,7 @@ func TestServeSPAServesAssetsImmutableAndBypassesAPIRoutes(t *testing.T) {
 func TestServeSPAMissingIndexReportsExplicit404(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	serveSPA(router, t.TempDir())
+	serveSPA(router, os.DirFS(t.TempDir()))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()

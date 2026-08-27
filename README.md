@@ -360,15 +360,17 @@ docker compose -f docker-compose.search.yml up -d --no-deps mmtl
 
 本地开发需要 Go、Node.js 和 npm。
 
+后端会将 `web/dist` 通过 `go:embed` 编进二进制，因此**在编译 / 运行后端之前要先构建前端**，否则 `web` 包会因为缺少嵌入资源而编译失败。
+
 ```bash
+# 前端依赖与构建（必须先做，产物被 go:embed 打进二进制）
+npm --prefix web ci
+npm --prefix web run build
+
 # 后端测试
 go test ./...
 
-# 前端依赖与构建
-npm --prefix web install
-npm --prefix web run build
-
-# 本地运行后端
+# 本地运行后端（二进制自带前端界面，无需额外 web 目录）
 go run ./cmd/server
 
 # 本地运行前端开发服务器
@@ -385,6 +387,21 @@ http://127.0.0.1:3000
 
 ```text
 http://127.0.0.1:8080/api/health
+```
+
+### 交叉编译单文件发布物
+
+CI（`.github/workflows/Auto-docker-publish.yml`）每次发布会自动为 Windows / Linux(含 Debian) / macOS 交叉编译 amd64 + arm64 的单文件可执行程序，并上传到对应的 GitHub Release。你可以在 Releases 页面下载 `.zip`（Windows）或 `.tar.gz`（Linux / macOS）附件，解压后直接运行其中的 `mmtl`（Windows 为 `mmtl.exe`），无需额外携带前端目录。
+
+本地手动交叉编译某个平台：
+
+```bash
+# 先构建前端
+npm --prefix web ci && npm --prefix web run build
+
+# 例如：构建 Linux amd64 单文件
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+  go build -trimpath -ldflags="-s -w" -o mmtl-linux-amd64 ./cmd/server
 ```
 
 ## 贡献与反馈

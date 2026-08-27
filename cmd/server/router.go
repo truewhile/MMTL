@@ -1,6 +1,8 @@
 package main
 
 import (
+	"io/fs"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,6 +15,8 @@ import (
 	"github.com/ShukeBta/MMTL/internal/handler"
 	"github.com/ShukeBta/MMTL/internal/middleware"
 	"github.com/ShukeBta/MMTL/internal/service"
+
+	"github.com/ShukeBta/MMTL/web"
 )
 
 func buildRouter(cfg *config.Config, logger *zap.Logger, svc *service.Container) *gin.Engine {
@@ -29,31 +33,41 @@ func buildRouter(cfg *config.Config, logger *zap.Logger, svc *service.Container)
 
 	handler.Register(r, cfg, logger, svc)
 
-	if cfg.App.WebDir != "" {
-		serveSPA(r, cfg.App.WebDir)
+	// Prefer a directory on disk when configured explicitly (e.g. the Docker image
+	// mounts web/dist from the build stage, or an operator overrides app.web_dir
+	// with a custom skin). Otherwise fall back to the SPA embedded into the binary,
+	// which is what makes the cross-platform single-file artifacts work.
+	uiFS := webui.DistFS()
+	if dir := cfg.App.WebDir; dir != "" {
+		disk := os.DirFS(dir)
+		if index, err := fs.Stat(disk, "index.html"); err == nil && !index.IsDir() {
+			uiFS = disk
+		}
 	}
+	serveSPA(r, uiFS)
 	return r
 }
 
 // serveSPA serves the React build artifacts and falls back to index.html for
-// non-API, non-asset paths so client-side routing keeps working.
-func serveSPA(r *gin.Engine, webDir string) {
+// non-API, non-asset paths so client-side routing keeps working. The UI tree
+// comes from root, which is either the compiled-in SPA or an on-disk web dir.
+func serveSPA(r *gin.Engine, root fs.FS) {
 	assets := r.Group("/assets")
 	assets.Use(func(c *gin.Context) {
 		c.Header("Cache-Control", "public, max-age=31536000, immutable")
 		c.Next()
 	})
-	assets.Static("/", filepath.Join(webDir, "assets"))
+	assets.GET("/*filepath", serveFSDir(root, "assets"))
 	brand := r.Group("/brand")
 	brand.Use(func(c *gin.Context) {
 		setNoCacheHeaders(c)
 		c.Next()
 	})
-	brand.Static("/", filepath.Join(webDir, "brand"))
+	brand.GET("/*filepath", serveFSDir(root, "brand"))
 	for _, rootFile := range []string{"/favicon.ico", "/favicon.svg", "/artwork-cache-sw.js"} {
-		filePath := filepath.Join(webDir, strings.TrimPrefix(rootFile, "/"))
-		r.GET(rootFile, serveNoCacheFile(filePath))
-		r.HEAD(rootFile, serveNoCacheFile(filePath))
+		name := strings.TrimPrefix(rootFile, "/")
+		r.GET(rootFile, serveFSFile(root, name))
+		r.HEAD(rootFile, serveFSFile(root, name))
 	}
 	r.NoRoute(func(c *gin.Context) {
 		path := c.Request.URL.Path
@@ -61,28 +75,50 @@ func serveSPA(r *gin.Engine, webDir string) {
 			c.Status(http.StatusNotFound)
 			return
 		}
-		serveSPAIndex(c, filepath.Join(webDir, "index.html"))
+		setNoCacheHeaders(c)
+		data, err := fs.ReadFile(root, "index.html")
+		if err != nil {
+			c.String(http.StatusNotFound, "MMTL web UI not found")
+			return
+		}
+		c.Data(http.StatusOK, "text/html; charset=utf-8", data)
 	})
 }
 
-func serveNoCacheFile(filePath string) gin.HandlerFunc {
+// serveFSDir serves a static subdirectory of root. A missing asset returns 404.
+func serveFSDir(root fs.FS, dir string) gin.HandlerFunc {
+	sub, err := fs.Sub(root, dir)
+	if err != nil {
+		return func(c *gin.Context) { c.Status(http.StatusNotFound) }
+	}
+	handler := http.StripPrefix("/"+dir, http.FileServerFS(sub))
 	return func(c *gin.Context) {
-		setNoCacheHeaders(c)
-		if _, err := os.Stat(filePath); err != nil {
-			c.Status(http.StatusNotFound)
-			return
-		}
-		c.File(filePath)
+		handler.ServeHTTP(c.Writer, c.Request)
 	}
 }
 
-func serveSPAIndex(c *gin.Context, indexPath string) {
-	setNoCacheHeaders(c)
-	if _, err := os.Stat(indexPath); err != nil {
-		c.String(http.StatusNotFound, "MMTL web UI not found: %s", indexPath)
-		return
+// serveFSFile serves a single root-level file (favicon / service worker) with
+// no-cache headers. It reads from root, which may be the embedded SPA or disk.
+func serveFSFile(root fs.FS, name string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		setNoCacheHeaders(c)
+		data, err := fs.ReadFile(root, name)
+		if err != nil {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		c.Data(http.StatusOK, mimeTypeByName(name), data)
 	}
-	c.File(indexPath)
+}
+
+// mimeTypeByName returns an HTTP content type guessed from a file extension.
+func mimeTypeByName(name string) string {
+	switch mime.TypeByExtension(filepath.Ext(name)) {
+	case "":
+		return "application/octet-stream"
+	default:
+		return mime.TypeByExtension(filepath.Ext(name))
+	}
 }
 
 func setNoCacheHeaders(c *gin.Context) {

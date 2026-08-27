@@ -18,6 +18,19 @@ jobs:
           go-version: '1.25'
           cache: true
 
+      # The binary embeds the SPA (web/dist) via go:embed, so the dist must exist
+      # before the Go toolchain touches the `web` package.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+      - name: Build SPA
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
       - name: go vet
         run: go vet ./...
 

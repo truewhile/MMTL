@@ -27,6 +27,9 @@ permissions:
 jobs:
   version-and-publish:
     runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.bump_version.outputs.new_version }}
+      tag: ${{ steps.bump_version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -149,3 +152,117 @@ jobs:
             VERSION=${{ steps.bump_version.outputs.new_version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # 单文件可执行构建：把前端打包进二进制（go:embed），交叉编译 Windows /
+  # Linux / macOS 的 amd64 / arm64 产物，作为 GitHub Release 附件发布。
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+      - name: Install
+        working-directory: web
+        run: npm ci
+      - name: Build SPA
+        working-directory: web
+        run: npm run build
+      - name: Upload web/dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+          retention-days: 1
+
+  build-binaries:
+    needs: [version-and-publish, build-frontend]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            ext: ""
+          - goos: linux
+            goarch: arm64
+            ext: ""
+          - goos: windows
+            goarch: amd64
+            ext: .exe
+          - goos: windows
+            goarch: arm64
+            ext: .exe
+          - goos: darwin
+            goarch: amd64
+            ext: ""
+          - goos: darwin
+            goarch: arm64
+            ext: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+      - name: Download web/dist
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+      - name: Build binary
+        run: |
+          CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+            go build -trimpath -ldflags="-s -w -X main.version=${{ needs.version-and-publish.outputs.tag }}" \
+            -o "dist/mmtl-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}" ./cmd/server
+      - name: Package
+        run: |
+          mkdir -p package/mmtl
+          cp "dist/mmtl-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}" package/mmtl/mmtl${{ matrix.ext }}
+          cp README.md package/mmtl/ 2>/dev/null || true
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            (cd package && zip -r "../mmtl_${{ matrix.goos }}_${{ matrix.goarch }}.zip" mmtl)
+          else
+            tar -czf "mmtl_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz" -C package mmtl
+          fi
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: mmtl-package-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            mmtl_${{ matrix.goos }}_${{ matrix.goarch }}.zip
+            mmtl_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz
+          if-no-files-found: ignore
+          retention-days: 1
+
+  publish-release:
+    needs: [version-and-publish, build-binaries]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Create / update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.version-and-publish.outputs.tag }}
+        run: |
+          set -eux
+          echo "tag=$RELEASE_TAG"
+          # 若 release 不存在则创建（tag 已由 version-and-publish 推送）
+          gh release create "$RELEASE_TAG" \
+            --title "MMTL ${{ needs.version-and-publish.outputs.new_version }}" \
+            --notes "自动化发布 ${{ needs.version-and-publish.outputs.new_version }}" \
+            --verify-tag --latest || true
+          # 上传所有平台产物（已存在的同名 asset 会直接覆盖）
+          for f in release-assets/mmtl_*.zip release-assets/mmtl_*.tar.gz; do
+            [ -e "$f" ] && gh release upload "$RELEASE_TAG" "$f" --clobber || true
+          done
