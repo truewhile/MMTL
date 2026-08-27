@@ -211,7 +211,7 @@ export function StrmManagePage() {
             onCancel={cancelSync}
           />
 
-          <RecordSection records={records} />
+          <RecordSection records={records} onDeleted={refresh} />
         </>
       )}
 
@@ -453,13 +453,48 @@ function SyncPathSection({
 
 // ─── 同步记录 ────────────────────────────────────────────────────────────────
 
-function RecordSection({ records }: { records: StrmSyncRecord[] }) {
+function RecordSection({ records, onDeleted }: { records: StrmSyncRecord[]; onDeleted: () => void }) {
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  const deleteRecord = async (record: StrmSyncRecord) => {
+    const ok = await confirmAction({ message: '确定删除这条同步记录？', confirmText: '删除' })
+    if (!ok) return
+    setDeletingId(record.id)
+    try {
+      await strmAPI.deleteRecord(record.id)
+      toast.success('已删除同步记录')
+      onDeleted()
+    } catch (err) {
+      toast.error(apiErrorMessage(err))
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const clearRecords = async () => {
+    const ok = await confirmAction({ message: '确定清空全部同步记录？此操作不可恢复。', confirmText: '清空' })
+    if (!ok) return
+    try {
+      const res = await strmAPI.clearRecords()
+      toast.success(`已清空 ${res.deleted} 条同步记录`)
+      onDeleted()
+    } catch (err) {
+      toast.error(apiErrorMessage(err))
+    }
+  }
+
   return (
     <section className="glass-panel space-y-3 p-5">
       <div className="flex items-center gap-2">
         <History size={18} className="text-brand-500" />
         <h2 className="font-display text-lg font-semibold text-ink-600">同步记录</h2>
         <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-sand-500">{records.length}</span>
+        {records.length > 0 && (
+          <button type="button" onClick={clearRecords} className={iconButtonCls + ' ml-auto'}>
+            <Trash2 size={14} />
+            清空
+          </button>
+        )}
       </div>
       {records.length === 0 ? (
         <p className="rounded-xl bg-gray-50 px-4 py-6 text-center text-sm text-sand-500">还没有同步记录</p>
@@ -475,8 +510,10 @@ function RecordSection({ records }: { records: StrmSyncRecord[] }) {
                 <th className="px-3 py-2 text-right">新增/更新</th>
                 <th className="px-3 py-2 text-right">跳过</th>
                 <th className="px-3 py-2 text-right">下载元数据</th>
+                <th className="px-3 py-2 text-right">上传元数据</th>
                 <th className="px-3 py-2 text-right">清理</th>
                 <th className="px-3 py-2">说明</th>
+                <th className="px-3 py-2"></th>
               </tr>
             </thead>
             <tbody>
@@ -502,8 +539,20 @@ function RecordSection({ records }: { records: StrmSyncRecord[] }) {
                     <td className="px-3 py-2 text-right text-brand-500">{record.new_strm}</td>
                     <td className="px-3 py-2 text-right text-gray-500">{record.skipped}</td>
                     <td className="px-3 py-2 text-right">{record.new_meta}</td>
+                    <td className="px-3 py-2 text-right">{record.uploaded ?? 0}</td>
                     <td className="px-3 py-2 text-right">{record.pruned}</td>
                     <td className="max-w-[260px] truncate px-3 py-2 text-xs text-sand-500">{record.message}</td>
+                    <td className="px-3 py-2 text-right">
+                      <button
+                        type="button"
+                        onClick={() => deleteRecord(record)}
+                        disabled={deletingId === record.id}
+                        title="删除记录"
+                        className="rounded-md p-1 text-sand-400 transition hover:bg-rose-50 hover:text-rose-500 disabled:opacity-40"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </td>
                   </tr>
                 )
               })}

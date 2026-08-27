@@ -170,6 +170,24 @@ func (r *StrmSyncRecordRepository) List(ctx context.Context, syncPathID string, 
 	return rows, err
 }
 
+// Delete 删除单条同步记录（物理删除）。
+func (r *StrmSyncRecordRepository) Delete(ctx context.Context, id string) error {
+	return withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).Unscoped().Where("id = ?", id).Delete(&model.StrmSyncRecord{}).Error
+	})
+}
+
+// DeleteBySyncPathID 删除某同步目录下的全部同步记录（删除同步目录时级联清理）。
+func (r *StrmSyncRecordRepository) DeleteBySyncPathID(ctx context.Context, syncPathID string) (int64, error) {
+	var count int64
+	err := withSQLiteBusyRetry(ctx, func() error {
+		res := r.db.WithContext(ctx).Unscoped().Where("sync_path_id = ?", syncPathID).Delete(&model.StrmSyncRecord{})
+		count = res.RowsAffected
+		return res.Error
+	})
+	return count, err
+}
+
 // ─── StrmDownloadTask ──────────────────────────────────────────────────────────
 
 // StrmDownloadTaskRepository persists model.StrmDownloadTask.

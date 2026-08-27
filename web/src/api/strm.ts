@@ -117,6 +117,13 @@ export const strmAPI = {
       .get<StrmSyncRecord[]>('/admin/strm/records', { params: pathId ? { path_id: pathId } : {} })
       .then((r) => r.data),
 
+  deleteRecord: (id: string) => api.delete(`/admin/strm/records/${id}`).then((r) => r.data),
+
+  clearRecords: (pathId?: string) =>
+    api
+      .delete<{ deleted: number }>('/admin/strm/records', { params: pathId ? { path_id: pathId } : {} })
+      .then((r) => r.data),
+
   // ── 本地目录浏览（同步目录选择器） ────────────────────────
   listLocalDirs: (path?: string) =>
     api

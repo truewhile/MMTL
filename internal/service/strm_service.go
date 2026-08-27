@@ -449,6 +449,38 @@ func (s *StrmService) ListSyncRecords(ctx context.Context, pathID string, limit 
 	return s.repo.StrmSyncRecord.List(ctx, pathID, limit)
 }
 
+// DeleteSyncRecord 删除单条同步记录。
+func (s *StrmService) DeleteSyncRecord(ctx context.Context, id string) error {
+	if err := s.repo.StrmSyncRecord.Delete(ctx, id); err != nil {
+		return err
+	}
+	return nil
+}
+
+// ClearSyncRecords 清空某同步目录（pathID 为空则全部）的同步记录，返回删除条数。
+func (s *StrmService) ClearSyncRecords(ctx context.Context, pathID string) (int64, error) {
+	if pathID != "" {
+		return s.repo.StrmSyncRecord.DeleteBySyncPathID(ctx, pathID)
+	}
+	var total int64
+	// 全量清空：分页拉取物理删除所有记录
+	for {
+		rows, err := s.repo.StrmSyncRecord.List(ctx, "", 200)
+		if err != nil {
+			return total, err
+		}
+		if len(rows) == 0 {
+			return total, nil
+		}
+		for _, rec := range rows {
+			if err := s.repo.StrmSyncRecord.Delete(ctx, rec.ID); err != nil {
+				return total, err
+			}
+		}
+		total += int64(len(rows))
+	}
+}
+
 // CreateSyncPath 校验并创建同步目录。
 func (s *StrmService) CreateSyncPath(ctx context.Context, p *model.StrmSyncPath) (*model.StrmSyncPath, error) {
 	if err := s.validateSyncPath(ctx, p); err != nil {

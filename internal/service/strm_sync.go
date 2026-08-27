@@ -235,8 +235,8 @@ func (s *StrmService) finishSync(p *model.StrmSyncPath, rec *model.StrmSyncRecor
 		if rec.SyncType == model.StrmSyncTypeFull {
 			syncTypeLabel = "全量"
 		}
-		p.LastSyncMessage = fmt.Sprintf("[%s] 完成：新增/更新 %d 个 strm，跳过 %d 个，下载 %d 个元数据，清理 %d 个文件",
-			syncTypeLabel, rec.NewStrm, rec.Skipped, rec.NewMeta, rec.Pruned)
+		p.LastSyncMessage = fmt.Sprintf("[%s] 完成：新增/更新 %d 个 strm，跳过 %d 个，下载 %d 个元数据，上传 %d 个元数据，清理 %d 个文件",
+			syncTypeLabel, rec.NewStrm, rec.Skipped, rec.NewMeta, rec.Uploaded, rec.Pruned)
 	}
 	if err := s.repo.StrmSyncPath.Update(context.Background(), p); err != nil {
 		s.log.Warn("update strm sync path failed", zap.Error(err))
@@ -244,7 +244,7 @@ func (s *StrmService) finishSync(p *model.StrmSyncPath, rec *model.StrmSyncRecor
 	s.log.Info("strm sync finished",
 		zap.String("path_id", p.ID), zap.String("sync_type", rec.SyncType), zap.String("status", status),
 		zap.Int64("new_strm", rec.NewStrm), zap.Int64("skipped", rec.Skipped), zap.Int64("new_meta", rec.NewMeta),
-		zap.Int64("pruned", rec.Pruned), zap.String("message", message))
+		zap.Int64("uploaded", rec.Uploaded), zap.Int64("pruned", rec.Pruned), zap.String("message", message))
 }
 
 func (st *strmSyncState) run() error {

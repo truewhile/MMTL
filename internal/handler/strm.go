@@ -300,6 +300,31 @@ func listStrmSyncRecordsHandler(svc *service.Container) gin.HandlerFunc {
 	}
 }
 
+func deleteStrmSyncRecordHandler(svc *service.Container) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.Param("id") == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "缺少记录 ID"})
+			return
+		}
+		if err := svc.Strm.DeleteSyncRecord(c.Request.Context(), c.Param("id")); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	}
+}
+
+func clearStrmSyncRecordsHandler(svc *service.Container) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		deleted, err := svc.Strm.ClearSyncRecords(c.Request.Context(), c.Query("path_id"))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true, "deleted": deleted})
+	}
+}
+
 // ─── 下载/上传队列 ─────────────────────────────────────────────────────────────
 
 func downloadQueueHandler(svc *service.Container) gin.HandlerFunc {
