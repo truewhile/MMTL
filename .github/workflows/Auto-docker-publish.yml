@@ -177,9 +177,32 @@ jobs:
           path: web/dist
           retention-days: 1
 
-  build-binaries:
-    needs: [version-and-publish, build-frontend]
+  # 先创建（幂等）空的 GitHub Release，供后续 build-binaries 并行上传附件，
+  # 也避免矩阵各 job 并发 upload 时 release 尚不存在而互相竞争。
+  publish-create-release:
+    needs: [version-and-publish]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.version-and-publish.outputs.tag }}
+        run: |
+          set -eux
+          # tag 已由 version-and-publish 推送；若 release 已存在则忽略（--verify-tag 幂等）
+          gh release create "$RELEASE_TAG" \
+            --title "MMTL ${{ needs.version-and-publish.outputs.new_version }}" \
+            --notes "自动化发布 ${{ needs.version-and-publish.outputs.new_version }}" \
+            --verify-tag --latest || true
+
+  build-binaries:
+    needs: [version-and-publish, build-frontend, publish-create-release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -228,41 +251,18 @@ jobs:
           else
             tar -czf "mmtl_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz" -C package mmtl
           fi
-      - name: Upload package
-        uses: actions/upload-artifact@v4
-        with:
-          name: mmtl-package-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: |
-            mmtl_${{ matrix.goos }}_${{ matrix.goarch }}.zip
-            mmtl_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz
-          if-no-files-found: ignore
-          retention-days: 1
-
-  publish-release:
-    needs: [version-and-publish, build-binaries]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: release-assets
-          merge-multiple: true
-      - name: Create / update GitHub Release
+      - name: Upload to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ needs.version-and-publish.outputs.tag }}
         run: |
           set -eux
-          echo "tag=$RELEASE_TAG"
-          # 若 release 不存在则创建（tag 已由 version-and-publish 推送）
-          gh release create "$RELEASE_TAG" \
-            --title "MMTL ${{ needs.version-and-publish.outputs.new_version }}" \
-            --notes "自动化发布 ${{ needs.version-and-publish.outputs.new_version }}" \
-            --verify-tag --latest || true
-          # 上传所有平台产物（已存在的同名 asset 会直接覆盖）
-          for f in release-assets/mmtl_*.zip release-assets/mmtl_*.tar.gz; do
-            [ -e "$f" ] && gh release upload "$RELEASE_TAG" "$f" --clobber || true
-          done
+          PKG="mmtl_${{ matrix.goos }}_${{ matrix.goarch }}.zip"
+          TAR="mmtl_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
+          # 并发上传到同一 release 各自文件，--clobber 幂等覆盖
+          if [ -f "$PKG" ]; then
+            for i in 1 2 3; do gh release upload "$RELEASE_TAG" "$PKG" --clobber && break || sleep 5; done
+          fi
+          if [ -f "$TAR" ]; then
+            for i in 1 2 3; do gh release upload "$RELEASE_TAG" "$TAR" --clobber && break || sleep 5; done
+          fi
