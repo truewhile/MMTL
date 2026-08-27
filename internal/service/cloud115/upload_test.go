@@ -1,9 +1,14 @@
 package cloud115
 
 import (
+	"context"
+	"encoding/base64"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/aliyun/alibabacloud-oss-go-sdk-v2/oss"
 )
 
 func TestFileSHA1(t *testing.T) {
@@ -110,5 +115,83 @@ func TestBaseNameOf(t *testing.T) {
 	}
 	if got := baseNameOf("top.txt"); got != "top.txt" {
 		t.Errorf("got %s", got)
+	}
+}
+
+// fakeCallbackOSSClient 捕获 CompleteMultipartUpload 收到的 callback / callback_var，
+// 用于断言已经 Base64 编码（116 要求 callback 必须是 Base64 后的 JSON，否则报
+// "The callback configuration is not base64 encoded"）。
+type fakeCallbackOSSClient struct {
+	capturedCallback    string
+	capturedCallbackVar string
+}
+
+func (c *fakeCallbackOSSClient) InitiateMultipartUpload(_ context.Context, _ *oss.InitiateMultipartUploadRequest, _ ...func(*oss.Options)) (*oss.InitiateMultipartUploadResult, error) {
+	return &oss.InitiateMultipartUploadResult{UploadId: oss.Ptr("upload-new")}, nil
+}
+func (c *fakeCallbackOSSClient) UploadPart(_ context.Context, r *oss.UploadPartRequest, _ ...func(*oss.Options)) (*oss.UploadPartResult, error) {
+	if r.Body != nil {
+		_, _ = io.Copy(io.Discard, r.Body)
+	}
+	return &oss.UploadPartResult{ETag: oss.Ptr("etag-1")}, nil
+}
+func (c *fakeCallbackOSSClient) ListParts(context.Context, *oss.ListPartsRequest, ...func(*oss.Options)) (*oss.ListPartsResult, error) {
+	return &oss.ListPartsResult{}, nil
+}
+func (c *fakeCallbackOSSClient) CompleteMultipartUpload(_ context.Context, r *oss.CompleteMultipartUploadRequest, _ ...func(*oss.Options)) (*oss.CompleteMultipartUploadResult, error) {
+	c.capturedCallback = *r.Callback
+	c.capturedCallbackVar = *r.CallbackVar
+	return &oss.CompleteMultipartUploadResult{
+		CallbackResult: map[string]any{
+			"state": true,
+			"data":  map[string]any{"file_id": "file-1", "pick_code": "pick-1"},
+		},
+	}, nil
+}
+func (c *fakeCallbackOSSClient) AbortMultipartUpload(context.Context, *oss.AbortMultipartUploadRequest, ...func(*oss.Options)) (*oss.AbortMultipartUploadResult, error) {
+	return &oss.AbortMultipartUploadResult{}, nil
+}
+
+// TestCompleteMultipartUploadCallbackBase64 回归测试：OSS CompleteMultipartUpload 的
+// callback 必须 Base64 编码，否则报 "The callback configuration is not base64 encoded"，
+// 导致大于 128 KiB 的元数据文件上传失败。
+func TestCompleteMultipartUploadCallbackBase64(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "big.bin")
+	data := make([]byte, 8) // 8 字节，PartSize=8 → 1 part
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fake := &fakeCallbackOSSClient{}
+	uploader := &OSSMultipartUploader{client: fake}
+
+	callback := `{"callbackUrl":"http://uplb.115.com/3.0/completeupload.php"}`
+	callbackVar := `{"x:pick_code":"abc"}`
+	_, err := uploader.UploadFileWithResult(context.Background(), OSSMultipartUploadInput{
+		Bucket:      "bucket-1",
+		Object:      "object-1",
+		Callback:    callback,
+		CallbackVar: callbackVar,
+		FilePath:    path,
+		FileSize:    int64(len(data)),
+		PartSize:    8,
+	})
+	if err != nil {
+		t.Fatalf("multipart 上传失败：%v", err)
+	}
+	// 捕获的 callback 必须是合法 Base64，且解码后与原 JSON 一致
+	cbBytes, err := base64.StdEncoding.DecodeString(fake.capturedCallback)
+	if err != nil {
+		t.Fatalf("callback 未 Base64 编码：%v (raw=%q)", err, fake.capturedCallback)
+	}
+	if string(cbBytes) != callback {
+		t.Errorf("callback 解码后 = %s，期望 %s", cbBytes, callback)
+	}
+	cbvBytes, err := base64.StdEncoding.DecodeString(fake.capturedCallbackVar)
+	if err != nil {
+		t.Fatalf("callback_var 未 Base64 编码：%v (raw=%q)", err, fake.capturedCallbackVar)
+	}
+	if string(cbvBytes) != callbackVar {
+		t.Errorf("callback_var 解码后 = %s，期望 %s", cbvBytes, callbackVar)
 	}
 }

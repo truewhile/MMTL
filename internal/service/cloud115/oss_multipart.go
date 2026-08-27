@@ -5,6 +5,8 @@ package cloud115
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -181,6 +183,24 @@ func (u *OSSMultipartUploader) UploadFileWithResult(ctx context.Context, input O
 		return completeParts[i].PartNumber < completeParts[j].PartNumber
 	})
 
+	// 115 下发的 callback / callback_var 是 JSON 字符串，而 OSS CompleteMultipartUpload
+	// 要求 callback 参数为 Base64 编码后的 JSON，否则报 "The callback configuration is
+	// not base64 encoded"。这里把两者转为 Base64 后再提交（参考 QMediaSync 的
+	// BuildOSSCallbackHeaders）。
+	cb := input.Callback
+	cbVar := input.CallbackVar
+	if cb == "" {
+		return OSSMultipartUploadResult{}, errors.New("OSS callback 为空")
+	}
+	if !json.Valid([]byte(cb)) {
+		return OSSMultipartUploadResult{}, errors.New("解析 callback 失败：不是合法 JSON")
+	}
+	if cbVar == "" {
+		cbVar = "{}"
+	}
+	if !json.Valid([]byte(cbVar)) {
+		return OSSMultipartUploadResult{}, errors.New("解析 callback_var 失败：不是合法 JSON")
+	}
 	completeResult, err := u.client.CompleteMultipartUpload(ctx, &oss.CompleteMultipartUploadRequest{
 		Bucket:   oss.Ptr(input.Bucket),
 		Key:      oss.Ptr(input.Object),
@@ -188,8 +208,8 @@ func (u *OSSMultipartUploader) UploadFileWithResult(ctx context.Context, input O
 		CompleteMultipartUpload: &oss.CompleteMultipartUpload{
 			Parts: completeParts,
 		},
-		Callback:    oss.Ptr(input.Callback),
-		CallbackVar: oss.Ptr(input.CallbackVar),
+		Callback:    oss.Ptr(base64.StdEncoding.EncodeToString([]byte(cb))),
+		CallbackVar: oss.Ptr(base64.StdEncoding.EncodeToString([]byte(cbVar))),
 	})
 	if err != nil {
 		return OSSMultipartUploadResult{}, fmt.Errorf("完成 OSS multipart 失败：%w", err)
