@@ -5,6 +5,7 @@ import {
   FolderOpen,
   Library,
   Settings,
+  Sparkles,
   Upload,
   User,
   Users,
@@ -22,6 +23,7 @@ export type LayoutNavItem = {
 export const LAYOUT_NAV_ITEMS: LayoutNavItem[] = [
   { to: '/profile', label: '个人资料', icon: User },
   { to: '/libraries?from=admin', label: '媒体库', icon: Library },
+  { to: '/scraper/queue', label: '刮削队列', icon: Sparkles, adminOnly: true },
   { to: '/admin', label: '用户管理', icon: Users, adminOnly: true },
   { to: '/files', label: '文件管理', icon: FolderOpen, adminOnly: true },
   { to: '/settings', label: '系统设置', icon: Settings, adminOnly: true },

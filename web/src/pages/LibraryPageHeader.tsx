@@ -55,10 +55,10 @@ export function LibraryPageHeader({
             className="h-10"
           />
           <button onClick={onScan} disabled={scanning} className="btn-outline">
-            {scanning ? '扫描中…' : '立即扫描'}
+            {scanning ? '扫描中…' : '扫描媒体库'}
           </button>
-          <button onClick={onScrape} disabled={scraping} className="btn-outline">
-            {scraping ? '刮削中…' : '刮削元数据'}
+          <button onClick={onScrape} disabled={scraping} className="btn-outline" title="对整个媒体库执行刮削元数据">
+            {scraping ? '刮削中…' : '整库刮削元数据'}
           </button>
           <button
             onClick={onRepairRescrape}
@@ -66,7 +66,7 @@ export function LibraryPageHeader({
             className="btn-outline"
             title="回填本库占位符外部 ID 并重刮，修正空 ID / 拆集问题"
           >
-            {repairing ? '修复中…' : '修复+重刮本库'}
+            {repairing ? '修复中…' : '修复+重刮整库'}
           </button>
         </div>
       )}

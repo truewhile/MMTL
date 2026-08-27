@@ -57,5 +57,6 @@ func AllModels() []interface{} {
 			&StrmDownloadTask{},
 			&StrmUploadTask{},
 			&StrmDirCache{},
+			&ScrapeTask{},
 		}
 }

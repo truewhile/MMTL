@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowRight, Film, FolderOpen, Library as LibraryIcon, Music, PlayCircle, RefreshCw, Tv } from 'lucide-react'
+import { ArrowRight, Film, FolderOpen, Library as LibraryIcon, Music, PlayCircle, RefreshCw, Sparkles, Tv } from 'lucide-react'
 
 import { imageURL } from '../api/client'
 import { EpisodeArtworkToggle } from '../components/EpisodeArtworkToggle'
@@ -73,6 +73,10 @@ export function LibrariesHeader({
           <RefreshCw size={14} className={repairing ? 'animate-spin' : ''} />
           {repairing ? '正在启动…' : '全库修复+重刮'}
         </button>
+        <Link to="/scraper/queue" className="btn-outline inline-flex items-center gap-1.5" title="查看正在进行的刮削任务与进度">
+          <Sparkles size={14} className="text-brand-500" />
+          <span>刮削队列</span>
+        </Link>
         <button type="button" onClick={onManageLibraries} className="btn-outline">
           管理媒体库
         </button>

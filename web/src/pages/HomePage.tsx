@@ -117,7 +117,7 @@ export function HomePage() {
   const carouselItems = useMemo(() => {
     const candidateMedia: Media[] = []
     const effectiveSelectedIds = libraries
-      .filter((l) => l.carousel_enabled !== false)
+      .filter((l) => l.carousel_enabled === true)
       .map((l) => l.id)
 
     for (const libId of effectiveSelectedIds) {

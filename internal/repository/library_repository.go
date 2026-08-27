@@ -15,6 +15,11 @@ type LibraryRepository struct{ db *gorm.DB }
 
 // Create persists a new library row.
 func (r *LibraryRepository) Create(ctx context.Context, l *model.Library) error {
+	if l != nil && l.SortOrder == 0 {
+		var maxSort int
+		_ = r.db.WithContext(ctx).Model(&model.Library{}).Select("COALESCE(MAX(sort_order), -1)").Scan(&maxSort)
+		l.SortOrder = maxSort + 1
+	}
 	return r.db.WithContext(ctx).Create(l).Error
 }
 
@@ -23,6 +28,11 @@ func (r *LibraryRepository) CreateWithRoots(ctx context.Context, l *model.Librar
 		return r.Create(ctx, l)
 	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if l != nil && l.SortOrder == 0 {
+			var maxSort int
+			_ = tx.Model(&model.Library{}).Select("COALESCE(MAX(sort_order), -1)").Scan(&maxSort)
+			l.SortOrder = maxSort + 1
+		}
 		if err := tx.Create(l).Error; err != nil {
 			return err
 		}

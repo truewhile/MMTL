@@ -33,6 +33,9 @@ const StrmDownloadQueuePage = lazy(() =>
 const StrmUploadQueuePage = lazy(() =>
   import('./pages/StrmQueuePage').then((m) => ({ default: m.StrmUploadQueuePage })),
 )
+const ScraperQueuePage = lazy(() =>
+  import('./pages/ScraperQueuePage').then((m) => ({ default: m.ScraperQueuePage })),
+)
 
 export type AppRoute = {
   path?: string
@@ -62,5 +65,6 @@ export const appRoutes: AppRoute[] = [
   { path: 'strm', element: <StrmManagePage />, adminOnly: true },
   { path: 'strm/downloads', element: <StrmDownloadQueuePage />, adminOnly: true },
   { path: 'strm/uploads', element: <StrmUploadQueuePage />, adminOnly: true },
+  { path: 'scraper/queue', element: <ScraperQueuePage />, adminOnly: true },
   { path: 'admin', element: <AdminPage />, adminOnly: true },
 ]

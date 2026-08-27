@@ -32,17 +32,20 @@ func (s *ScraperService) manualTMDbCandidates(ctx context.Context, query string,
 	for _, typ := range manualTMDbSearchTypes(mediaType) {
 		switch typ {
 		case "movie":
-			if matches, err := s.tmdb.SearchMovieCandidates(ctx, query, year); err == nil {
+			if matches, err := s.tmdb.SearchMovieCandidates(ctx, query, year); err == nil && len(matches) > 0 {
 				for _, match := range matches {
 					out = append(out, manualTMDbCandidate{MediaType: "movie", Match: match})
 				}
 			}
 		case "tv":
-			if matches, err := s.tmdb.SearchTVCandidates(ctx, query, year); err == nil {
+			if matches, err := s.tmdb.SearchTVCandidates(ctx, query, year); err == nil && len(matches) > 0 {
 				for _, match := range matches {
 					out = append(out, manualTMDbCandidate{MediaType: "tv", Match: match})
 				}
 			}
+		}
+		if len(out) > 0 {
+			break
 		}
 	}
 	return out
@@ -70,15 +73,15 @@ func manualTMDbIDSearchTypes(mediaType string) []string {
 
 func manualTMDbSearchTypes(mediaType string) []string {
 	if strings.TrimSpace(mediaType) == "" {
-		return []string{"movie", "tv"}
+		return []string{"tv", "movie"}
 	}
 	switch normalizeMediaType(mediaType, "", "") {
 	case "tv", "anime", "variety":
 		return []string{"tv", "movie"}
 	case "movie", "adult":
-		return []string{"movie"}
-	default:
 		return []string{"movie", "tv"}
+	default:
+		return []string{"tv", "movie"}
 	}
 }
 

@@ -20,6 +20,24 @@ func registerAdminRoutes(api *gin.RouterGroup, cfg *config.Config, svc *service.
 	registerAdminAPIConfigRoutes(admin, svc)
 	registerAdminRecognitionWordRoutes(admin, svc)
 	registerAdminStrmRoutes(admin, svc)
+	registerAdminScraperRoutes(admin, svc)
+}
+
+func registerAdminScraperRoutes(admin *gin.RouterGroup, svc *service.Container) {
+	admin.GET("/scraper/queue", listScrapeQueueHandler(svc))
+	admin.POST("/scraper/queue/:id/cancel", cancelScrapeTaskHandler(svc))
+	admin.POST("/scraper/queue/:id/retry", retryScrapeTaskHandler(svc))
+	admin.DELETE("/scraper/queue/:id", deleteScrapeTaskHandler(svc))
+	admin.POST("/scraper/queue/batch", batchActionScrapeTasksHandler(svc))
+	admin.POST("/scraper/queue/clear-done", clearDoneScrapeTasksHandler(svc))
+	admin.POST("/scraper/queue/clear-finished", clearFinishedScrapeTasksHandler(svc))
+	admin.POST("/scraper/queue/clear-canceled", clearCanceledScrapeTasksHandler(svc))
+	admin.POST("/scraper/queue/retry-failed", retryAllFailedScrapeTasksHandler(svc))
+	admin.POST("/scraper/queue/cancel-pending", cancelPendingScrapeTasksHandler(svc))
+	admin.POST("/scraper/queue/enqueue-library/:id", enqueueLibraryScrapeHandler(svc))
+	admin.POST("/scraper/queue/enqueue-all", enqueueAllScrapeHandler(svc))
+	admin.POST("/media/repair-rescrape", enqueueAllScrapeHandler(svc))
+	admin.POST("/libraries/:id/repair-rescrape", enqueueLibraryScrapeHandler(svc))
 }
 
 func registerAdminStrmRoutes(admin *gin.RouterGroup, svc *service.Container) {

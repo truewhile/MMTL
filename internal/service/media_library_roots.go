@@ -52,7 +52,14 @@ func (s *MediaService) CreateLibraryWithRootsAndCover(ctx context.Context, name,
 		s.invalidateMediaCache(ctx)
 		return lib, nil
 	}
-	lib := &model.Library{Name: strings.TrimSpace(name), Path: roots[0].Path, Type: kind, CoverURL: strings.TrimSpace(coverURL), Enabled: true}
+	lib := &model.Library{
+		Name:            strings.TrimSpace(name),
+		Path:            roots[0].Path,
+		Type:            kind,
+		CoverURL:        strings.TrimSpace(coverURL),
+		Enabled:         true,
+		CarouselEnabled: false,
+	}
 	if err := s.repo.Library.CreateWithRoots(ctx, lib, roots); err != nil {
 		return nil, err
 	}

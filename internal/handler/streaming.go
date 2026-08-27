@@ -2,7 +2,6 @@
 package handler
 
 import (
-	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -135,28 +134,12 @@ func scrapeOneHandler(svc *service.Container) gin.HandlerFunc {
 			return
 		}
 		options.IncludeMatched = true
-		m, err := svc.Repo.Media.FindByID(c.Request.Context(), c.Param("id"))
-		if err != nil || m == nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
-			return
-		}
-		task := startScrapeHTTPTask(svc, "手动刮削媒体", m.Title, m.Path)
-		if err := svc.Scraper.EnrichOneWithOptions(c.Request.Context(), m, options); err != nil {
-			finishHTTPTask(task, err, "scrape", "手动刮削媒体失败", nil, nil)
+		task, err := svc.Scraper.EnqueueMedia(c.Request.Context(), c.Param("id"), options)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		reclassified := reclassifyMediaAfterScrape(c.Request.Context(), svc, m.ID)
-		refreshed, _ := svc.Repo.Media.FindByID(c.Request.Context(), m.ID)
-		metrics := map[string]int64{"processed": 1}
-		if refreshed != nil && refreshed.ScrapeStatus == "matched" {
-			metrics["matched"] = 1
-		}
-		if reclassified > 0 {
-			metrics["reclassified"] = int64(reclassified)
-		}
-		finishHTTPTask(task, nil, "completed", "手动刮削媒体结束", metrics, nil)
-		c.JSON(http.StatusOK, refreshed)
+		c.JSON(http.StatusOK, task)
 	}
 }
 
@@ -170,40 +153,12 @@ func scrapeLibraryHandler(svc *service.Container) gin.HandlerFunc {
 			return
 		}
 		options.IncludeMatched = true
-		var task *service.TaskHandle
-		if lib, err := svc.Repo.Library.FindByID(c.Request.Context(), libID); err == nil && lib != nil {
-			task = startScrapeHTTPTask(svc, "手动刮削媒体库", lib.Name, lib.Path)
-		} else {
-			task = startScrapeHTTPTask(svc, "手动刮削媒体库", libID, "")
+		n, err := svc.Scraper.EnqueueLibrary(c.Request.Context(), libID, options)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
 		}
-		// Run in the background so HTTP returns instantly; the WS hub
-		// pushes per-item progress on the "scrape" topic.
-		go func(libID string, task *service.TaskHandle, options service.ScrapeOptions) {
-			result, err := svc.Scraper.EnrichLibraryDetailedWithOptions(context.Background(), libID, options)
-			reclassified := 0
-			if result.Processed > 0 {
-				reclassified = reclassifyLibraryAfterScrape(context.Background(), svc, libID)
-			}
-			metrics := map[string]int64{
-				"matched":    int64(result.Matched),
-				"processed":  int64(result.Processed),
-				"candidates": int64(result.Candidates),
-			}
-			if reclassified > 0 {
-				metrics["reclassified"] = int64(reclassified)
-			}
-			if result.Failed > 0 {
-				metrics["errors"] = int64(result.Failed)
-			}
-			stage := "completed"
-			message := "手动刮削媒体库结束"
-			if err != nil {
-				stage = "scrape"
-				message = "手动刮削媒体库失败"
-			}
-			finishHTTPTask(task, err, stage, message, metrics, nil)
-		}(libID, task, options)
-		c.JSON(http.StatusAccepted, gin.H{"status": "scraping"})
+		c.JSON(http.StatusOK, gin.H{"status": "queued", "enqueued": n})
 	}
 }
 

@@ -57,7 +57,7 @@ func (t *TMDbProvider) searchMovieCandidates(ctx context.Context, query string, 
 
 	apiKey := t.resolveAPIKey(ctx)
 	if apiKey == "" {
-		return nil, nil
+		return nil, errors.New("TMDb API Key 未配置，请先在「系统设置 → API配置」中填写")
 	}
 	base := t.resolveBaseURL(ctx)
 
@@ -65,7 +65,7 @@ func (t *TMDbProvider) searchMovieCandidates(ctx context.Context, query string, 
 	q.Set("api_key", apiKey)
 	q.Set("query", query)
 	q.Set("language", language)
-	q.Set("include_adult", "false")
+	q.Set("include_adult", "true")
 	if year > 0 {
 		q.Set("year", fmt.Sprintf("%d", year))
 	}
@@ -78,6 +78,12 @@ func (t *TMDbProvider) searchMovieCandidates(ctx context.Context, query string, 
 	var p page
 	if err := t.getJSON(ctx, u, &p); err != nil {
 		return nil, err
+	}
+	if len(p.Results) == 0 && year > 0 {
+		// 移除年份限制重试一次，避免年份微小差异（如 2019 vs 2020）导致无搜索结果
+		q.Del("year")
+		u = base + "/search/movie?" + q.Encode()
+		_ = t.getJSON(ctx, u, &p)
 	}
 	if len(p.Results) == 0 {
 		return nil, nil
@@ -137,7 +143,7 @@ func (t *TMDbProvider) searchTVCandidates(ctx context.Context, query string, yea
 
 	apiKey := t.resolveAPIKey(ctx)
 	if apiKey == "" {
-		return nil, nil
+		return nil, errors.New("TMDb API Key 未配置，请先在「系统设置 → API配置」中填写")
 	}
 	base := t.resolveBaseURL(ctx)
 
@@ -145,7 +151,7 @@ func (t *TMDbProvider) searchTVCandidates(ctx context.Context, query string, yea
 	q.Set("api_key", apiKey)
 	q.Set("query", query)
 	q.Set("language", language)
-	q.Set("include_adult", "false")
+	q.Set("include_adult", "true")
 	if year > 0 {
 		q.Set("first_air_date_year", fmt.Sprintf("%d", year))
 	}
@@ -158,6 +164,12 @@ func (t *TMDbProvider) searchTVCandidates(ctx context.Context, query string, yea
 	var p page
 	if err := t.getJSON(ctx, u, &p); err != nil {
 		return nil, err
+	}
+	if len(p.Results) == 0 && year > 0 {
+		// 移除年份限制重试一次，避免年份微小差异导致无搜索结果
+		q.Del("first_air_date_year")
+		u = base + "/search/tv?" + q.Encode()
+		_ = t.getJSON(ctx, u, &p)
 	}
 	if len(p.Results) == 0 {
 		return nil, nil

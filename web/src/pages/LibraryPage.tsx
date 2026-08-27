@@ -113,21 +113,23 @@ export function LibraryPage() {
 
   return (
     <div className="space-y-6">
-      <LibraryPageHeader
-        library={library}
-        itemCount={isSeries ? seriesCards.length : total}
-        loadingAllText={loadingAllText}
-        scanProgress={scanProgress}
-        isAdmin={role === 'admin'}
-        scrapeEpisodeArtwork={scrapeEpisodeArtwork}
-        scanning={scanning}
-        scraping={scraping}
-        repairing={repairing}
-        onScrapeEpisodeArtworkChange={setScrapeEpisodeArtwork}
-        onScan={handleScan}
-        onScrape={() => setScrapeDialogOpen(true)}
-        onRepairRescrape={handleRepairRescrape}
-      />
+      {!selectedSeries && (
+        <LibraryPageHeader
+          library={library}
+          itemCount={isSeries ? seriesCards.length : total}
+          loadingAllText={loadingAllText}
+          scanProgress={scanProgress}
+          isAdmin={role === 'admin'}
+          scrapeEpisodeArtwork={scrapeEpisodeArtwork}
+          scanning={scanning}
+          scraping={scraping}
+          repairing={repairing}
+          onScrapeEpisodeArtworkChange={setScrapeEpisodeArtwork}
+          onScan={handleScan}
+          onScrape={() => setScrapeDialogOpen(true)}
+          onRepairRescrape={handleRepairRescrape}
+        />
+      )}
 
       <LibraryMediaSections
         isSeries={isSeries}

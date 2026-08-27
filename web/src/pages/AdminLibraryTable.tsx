@@ -188,7 +188,7 @@ function LibraryTableRow({ library, dragging, dragOver, onDragStart, onDragOver,
 }
 
 function CarouselToggle({ library, onToggleCarousel }: { library: Library; onToggleCarousel: (library: Library) => void }) {
-  const on = library.carousel_enabled ?? true
+  const on = Boolean(library.carousel_enabled)
   return (
     <button
       type="button"
@@ -198,7 +198,7 @@ function CarouselToggle({ library, onToggleCarousel }: { library: Library; onTog
           ? 'border-brand-500/50 bg-brand-500/10 text-brand-500'
           : 'border-gray-300 bg-white text-ink-50 hover:border-gray-400'
       }`}
-      title={on ? '参与首页海报轮播（点击关闭）' : '未参与首页海报轮播（点击开启）'}
+      title={on ? '已开启首页海报轮播（点击关闭）' : '未开启首页海报轮播（点击开启）'}
     >
       <span className={`h-3.5 w-3.5 rounded-full ${on ? 'bg-brand-500' : 'bg-gray-300'}`} />
       {on ? '参与轮播' : '未参与'}
