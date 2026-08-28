@@ -114,6 +114,35 @@ func (r *MediaRepository) ListByLibrariesFiltered(ctx context.Context, libraryID
 	return items, total, err
 }
 
+type libraryCountRow struct {
+	LibraryID string `gorm:"column:library_id"`
+	Total     int64  `gorm:"column:total"`
+}
+
+// CountByLibraries returns a map of library_id -> total media count for the given library IDs.
+func (r *MediaRepository) CountByLibraries(ctx context.Context, libraryIDs []string, filter MediaQueryFilter) (map[string]int64, error) {
+	out := make(map[string]int64, len(libraryIDs))
+	if len(libraryIDs) == 0 {
+		return out, nil
+	}
+	var rows []libraryCountRow
+	q := r.db.WithContext(ctx).Model(&model.Media{}).
+		Select("library_id, count(*) as total")
+	if len(libraryIDs) == 1 {
+		q = q.Where("library_id = ?", libraryIDs[0])
+	} else {
+		q = q.Where("library_id IN ?", libraryIDs)
+	}
+	q = applyMediaQueryFilter(q, filter)
+	if err := q.Group("library_id").Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out[row.LibraryID] = row.Total
+	}
+	return out, nil
+}
+
 // DeleteByLibrary purges all media tied to a library.
 func (r *MediaRepository) DeleteByLibrary(ctx context.Context, libraryID string) error {
 	// FTS 行由 media 表上的触发器同步清理（物理删除触发 FTS 清理）。

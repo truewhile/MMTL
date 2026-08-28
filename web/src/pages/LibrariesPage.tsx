@@ -8,7 +8,7 @@ import {
   LibrariesEmptyState,
   LibrariesHeader,
 } from './LibrariesPageSections'
-import { isSeriesLibraryType, latestLibraryCards, type LibraryPreview } from './librariesPageModel'
+import type { LibraryPreview } from './librariesPageModel'
 
 export function LibrariesPage() {
   const [previews, setPreviews] = useState<LibraryPreview[]>([])
@@ -20,24 +20,15 @@ export function LibrariesPage() {
   const loadLibraries = useCallback(async () => {
     setLoading(true)
     try {
-      const libs = await libraryAPI.list()
-      const rows = await Promise.all(libs.map(async (library) => {
-        try {
-          if (isSeriesLibraryType(library.type)) {
-            const [seriesPage, mediaPage] = await Promise.all([
-              libraryAPI.listSeries(library.id, 1, 10),
-              libraryAPI.listMedia(library.id, 1, 1, { groupVersions: false }),
-            ])
-            return { library, items: [], total: mediaPage.total, cards: seriesPage.items ?? [] } satisfies LibraryPreview
-          }
-          const page = await libraryAPI.listMedia(library.id, 1, 160, { groupVersions: false })
-          const cards = latestLibraryCards(page.items)
-          return { library, items: page.items, total: page.total, cards } satisfies LibraryPreview
-        } catch {
-          return { library, items: [], total: 0, cards: [] } satisfies LibraryPreview
-        }
-      }))
-      setPreviews(rows)
+      const libs = await libraryAPI.list({ withPreview: true })
+      setPreviews(
+        libs.map((library) => ({
+          library,
+          items: [],
+          total: library.total ?? 0,
+          cards: library.cards ?? [],
+        })),
+      )
     } finally {
       setLoading(false)
     }

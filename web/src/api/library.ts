@@ -81,11 +81,19 @@ export interface MediaMetadataUpdate {
   nsfw?: boolean
 }
 
+export interface LibraryWithPreview extends Library {
+  total?: number
+  cards?: SeriesCard[]
+}
+
 export const libraryAPI = {
-  list: (options?: { includeHidden?: boolean }) =>
+  list: (options?: { includeHidden?: boolean; withPreview?: boolean }) =>
     api
-      .get<Library[]>('/libraries', {
-        params: options?.includeHidden ? { include_hidden: 1 } : undefined,
+      .get<LibraryWithPreview[]>('/libraries', {
+        params: {
+          ...(options?.includeHidden ? { include_hidden: 1 } : {}),
+          ...(options?.withPreview ? { with_preview: 1 } : {}),
+        },
       })
       .then((r) => r.data),
 

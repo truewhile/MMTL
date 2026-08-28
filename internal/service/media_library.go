@@ -4,12 +4,79 @@ import (
 	"context"
 
 	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/ShukeBta/MMTL/internal/repository"
 	"gorm.io/gorm"
 )
+
+type LibraryPreviewItem struct {
+	model.Library
+	Total int64        `json:"total"`
+	Cards []SeriesCard `json:"cards"`
+}
 
 // ListLibraries returns every library configured on the server.
 func (s *MediaService) ListLibraries(ctx context.Context) ([]model.Library, error) {
 	return s.repo.Library.List(ctx)
+}
+
+// ListLibrariesWithPreview returns libraries populated with item counts and latest preview cards.
+func (s *MediaService) ListLibrariesWithPreview(ctx context.Context, libraries []model.Library, visibility MediaVisibility, cardLimit int) ([]LibraryPreviewItem, error) {
+	if cardLimit <= 0 {
+		cardLimit = 10
+	}
+	out := make([]LibraryPreviewItem, len(libraries))
+	if len(libraries) == 0 {
+		return out, nil
+	}
+
+	libIDs := make([]string, 0, len(libraries))
+	for i, lib := range libraries {
+		out[i] = LibraryPreviewItem{
+			Library: lib,
+			Total:   0,
+			Cards:   []SeriesCard{},
+		}
+		libIDs = append(libIDs, lib.ID)
+	}
+
+	visibility = ExpandMediaVisibilityForMergedCloudLibraries(ctx, s.repo, visibility)
+	filter := repository.MediaQueryFilter{
+		IncludeNSFW:       visibility.IncludeNSFW,
+		AllowedLibraryIDs: visibility.AllowedLibraryIDs,
+		HiddenLibraryIDs:  visibility.HiddenLibraryIDs,
+	}
+
+	counts, err := s.repo.Media.CountByLibraries(ctx, libIDs, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range out {
+		if total, ok := counts[out[i].ID]; ok {
+			out[i].Total = total
+		}
+	}
+
+	for i := range out {
+		if out[i].Total == 0 {
+			continue
+		}
+		items, _, err := s.repo.Media.ListByLibrariesFiltered(ctx, []string{out[i].ID}, 0, 60, filter)
+		if err != nil {
+			continue
+		}
+		s.attachLibraryMetadata(ctx, items)
+		cards := groupMediaSeriesCards(items)
+		if len(cards) > cardLimit {
+			cards = cards[:cardLimit]
+		}
+		if cards == nil {
+			cards = []SeriesCard{}
+		}
+		out[i].Cards = cards
+	}
+
+	return out, nil
 }
 
 // DeleteLibrary removes a library and its media rows. The on-disk files are

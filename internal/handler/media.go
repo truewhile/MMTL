@@ -45,6 +45,16 @@ func listLibrariesHandler(svc *service.Container) gin.HandlerFunc {
 			}
 			libs = filtered
 		}
+		withPreview := c.Query("with_preview") == "1" || c.Query("with_preview") == "true"
+		if withPreview {
+			previews, err := svc.Media.ListLibrariesWithPreview(c.Request.Context(), libs, mediaVisibilityForRequest(c, svc), 10)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, previews)
+			return
+		}
 		c.JSON(http.StatusOK, libs)
 	}
 }

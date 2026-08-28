@@ -3,7 +3,7 @@ import { artworkScore, groupSeries, type SeriesCard } from '../utils/groupSeries
 
 export type LibraryPreview = {
   library: Library
-  items: Media[]
+  items?: Media[]
   total: number
   cards: SeriesCard[]
 }
