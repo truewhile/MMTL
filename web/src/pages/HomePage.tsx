@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { libraryAPI } from '../api/library'
+import { libraryAPI, type LibraryWithPreview } from '../api/library'
 import { playbackAPI, type HistoryItem } from '../api/playback'
 import type { Library, Media } from '../types'
-import { groupSeries, type SeriesCard } from '../utils/groupSeries'
+import type { SeriesCard } from '../utils/groupSeries'
 import {
   ContinueWatchingSection,
   HomeCarouselSection,
@@ -29,56 +29,26 @@ export function HomePage() {
       setLoading(true)
       try {
         const [libs, hist] = await Promise.all([
-          libraryAPI.list().then((rows) => asArray<Library>(rows)).catch(() => [] as Library[]),
-          playbackAPI.recentHistory().then((rows) => asArray<HistoryItem>(rows)).catch(() => [] as HistoryItem[]),
+          libraryAPI
+            .list({ withPreview: true, previewLimit: 20 })
+            .then((rows) => asArray<LibraryWithPreview>(rows))
+            .catch(() => [] as LibraryWithPreview[]),
+          playbackAPI
+            .recentHistory()
+            .then((rows) => asArray<HistoryItem>(rows))
+            .catch(() => [] as HistoryItem[]),
         ])
 
         if (cancelled) return
         setLibraries(libs)
         setHistory(hist.filter((h) => h && !h.completed && !!h.media))
 
-        // Fetch media items for all libraries in parallel
-        const isSeriesType = (type?: string) => type === 'tv' || type === 'anime' || type === 'variety'
-        const results = await Promise.allSettled(
-          libs.map(async (lib) => {
-            // 剧集类媒体库（tv/anime/variety）：后端 /series 已按剧聚合，
-            // 首页若用 episode 级 /media 的前 30 行再 groupSeries，同一部剧的
-            // 多集会折叠成 1 张卡，导致整行只显示 1 个条目。
-            // 改用 /series 分页拉取全部聚合后的剧集卡片。
-            if (isSeriesType(lib.type)) {
-              const cards: SeriesCard[] = []
-              let total = 0
-              const pageSize = 200
-              for (let page = 1; page <= 10; page++) {
-                const data = await libraryAPI.listSeries(lib.id, page, pageSize)
-                const pageItems = asArray<SeriesCard>(data?.items)
-                cards.push(...pageItems)
-                total = data?.total ?? cards.length
-                if (cards.length >= total || pageItems.length < pageSize) break
-              }
-              return { id: lib.id, cards, items: [], total }
-            }
-            const page = await libraryAPI.listMedia(lib.id, 1, 30)
-            const items = asArray<Media>(page?.items)
-            const cards = groupSeries(items)
-            return {
-              id: lib.id,
-              cards,
-              items,
-              total: page?.total ?? items.length,
-            }
-          }),
-        )
-
-        if (cancelled) return
         const mapData: Record<string, { cards: SeriesCard[]; items: Media[]; total: number }> = {}
-        for (const res of results) {
-          if (res.status === 'fulfilled' && res.value) {
-            mapData[res.value.id] = {
-              cards: res.value.cards,
-              items: res.value.items,
-              total: res.value.total,
-            }
+        for (const lib of libs) {
+          mapData[lib.id] = {
+            cards: lib.cards ?? [],
+            items: [],
+            total: lib.total ?? 0,
           }
         }
         setLibraryData(mapData)

@@ -57,11 +57,18 @@ func (s *MediaService) ListLibrariesWithPreview(ctx context.Context, libraries [
 		}
 	}
 
+	fetchCount := cardLimit * 4
+	if fetchCount < 60 {
+		fetchCount = 60
+	} else if fetchCount > 200 {
+		fetchCount = 200
+	}
+
 	for i := range out {
 		if out[i].Total == 0 {
 			continue
 		}
-		items, _, err := s.repo.Media.ListByLibrariesFiltered(ctx, []string{out[i].ID}, 0, 60, filter)
+		items, _, err := s.repo.Media.ListByLibrariesFiltered(ctx, []string{out[i].ID}, 0, fetchCount, filter)
 		if err != nil {
 			continue
 		}

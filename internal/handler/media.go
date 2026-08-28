@@ -47,7 +47,13 @@ func listLibrariesHandler(svc *service.Container) gin.HandlerFunc {
 		}
 		withPreview := c.Query("with_preview") == "1" || c.Query("with_preview") == "true"
 		if withPreview {
-			previews, err := svc.Media.ListLibrariesWithPreview(c.Request.Context(), libs, mediaVisibilityForRequest(c, svc), 10)
+			limit, _ := strconv.Atoi(c.DefaultQuery("preview_limit", c.DefaultQuery("limit", "10")))
+			if limit <= 0 {
+				limit = 10
+			} else if limit > 100 {
+				limit = 100
+			}
+			previews, err := svc.Media.ListLibrariesWithPreview(c.Request.Context(), libs, mediaVisibilityForRequest(c, svc), limit)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
