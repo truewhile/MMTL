@@ -429,3 +429,46 @@ func TestRemoteFileDetailRelativePath(t *testing.T) {
 		t.Errorf("d3.RelativePath = %q, want %q", got, "")
 	}
 }
+
+// TestFsListRefreshContinue 验证 access_token 在请求中途过期（40140126）时：
+// 自动用 refresh_token 刷新得到新 token，然后对原请求重试成功（同步得以继续）。
+func TestFsListRefreshContinue(t *testing.T) {
+	var filesCalls int
+	var refreshCalls int
+	mockAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/open/refreshToken":
+			refreshCalls++
+			w.Write([]byte(`{"state":true,"data":{"access_token":"at2","refresh_token":"rt2","expires_in":7200}}`))
+		case "/open/ufile/files":
+			filesCalls++
+			switch filesCalls {
+			case 1:
+				// 第一次用旧 access_token，返回过期错误，应触发刷新
+				w.Write([]byte(`{"state":false,"code":40140126,"message":"access_token 校验失败"}`))
+			default:
+				// 刷新后续请求应使用新 access_token
+				if got := r.Header.Get("Authorization"); got != "Bearer at2" {
+					t.Errorf("retried request auth = %q, want Bearer at2", got)
+				}
+				w.Write([]byte(`{"state":true,"path":[],"data":[{"fid":"200","fc":"1","fn":"a.mkv","fs":123,"pc":"pickA"}]}`))
+			}
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+	})
+	c := NewOpenClient("100195125", "at1", "rt1")
+	files, _, err := c.GetFsList(context.Background(), "0", 0, 100)
+	if err != nil {
+		t.Fatalf("expected sync to continue after refresh, got error: %v", err)
+	}
+	if filesCalls != 2 {
+		t.Fatalf("want 2 files calls (original + retried), got %d", filesCalls)
+	}
+	if refreshCalls == 0 {
+		t.Fatal("expected refresh_token to be used once")
+	}
+	if len(files) != 1 {
+		t.Fatalf("want 1 file, got %d", len(files))
+	}
+}

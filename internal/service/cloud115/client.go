@@ -185,7 +185,7 @@ func (c *OpenClient) doJSON(ctx context.Context, method, rawURL string, form map
 		// refresh_token 刷新后重试一次。刷新失败或重试后仍失败才返回，
 		// 避免长时间同步因 token 过期而整体失败。
 		if isTokenCode(base.Code) {
-			if access && c.tryRefreshTokenLocked() {
+			if access && c.tryRefreshTokenLocked(ctx) {
 				continue
 			}
 			if access {
@@ -259,19 +259,43 @@ func (c *OpenClient) doAuthJSONWithUA(ctx context.Context, method, rawURL string
 }
 
 // tryRefreshTokenLocked 并发安全地刷新 access_token；成功返回 true（调用方
-// 应使用内存中的新 token 重试原请求）。refresh_token 已失效时也会清空内存 token。
-func (c *OpenClient) tryRefreshTokenLocked() bool {
+// 应使用内存中的新 token 重试原请求）。
+//
+// 对"refresh_token 本身已失效/被吊销"（IsRefreshTokenDead，如 40140114/116/119/120）
+// 这类不可恢复的错误直接放弃并清空内存 token（提示需重新授权）。
+// 对其它失败（网络瞬时抖动、刷新接口可重试错误码等）做指数退避重试几次再放弃，
+// 避免同步长任务中途 token 到期时恰好撞上一个短暂的刷新失败就整体失败。
+func (c *OpenClient) tryRefreshTokenLocked(ctx context.Context) bool {
 	c.tokenMu.Lock()
 	defer c.tokenMu.Unlock()
-	token, err := c.RefreshToken(c.RefreshTokenStr)
-	if err != nil {
+	for attempt := 0; attempt < refreshAttempts; attempt++ {
+		token, err := c.RefreshToken(c.RefreshTokenStr)
+		if err == nil {
+			c.SetAuthToken(token.AccessToken, token.RefreshToken)
+			return true
+		}
 		if IsRefreshTokenDead(err) {
 			c.SetAuthToken("", "")
+			return false
 		}
-		return false
+		// 可恢复失败：退避后重试。ctx 取消时立即放弃。
+		if attempt < refreshAttempts-1 {
+			select {
+			case <-ctx.Done():
+				return false
+			case <-time.After(refreshBackoff(attempt)):
+			}
+		}
 	}
-	c.SetAuthToken(token.AccessToken, token.RefreshToken)
-	return true
+	return false
+}
+
+// refreshAttempts 是刷新 access_token 失败时的最大尝试次数（含首次）。
+const refreshAttempts = 3
+
+// refreshBackoff 返回第 attempt 次（从 0 计）刷新失败后的退避时长（指数退避）。
+func refreshBackoff(attempt int) time.Duration {
+	return time.Duration(200*(1<<attempt)) * time.Millisecond // 200ms, 400ms
 }
 
 // IsThrottleCode 判断是否为限流错误码。
