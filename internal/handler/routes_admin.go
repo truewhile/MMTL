@@ -21,6 +21,7 @@ func registerAdminRoutes(api *gin.RouterGroup, cfg *config.Config, svc *service.
 	registerAdminRecognitionWordRoutes(admin, svc)
 	registerAdminStrmRoutes(admin, svc)
 	registerAdminScraperRoutes(admin, svc)
+	registerAdminDatabaseRoutes(admin, svc)
 }
 
 func registerAdminScraperRoutes(admin *gin.RouterGroup, svc *service.Container) {
@@ -137,4 +138,11 @@ func registerAdminRecognitionWordRoutes(admin *gin.RouterGroup, svc *service.Con
 	admin.PUT("/recognition-words", saveRecognitionWordsHandler(svc))
 	admin.POST("/recognition-words/sync", syncRecognitionWordsHandler(svc))
 	admin.POST("/recognition-words/test", testRecognitionWordsHandler(svc))
+}
+
+func registerAdminDatabaseRoutes(admin *gin.RouterGroup, svc *service.Container) {
+	admin.GET("/database/status", getDatabaseStatusHandler(svc))
+	admin.POST("/database/test", testDatabaseHandler(svc))
+	admin.POST("/database/migrate", migrateDatabaseHandler(svc))
+	admin.POST("/database/save-config", saveDatabaseConfigHandler(svc))
 }

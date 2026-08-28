@@ -159,7 +159,7 @@ func TestCopyModelTablesMigratesExistingSQLiteRows(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	copied, err := copyModelTables(src, dst, 2)
+	_, copied, err := copyModelTables(src, dst, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +222,7 @@ func TestCopyModelTablesResumesPartialSQLiteMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	copied, err := copyModelTables(src, dst, 2)
+	_, copied, err := copyModelTables(src, dst, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +240,7 @@ func TestCopyModelTablesResumesPartialSQLiteMigration(t *testing.T) {
 		t.Fatalf("genres = %q, want %q", got.Genres, media.Genres)
 	}
 
-	copied, err = copyModelTables(src, dst, 2)
+	_, copied, err = copyModelTables(src, dst, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -332,7 +332,7 @@ func TestSQLiteMigrationFallsBackToDataDirDefaultPath(t *testing.T) {
 	if err := resetBootstrapTargetBeforeSQLiteMigrationIfSafe(src2, dst, nil); err != nil {
 		t.Fatal(err)
 	}
-	copied, err := copyModelTables(src2, dst, 2)
+	_, copied, err := copyModelTables(src2, dst, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -408,13 +408,13 @@ func TestOpenSQLiteMigrationSourceUsesFallbackSourcePath(t *testing.T) {
 			_ = sqlDB2.Close()
 		}
 	}()
-	copied, err := copyModelTables(src2, dst, 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if copied != 2 {
-		t.Fatalf("copied rows = %d, want 2", copied)
-	}
+		_, copied, err := copyModelTables(src2, dst, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if copied != 2 {
+			t.Fatalf("copied rows = %d, want 2", copied)
+		}
 	var userCount int64
 	if err := dst.Model(&model.User{}).Where("username = ?", "real-admin").Count(&userCount).Error; err != nil {
 		t.Fatal(err)

@@ -48,7 +48,7 @@ func MigrateSQLiteToCurrentIfNeeded(cfg *config.Config, target *gorm.DB, log *za
 	if err := resetBootstrapTargetBeforeSQLiteMigrationIfSafe(src, target, log); err != nil {
 		return err
 	}
-	copied, err := copyModelTables(src, target, 500)
+	_, copied, err := copyModelTables(src, target, 500)
 	if err != nil {
 		return err
 	}

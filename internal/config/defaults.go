@@ -3,8 +3,8 @@ package config
 import "github.com/spf13/viper"
 
 const (
-	defaultDatabaseMaxOpenConns = 4
-	defaultDatabaseMaxIdleConns = 2
+	defaultDatabaseMaxOpenConns = 16
+	defaultDatabaseMaxIdleConns = 4
 	defaultLicenseServerURL     = "https://mgosever.3jzs.com"
 	defaultLicensePublicKey     = "MCowBQYDK2VwAyEABRXnXy+urjrbKit6Yu/HiezWgP0NdsZW3tsegJWRrtI="
 )

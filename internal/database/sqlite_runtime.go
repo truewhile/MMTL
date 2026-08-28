@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"gorm.io/gorm"
 
@@ -32,14 +33,35 @@ func installSQLiteWriteGate(db *gorm.DB) {
 			gate.Unlock()
 		}
 	}
+	rawLock := func(tx *gorm.DB) {
+		if tx.Statement != nil && isReadOnlySQL(tx.Statement.SQL.String()) {
+			return
+		}
+		lock(tx)
+	}
 	_ = db.Callback().Create().Before("gorm:create").Register("mmtl:sqlite_write_lock", lock)
 	_ = db.Callback().Create().After("gorm:create").Register("mmtl:sqlite_write_unlock", unlock)
 	_ = db.Callback().Update().Before("gorm:update").Register("mmtl:sqlite_write_lock", lock)
 	_ = db.Callback().Update().After("gorm:update").Register("mmtl:sqlite_write_unlock", unlock)
 	_ = db.Callback().Delete().Before("gorm:delete").Register("mmtl:sqlite_write_lock", lock)
 	_ = db.Callback().Delete().After("gorm:delete").Register("mmtl:sqlite_write_unlock", unlock)
-	_ = db.Callback().Raw().Before("gorm:raw").Register("mmtl:sqlite_write_lock", lock)
+	_ = db.Callback().Raw().Before("gorm:raw").Register("mmtl:sqlite_write_lock", rawLock)
 	_ = db.Callback().Raw().After("gorm:raw").Register("mmtl:sqlite_write_unlock", unlock)
+}
+
+func isReadOnlySQL(sql string) bool {
+	trimmed := strings.TrimSpace(sql)
+	if len(trimmed) == 0 {
+		return false
+	}
+	upper := strings.ToUpper(trimmed)
+	if strings.HasPrefix(upper, "SELECT") || strings.HasPrefix(upper, "EXPLAIN") {
+		return true
+	}
+	if strings.HasPrefix(upper, "WITH") && !strings.Contains(upper, "INSERT") && !strings.Contains(upper, "UPDATE") && !strings.Contains(upper, "DELETE") {
+		return true
+	}
+	return false
 }
 
 // sqliteWriteGate serializes in-process SQLite writes while respecting the
@@ -84,7 +106,7 @@ func buildSQLiteDSN(cfg *config.Config) string {
 	}
 	dsn := dbPath + "?_pragma=foreign_keys(1)"
 	if cfg.Database.WALMode {
-		dsn += "&_pragma=journal_mode(WAL)"
+		dsn += "&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)"
 	}
 	if cfg.Database.BusyTimeout > 0 {
 		dsn += fmt.Sprintf("&_pragma=busy_timeout(%d)", cfg.Database.BusyTimeout)
@@ -92,6 +114,7 @@ func buildSQLiteDSN(cfg *config.Config) string {
 	if cfg.Database.CacheSize != 0 {
 		dsn += fmt.Sprintf("&_pragma=cache_size(%d)", cfg.Database.CacheSize)
 	}
+	dsn += "&_pragma=temp_store(MEMORY)&_pragma=mmap_size(268435456)"
 	return dsn
 }
 

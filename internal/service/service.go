@@ -58,11 +58,12 @@ type Container struct {
 	Device           *DeviceService
 	Cache            *RuntimeCacheService
 	Sessions         *SessionTrackerService
-	RecognitionWords *RecognitionWordsService
-	Danmaku          *DanmakuService
-	Strm             *StrmService
+		RecognitionWords *RecognitionWordsService
+		Danmaku          *DanmakuService
+		Strm             *StrmService
+		Database         *DatabaseAdminService
 
-	stopCtx    context.Context
+		stopCtx    context.Context
 	stopCancel context.CancelFunc
 
 	// ReloadHTTPServer 由 cmd/server 注入。HTTPS 相关设置保存后，handler

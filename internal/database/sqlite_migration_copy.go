@@ -13,52 +13,53 @@ import (
 	"github.com/ShukeBta/MMTL/internal/model"
 )
 
-func copyModelTables(src, target *gorm.DB, batchSize int) (int64, error) {
+func copyModelTables(src, target *gorm.DB, batchSize int) (map[string]int64, int64, error) {
 	if batchSize <= 0 {
 		batchSize = 500
 	}
-	var copied int64
+	tableCounts := make(map[string]int64)
+	var totalCopied int64
 	for _, m := range model.AllModels() {
 		table, err := modelTableName(src, m)
 		if err != nil {
-			return copied, err
+			return tableCounts, totalCopied, err
 		}
 		primaryColumns, err := modelPrimaryColumns(src, m)
 		if err != nil {
-			return copied, fmt.Errorf("inspect model %T primary keys: %w", m, err)
+			return tableCounts, totalCopied, fmt.Errorf("inspect model %T primary keys: %w", m, err)
 		}
 		exists, err := sqliteTableExists(src, table)
 		if err != nil {
-			return copied, err
+			return tableCounts, totalCopied, err
 		}
 		if !exists {
 			continue
 		}
 		var sourceCount int64
 		if err := src.Raw("SELECT COUNT(1) FROM " + quoteIdent(table)).Scan(&sourceCount).Error; err != nil {
-			return copied, fmt.Errorf("count sqlite table %s: %w", table, err)
+			return tableCounts, totalCopied, fmt.Errorf("count sqlite table %s: %w", table, err)
 		}
 		if sourceCount == 0 {
 			continue
 		}
 		var targetCount int64
 		if err := target.Raw("SELECT COUNT(1) FROM " + quoteIdent(table)).Scan(&targetCount).Error; err != nil {
-			return copied, fmt.Errorf("count target table %s: %w", table, err)
+			return tableCounts, totalCopied, fmt.Errorf("count target table %s: %w", table, err)
 		}
 		modelType := reflect.TypeOf(m)
 		if modelType.Kind() != reflect.Ptr {
-			return copied, fmt.Errorf("model %T is not a pointer", m)
+			return tableCounts, totalCopied, fmt.Errorf("model %T is not a pointer", m)
 		}
 		sliceType := reflect.SliceOf(modelType.Elem())
 		slicePtr := reflect.New(sliceType)
 		if err := src.Unscoped().Find(slicePtr.Interface()).Error; err != nil {
-			return copied, fmt.Errorf("read sqlite table %s: %w", table, err)
+			return tableCounts, totalCopied, fmt.Errorf("read sqlite table %s: %w", table, err)
 		}
 		filtered := slicePtr.Elem()
 		if targetCount > 0 {
 			primaryKeySet, err := targetPrimaryKeySet(target, table, primaryColumns)
 			if err != nil {
-				return copied, err
+				return tableCounts, totalCopied, err
 			}
 			filtered = filterRowsMissingInTarget(target, table, primaryColumns, filtered, primaryKeySet)
 		}
@@ -68,11 +69,13 @@ func copyModelTables(src, target *gorm.DB, batchSize int) (int64, error) {
 		filteredPtr := reflect.New(filtered.Type())
 		filteredPtr.Elem().Set(filtered)
 		if err := target.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(filteredPtr.Interface(), batchSize).Error; err != nil {
-			return copied, fmt.Errorf("copy sqlite table %s: %w", table, err)
+			return tableCounts, totalCopied, fmt.Errorf("copy sqlite table %s: %w", table, err)
 		}
-		copied += int64(filtered.Len())
+		copiedForTable := int64(filtered.Len())
+		tableCounts[table] = copiedForTable
+		totalCopied += copiedForTable
 	}
-	return copied, nil
+	return tableCounts, totalCopied, nil
 }
 
 func modelPrimaryColumns(db *gorm.DB, m any) ([]string, error) {

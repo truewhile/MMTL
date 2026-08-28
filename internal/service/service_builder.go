@@ -118,6 +118,7 @@ func (b *serviceContainerBuilder) initContentServices() {
 func (b *serviceContainerBuilder) initAccessAndStorageServices() {
 	b.c.PlayProfiles = NewPlayProfileService(b.log, b.repos)
 	b.c.Permissions = NewPermissionService(b.log, b.repos)
+	b.c.Database = NewDatabaseAdminService(b.cfg, b.log, b.repos, b.repos.DB)
 	b.c.Emby.SetRuntimeCache(b.c.Cache)
 	b.c.Emby.SetSubtitleService(b.c.Subtitle)
 	b.c.Scheduler = NewSchedulerService(

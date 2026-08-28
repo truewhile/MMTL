@@ -1,6 +1,45 @@
 import { api } from './client'
 import type { AccessLog, Setting, User } from '../types'
 
+export interface DatabaseStatus {
+  type: 'sqlite' | 'postgres'
+  dsn?: string
+  db_path?: string
+  open_conns: number
+  in_use: number
+  idle: number
+  max_open_conns: number
+  table_counts?: Record<string, number>
+}
+
+export interface PostgresTestResult {
+  success: boolean
+  latency_ms?: number
+  version?: string
+  message?: string
+  error?: string
+}
+
+export interface DatabaseMigrationResult {
+  success: boolean
+  total_rows: number
+  table_rows?: Record<string, number>
+  duration_ms: number
+  message?: string
+  error?: string
+}
+
+export interface DatabaseConnectionPayload {
+  type?: string
+  dsn?: string
+  host?: string
+  port?: number
+  user?: string
+  password?: string
+  dbname?: string
+  sslmode?: string
+}
+
 export interface SystemUpdateStatus {
   image: string
   current_version?: string
@@ -55,21 +94,33 @@ export const adminAPI = {
 
   systemUpdateApply: () => api.post<SystemUpdateStatus>('/admin/system/update/apply').then((r) => r.data),
 
-  testAdultScraper: (payload: {
-    engine?: string
-    server_url?: string
-    token?: string
-    javdb_url?: string
-    javbus_url?: string
-    cookie?: string
-  }) =>
-    api
-      .post<{
-        success: boolean
-        latency_ms?: number
-        providers?: string[]
-        message?: string
-        error?: string
-      }>('/admin/adult/test-scraper', payload)
-      .then((r) => r.data),
-}
+	  testAdultScraper: (payload: {
+	    engine?: string
+	    server_url?: string
+	    token?: string
+	    javdb_url?: string
+	    javbus_url?: string
+	    cookie?: string
+	  }) =>
+	    api
+	      .post<{
+	        success: boolean
+	        latency_ms?: number
+	        providers?: string[]
+	        message?: string
+	        error?: string
+	      }>('/admin/adult/test-scraper', payload)
+	      .then((r) => r.data),
+
+	  getDatabaseStatus: () =>
+	    api.get<DatabaseStatus>('/admin/database/status').then((r) => r.data),
+
+	  testDatabaseConnection: (payload: DatabaseConnectionPayload) =>
+	    api.post<PostgresTestResult>('/admin/database/test', payload).then((r) => r.data),
+
+	  migrateDatabase: (payload: DatabaseConnectionPayload) =>
+	    api.post<DatabaseMigrationResult>('/admin/database/migrate', payload).then((r) => r.data),
+
+	  saveDatabaseConfig: (payload: DatabaseConnectionPayload) =>
+	    api.post<{ message: string; type: string }>('/admin/database/save-config', payload).then((r) => r.data),
+	}
