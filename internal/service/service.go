@@ -62,6 +62,7 @@ type Container struct {
 		Danmaku          *DanmakuService
 		Strm             *StrmService
 		Database         *DatabaseAdminService
+		FFTools          *FFmpegToolsService
 
 		stopCtx    context.Context
 	stopCancel context.CancelFunc

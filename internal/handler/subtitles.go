@@ -31,7 +31,7 @@ func serveSubtitleHandler(svc *service.Container) gin.HandlerFunc {
 			return
 		}
 		c.Header("Content-Type", "text/vtt; charset=utf-8")
-		c.Header("Cache-Control", "public, max-age=3600")
+		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
 		if err := svc.Subtitle.Serve(c.Request.Context(), c.Param("id"), path, c.Writer); err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 			return

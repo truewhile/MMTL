@@ -111,6 +111,8 @@ func (b *serviceContainerBuilder) initContentServices() {
 	b.c.Profile = NewProfileService(b.log, b.repos)
 	b.c.Audit = NewAuditService(b.log, b.repos)
 	b.c.Strm = NewStrmService(b.cfg, b.log, b.repos, b.c.Crypto)
+	// ffmpeg/ffprobe 一键下载安装（data/tools/ffmpeg/）。
+	b.c.FFTools = NewFFmpegToolsService(b.cfg, b.log, b.repos)
 	// 弹幕 hash 识别需要把 strm 指向解析成可拉取的直链/本地路径。
 	b.c.Danmaku.SetStrmResolver(b.c.Strm.ResolvePlay)
 }

@@ -41,7 +41,9 @@ func unzip(log *zap.Logger, zipPath, destDir string) error {
 		}
 		info := file.FileInfo()
 		if info.Mode()&os.ModeSymlink != 0 {
-			log.Warn("跳过 ZIP 符号链接", zap.String("name", file.Name))
+			if log != nil {
+				log.Warn("跳过 ZIP 符号链接", zap.String("name", file.Name))
+			}
 			continue
 		}
 		if info.IsDir() {
@@ -110,93 +112,3 @@ func safeZipTarget(destRoot, name string) (string, error) {
 	return targetAbs, nil
 }
 
-func findFFmpegPackageRoot(root string) (string, error) {
-	var ffmpegPath string
-	var ffprobePath string
-
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-
-		switch strings.ToLower(d.Name()) {
-		case "ffmpeg.exe":
-			ffmpegPath = path
-		case "ffprobe.exe":
-			ffprobePath = path
-		}
-		return nil
-	})
-	if err != nil {
-		return "", fmt.Errorf("扫描解压目录失败: %w", err)
-	}
-	if ffmpegPath == "" || ffprobePath == "" {
-		return "", fmt.Errorf("解压后未找到 ffmpeg/ffprobe 可执行文件")
-	}
-
-	return filepath.Dir(filepath.Dir(ffmpegPath)), nil
-}
-
-func copyDirContents(srcDir, dstDir string) error {
-	entries, err := os.ReadDir(srcDir)
-	if err != nil {
-		return err
-	}
-
-	for _, entry := range entries {
-		srcPath := filepath.Join(srcDir, entry.Name())
-		dstPath := filepath.Join(dstDir, entry.Name())
-		if err := copyTree(srcPath, dstPath); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func copyTree(srcPath, dstPath string) error {
-	info, err := os.Stat(srcPath)
-	if err != nil {
-		return err
-	}
-
-	if info.IsDir() {
-		if err := os.MkdirAll(dstPath, info.Mode()); err != nil {
-			return err
-		}
-		entries, err := os.ReadDir(srcPath)
-		if err != nil {
-			return err
-		}
-		for _, entry := range entries {
-			if err := copyTree(filepath.Join(srcPath, entry.Name()), filepath.Join(dstPath, entry.Name())); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-
-	in, err := os.Open(srcPath) // #nosec G304 -- srcPath is produced by walking the validated extracted ffmpeg package tree.
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-
-	if err := os.MkdirAll(filepath.Dir(dstPath), 0o750); err != nil {
-		return err
-	}
-
-	out, err := os.Create(dstPath) // #nosec G304 -- dstPath is generated under the configured ffmpeg install directory.
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	if _, err := io.Copy(out, in); err != nil {
-		return err
-	}
-
-	return out.Close()
-}

@@ -128,3 +128,19 @@ func listLibrarySeriesEpisodesHandler(svc *service.Container) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{"items": items, "total": len(items)})
 	}
 }
+
+func listMediaEpisodesHandler(svc *service.Container) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param("id")
+		if id == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "id is required"})
+			return
+		}
+		items, err := svc.Media.ListMediaEpisodes(c.Request.Context(), id, mediaVisibilityForRequest(c, svc))
+		if err != nil {
+			writeInternalOrCanceled(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"items": items, "total": len(items)})
+	}
+}

@@ -2,12 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import {
   Captions,
   CaptionsOff,
+  ListVideo,
   Maximize,
   MessageSquareText,
   Minimize,
   Pause,
   PictureInPicture,
   Play,
+  SkipBack,
+  SkipForward,
   Volume2,
   VolumeX,
 } from 'lucide-react'
@@ -34,6 +37,15 @@ type PlayerControlsProps = {
   danmakuOpen: boolean
   danmakuEnabled: boolean
   onToggleDanmaku: () => void
+  hasPrevEpisode?: boolean
+  hasNextEpisode?: boolean
+  onPrevEpisode?: () => void
+  onNextEpisode?: () => void
+  prevEpisodeTitle?: string
+  nextEpisodeTitle?: string
+  playlistOpen?: boolean
+  hasPlaylist?: boolean
+  onTogglePlaylist?: () => void
 }
 
 export function PlayerControls({
@@ -44,6 +56,15 @@ export function PlayerControls({
   danmakuOpen,
   danmakuEnabled,
   onToggleDanmaku,
+  hasPrevEpisode = false,
+  hasNextEpisode = false,
+  onPrevEpisode,
+  onNextEpisode,
+  prevEpisodeTitle,
+  nextEpisodeTitle,
+  playlistOpen = false,
+  hasPlaylist = false,
+  onTogglePlaylist,
 }: PlayerControlsProps) {
   const video = () => videoRef.current
   const container = () =>
@@ -69,6 +90,7 @@ export function PlayerControls({
   const isScrubbingRef = useRef(false)
   const subtitleMenuOpenRef = useRef(false)
   const danmakuOpenRef = useRef(false)
+  const playlistOpenRef = useRef(false)
 
   useEffect(() => {
     controlsHoveredRef.current = controlsHovered
@@ -85,6 +107,10 @@ export function PlayerControls({
   useEffect(() => {
     danmakuOpenRef.current = danmakuOpen
   }, [danmakuOpen])
+
+  useEffect(() => {
+    playlistOpenRef.current = playlistOpen
+  }, [playlistOpen])
 
   // 点击控制栏外部时关闭字幕菜单
   useEffect(() => {
@@ -112,14 +138,16 @@ export function PlayerControls({
         !controlsHoveredRef.current &&
         !isScrubbingRef.current &&
         !subtitleMenuOpenRef.current &&
-        !danmakuOpenRef.current
+        !danmakuOpenRef.current &&
+        !playlistOpenRef.current
       ) {
         hideTimerRef.current = setTimeout(() => {
           if (
             !controlsHoveredRef.current &&
             !isScrubbingRef.current &&
             !subtitleMenuOpenRef.current &&
-            !danmakuOpenRef.current
+            !danmakuOpenRef.current &&
+            !playlistOpenRef.current
           ) {
             setUiVisible(false)
           }
@@ -137,7 +165,7 @@ export function PlayerControls({
       if (e.relatedTarget && stage.contains(e.relatedTarget as Node)) {
         return
       }
-      if (el.paused || controlsHoveredRef.current || isScrubbingRef.current) return
+      if (el.paused || controlsHoveredRef.current || isScrubbingRef.current || playlistOpenRef.current) return
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
       setUiVisible(false)
     }
@@ -201,7 +229,7 @@ export function PlayerControls({
 
   // 当悬停或菜单状态改变时，更新控制栏计时器
   useEffect(() => {
-    if (controlsHovered || isScrubbing || subtitleMenuOpen || danmakuOpen) {
+    if (controlsHovered || isScrubbing || subtitleMenuOpen || danmakuOpen || playlistOpen) {
       setUiVisible(true)
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
     } else {
@@ -211,7 +239,7 @@ export function PlayerControls({
         hideTimerRef.current = setTimeout(() => setUiVisible(false), 3000)
       }
     }
-  }, [controlsHovered, isScrubbing, subtitleMenuOpen, danmakuOpen])
+  }, [controlsHovered, isScrubbing, subtitleMenuOpen, danmakuOpen, playlistOpen])
 
   const togglePlay = () => {
     const el = video()
@@ -297,12 +325,41 @@ export function PlayerControls({
       onClick={(e) => e.stopPropagation()}
     >
       <div className="flex items-center gap-2.5 text-white">
+        {/* 上一集 */}
+        <button
+          onClick={onPrevEpisode}
+          disabled={!hasPrevEpisode}
+          className={`rounded-full p-1.5 transition ${
+            hasPrevEpisode
+              ? 'hover:bg-white/15 text-white cursor-pointer'
+              : 'text-white/30 cursor-not-allowed opacity-40'
+          }`}
+          title={hasPrevEpisode ? (prevEpisodeTitle ? `上一集：${prevEpisodeTitle} ([)` : '上一集 ([)') : '没有上一集'}
+        >
+          <SkipBack size={18} />
+        </button>
+
+        {/* 播放 / 暂停 */}
         <button
           onClick={togglePlay}
           className="rounded-full p-1.5 transition hover:bg-white/15"
-          title={playing ? '暂停' : '播放'}
+          title={playing ? '暂停 (Space)' : '播放 (Space)'}
         >
           {playing ? <Pause size={20} /> : <Play size={20} />}
+        </button>
+
+        {/* 下一集 */}
+        <button
+          onClick={onNextEpisode}
+          disabled={!hasNextEpisode}
+          className={`rounded-full p-1.5 transition ${
+            hasNextEpisode
+              ? 'hover:bg-white/15 text-white cursor-pointer'
+              : 'text-white/30 cursor-not-allowed opacity-40'
+          }`}
+          title={hasNextEpisode ? (nextEpisodeTitle ? `下一集：${nextEpisodeTitle} (])` : '下一集 (])') : '没有下一集'}
+        >
+          <SkipForward size={18} />
         </button>
 
         <input
@@ -383,6 +440,27 @@ export function PlayerControls({
           </div>
         )}
 
+        {/* 选集 / 播放列表按钮 */}
+        {onTogglePlaylist && (
+          <button
+            onClick={onTogglePlaylist}
+            disabled={!hasPlaylist}
+            className={
+              'flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-medium transition ' +
+              (!hasPlaylist
+                ? 'bg-white/5 text-white/30 cursor-not-allowed opacity-50'
+                : playlistOpen
+                ? 'bg-rose-500 text-white hover:bg-rose-600'
+                : 'bg-white/10 text-white/80 hover:bg-white/20')
+            }
+            title={hasPlaylist ? '选集列表' : '当前无更多剧集'}
+          >
+            <ListVideo size={15} />
+            选集
+          </button>
+        )}
+
+        {/* 弹幕按钮 */}
         <button
           onClick={onToggleDanmaku}
           className={
@@ -401,7 +479,7 @@ export function PlayerControls({
         <button
           onClick={toggleMute}
           className="rounded-full p-1.5 transition hover:bg-white/15"
-          title={muted || volume === 0 ? '取消静音' : '静音'}
+          title={muted || volume === 0 ? '取消静音 (M)' : '静音 (M)'}
         >
           {muted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
         </button>
@@ -419,7 +497,7 @@ export function PlayerControls({
         <button
           onClick={toggleFullscreen}
           className="rounded-full p-1.5 transition hover:bg-white/15"
-          title={fullscreen ? '退出全屏' : '全屏'}
+          title={fullscreen ? '退出全屏 (F)' : '全屏 (F)'}
         >
           {fullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
         </button>

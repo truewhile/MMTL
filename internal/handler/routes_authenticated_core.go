@@ -39,6 +39,7 @@ func registerAuthedLibraryRoutes(authed *gin.RouterGroup, svc *service.Container
 
 func registerAuthedMediaRoutes(authed *gin.RouterGroup, svc *service.Container) {
 	authed.GET("/media/:id", getMediaHandler(svc))
+	authed.GET("/media/:id/episodes", listMediaEpisodesHandler(svc))
 	authed.GET("/media", searchMediaHandler(svc))
 	authed.PATCH("/media/:id/metadata", middleware.AdminRequired(), updateMediaMetadataHandler(svc))
 	authed.POST("/media/:id/scrape", middleware.AdminRequired(), scrapeOneHandler(svc))

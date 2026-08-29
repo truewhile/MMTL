@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"errors"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -72,6 +74,74 @@ func (s *MediaService) ListLibrarySeriesEpisodes(ctx context.Context, libraryID,
 		}
 		return out[i].CreatedAt.Before(out[j].CreatedAt)
 	})
+	return out, nil
+}
+
+func (s *MediaService) ListMediaEpisodes(ctx context.Context, mediaID string, visibility MediaVisibility) ([]model.Media, error) {
+	target, err := s.repo.Media.FindByID(ctx, mediaID)
+	if err != nil {
+		return nil, err
+	}
+	if target == nil {
+		return nil, errors.New("media not found")
+	}
+	if !visibility.Allows(target) {
+		return nil, errors.New("media not found")
+	}
+	if target.LibraryID == "" {
+		return []model.Media{*target}, nil
+	}
+	rows, _, err := s.listAllMediaVisible(ctx, target.LibraryID, visibility)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return []model.Media{*target}, nil
+	}
+
+	resolver := newMediaSeriesKeyResolver(rows)
+	targetKey := resolver.key(*target)
+
+	out := make([]model.Media, 0)
+	if targetKey != "" {
+		for _, row := range rows {
+			if resolver.key(row) == targetKey {
+				out = append(out, row)
+			}
+		}
+	}
+
+	// 如果没有聚合到多集，尝试同父目录匹配
+	if len(out) <= 1 && target.Path != "" {
+		targetDir := filepath.Dir(strings.ReplaceAll(target.Path, "\\", "/"))
+		dirMatches := make([]model.Media, 0)
+		for _, row := range rows {
+			if row.Path != "" && filepath.Dir(strings.ReplaceAll(row.Path, "\\", "/")) == targetDir {
+				dirMatches = append(dirMatches, row)
+			}
+		}
+		if len(dirMatches) > 1 {
+			out = dirMatches
+		}
+	}
+
+	if len(out) == 0 {
+		out = []model.Media{*target}
+	}
+
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].SeasonNum != out[j].SeasonNum {
+			return out[i].SeasonNum < out[j].SeasonNum
+		}
+		if out[i].EpisodeNum != out[j].EpisodeNum {
+			return out[i].EpisodeNum < out[j].EpisodeNum
+		}
+		if out[i].Path != out[j].Path {
+			return out[i].Path < out[j].Path
+		}
+		return out[i].CreatedAt.Before(out[j].CreatedAt)
+	})
+
 	return out, nil
 }
 

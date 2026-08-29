@@ -32,6 +32,9 @@ func (e *EmbyService) PlaybackInfo(ctx context.Context, mediaID, userID string) 
 // so the DeliveryUrl advertised in MediaStreams lines up exactly with the
 // served track: subtitles start at 1 when no audio stream is present, otherwise
 // at 2 (after Video 0 + Audio 1).
+//
+// 只服务外挂字幕文件（DiscoverExternalOnly）：云盘/strm 媒体的容器内嵌字幕
+// 不做服务端提取，客户端直连播放直链时自行解析。
 func (e *EmbyService) ServeSubtitleStream(ctx context.Context, w io.Writer, mediaID, indexStr string, userID string) error {
 	if e == nil || e.subtitle == nil {
 		return ErrSubtitleUnavailable
@@ -44,7 +47,7 @@ func (e *EmbyService) ServeSubtitleStream(ctx context.Context, w io.Writer, medi
 	if err != nil || index < 1 {
 		return ErrSubtitleNotFound
 	}
-	tracks, err := e.subtitle.Discover(ctx, m.ID)
+	tracks, err := e.subtitle.DiscoverExternalOnly(ctx, m.ID)
 	if err != nil || len(tracks) == 0 {
 		return ErrSubtitleNotFound
 	}
@@ -74,7 +77,7 @@ func (e *EmbyService) SubtitleStreamCodec(ctx context.Context, mediaID, indexStr
 	if err != nil || index < 1 {
 		return ""
 	}
-	tracks, err := e.subtitle.Discover(ctx, m.ID)
+	tracks, err := e.subtitle.DiscoverExternalOnly(ctx, m.ID)
 	if err != nil || len(tracks) == 0 {
 		return ""
 	}

@@ -116,6 +116,64 @@ func (s *StrmService) resolveLocalPlay(ctx context.Context, rawPath string) (*St
 	return nil, errors.New("文件不在任何本地同步目录内")
 }
 
+// ResolvePlayTarget 解析媒体行固化的播放目标（STRMURL 或 .strm 文件内容）为
+// 可播放结果，供弹幕 hash、内嵌字幕提取等「先解析直链再读取远端」的场景复用。
+// 支持：
+//   - /api/strm/play/{provider}/video{ext}?acct=..&pickcode=.. （常规格式，含账号）
+//   - /api/cloud/play/{type}?ref=.. （旧格式，无账号 → 取该类型第一个启用账号）
+//   - 绝对 http(s) 链接（直接透传）
+//   - 其余协议（webdav:// 等）返回错误，由调用方决定是否静默跳过
+func (s *StrmService) ResolvePlayTarget(ctx context.Context, raw string) (*StrmPlayResult, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, errors.New("空播放目标")
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil, fmt.Errorf("解析播放目标失败: %w", err)
+	}
+	lowerPath := strings.ToLower(u.Path)
+	switch {
+	case strings.HasPrefix(lowerPath, "/api/strm/play/"):
+		segs := strings.Split(strings.TrimPrefix(u.Path, "/api/strm/play/"), "/")
+		if len(segs) < 1 || strings.TrimSpace(segs[0]) == "" {
+			return nil, errors.New("无效的 strm 播放地址")
+		}
+		return s.ResolvePlay(ctx, segs[0], u.Query())
+	case strings.HasPrefix(lowerPath, "/api/cloud/play/"):
+		typ := strings.TrimSpace(strings.TrimPrefix(u.Path, "/api/cloud/play/"))
+		acct, err := s.firstEnabledAccountOf(ctx, typ)
+		if err != nil || acct == nil {
+			return nil, errors.New("没有可用的网盘账号，无法解析直链")
+		}
+		q := u.Query()
+		q.Set("acct", acct.ID)
+		return s.ResolvePlay(ctx, typ, q)
+	case u.Scheme == "http" || u.Scheme == "https":
+		return &StrmPlayResult{RedirectURL: raw}, nil
+	default:
+		return nil, fmt.Errorf("不支持的播放目标协议: %s", u.Scheme)
+	}
+}
+
+// firstEnabledAccountOf 返回指定提供方第一个凭据可用的启用账号。
+func (s *StrmService) firstEnabledAccountOf(ctx context.Context, provider string) (*model.StrmAccount, error) {
+	accounts, err := s.repo.StrmAccount.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range accounts {
+		a := &accounts[i]
+		if !a.Enabled || a.Provider != provider {
+			continue
+		}
+		if _, err := s.providerFor(ctx, a); err == nil {
+			return a, nil
+		}
+	}
+	return nil, nil
+}
+
 // ProxyDirect 反向代理渲染直链内容（保留 Range 请求头以支持拖动播放）。
 func (s *StrmService) ProxyDirect(ctx context.Context, w http.ResponseWriter, r *http.Request, link *cloud.DirectLink) error {
 	if link == nil || link.URL == "" {

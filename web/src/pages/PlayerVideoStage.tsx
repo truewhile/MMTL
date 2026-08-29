@@ -28,6 +28,17 @@ type PlayerVideoStageProps = {
   onDanmakuCandidates: (candidates: DanmakuAnime[]) => void
   /** Danmaku settings panel; rendered inside the stage so it stays visible in fullscreen. */
   danmakuPanel: ReactNode
+  /** Playlist drawer / panel; rendered inside the stage so it stays visible in fullscreen. */
+  playlistPanel?: ReactNode
+  hasPrevEpisode?: boolean
+  hasNextEpisode?: boolean
+  onPrevEpisode?: () => void
+  onNextEpisode?: () => void
+  prevEpisodeTitle?: string
+  nextEpisodeTitle?: string
+  playlistOpen?: boolean
+  hasPlaylist?: boolean
+  onTogglePlaylist?: () => void
 }
 
 export function PlayerVideoStage({
@@ -49,6 +60,16 @@ export function PlayerVideoStage({
   onDanmakuLoaded,
   onDanmakuCandidates,
   danmakuPanel,
+  playlistPanel,
+  hasPrevEpisode,
+  hasNextEpisode,
+  onPrevEpisode,
+  onNextEpisode,
+  prevEpisodeTitle,
+  nextEpisodeTitle,
+  playlistOpen,
+  hasPlaylist,
+  onTogglePlaylist,
 }: PlayerVideoStageProps) {
   const stageRef = useRef<HTMLDivElement>(null)
   const [videoRatio, setVideoRatio] = useState<number | null>(null)
@@ -114,10 +135,11 @@ export function PlayerVideoStage({
       setActiveCueText('')
       return
     }
+    const trackIdx = subtitleIndex
 
     const updateCue = () => {
       const trackEls = Array.from(video.querySelectorAll('track'))
-      const selectedEl = trackEls[subtitleIndex]
+      const selectedEl = trackEls[trackIdx]
       const tt = selectedEl?.track
       if (!tt) {
         setActiveCueText('')
@@ -151,11 +173,11 @@ export function PlayerVideoStage({
         const tt = el.track
         if (tt) {
           // 'hidden' 模式：浏览器解析 WebVTT 并触发 cuechange，但隐藏原生黑底 UI
-          tt.mode = i === subtitleIndex ? 'hidden' : 'disabled'
+          tt.mode = i === trackIdx ? 'hidden' : 'disabled'
         }
       })
 
-      const selected = trackEls[subtitleIndex]
+      const selected = trackEls[trackIdx]
       if (!selected) return
 
       const tt = selected.track
@@ -184,7 +206,7 @@ export function PlayerVideoStage({
       video.removeEventListener('seeked', updateCue)
       video.removeEventListener('playing', updateCue)
       const trackEls = Array.from(video.querySelectorAll('track'))
-      const selected = trackEls[subtitleIndex]
+      const selected = trackEls[trackIdx]
       if (selected) {
         selected.removeEventListener('load', updateCue)
         if (selected.track) {
@@ -241,7 +263,7 @@ export function PlayerVideoStage({
                   src={subtitlesAPI.url(media.id, track.path)}
                   srcLang={track.lang}
                   label={track.label || track.lang}
-                  default={index === subtitleIndex}
+                  default={subtitleIndex === index}
                 />
               ))}
             </video>
@@ -282,8 +304,18 @@ export function PlayerVideoStage({
             danmakuOpen={danmakuOpen}
             danmakuEnabled={danmakuEnabled}
             onToggleDanmaku={onToggleDanmaku}
+            hasPrevEpisode={hasPrevEpisode}
+            hasNextEpisode={hasNextEpisode}
+            onPrevEpisode={onPrevEpisode}
+            onNextEpisode={onNextEpisode}
+            prevEpisodeTitle={prevEpisodeTitle}
+            nextEpisodeTitle={nextEpisodeTitle}
+            playlistOpen={playlistOpen}
+            hasPlaylist={hasPlaylist}
+            onTogglePlaylist={onTogglePlaylist}
           />
           {danmakuPanel}
+          {playlistPanel}
         </>
       ) : (
         <p className="text-sand-500">加载中…</p>

@@ -73,8 +73,9 @@ export function useLibraryAdminActions({
       toast.success(`${label}完成：${selectedSeriesEpisodes.length} 个媒体`)
       reloadCurrentLibrary()
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || `${label}失败`
-      toast.error(msg)
+      const serverErr = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      const msg = serverErr || (err instanceof Error ? err.message : '')
+      toast.error(msg ? `${label}失败：${msg}` : `${label}失败`)
     } finally {
       setSeriesToolBusy('')
     }
@@ -146,8 +147,9 @@ export function useLibraryAdminActions({
       toast.success(`${label}完成：${media.title}`)
       reloadCurrentLibrary()
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || `${label}失败`
-      toast.error(msg)
+      const serverErr = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      const msg = serverErr || (err instanceof Error ? err.message : '')
+      toast.error(msg ? `${label}失败：${msg}` : `${label}失败`)
     } finally {
       setMovieToolBusy('')
     }

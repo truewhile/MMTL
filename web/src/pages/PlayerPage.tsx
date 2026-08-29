@@ -1,20 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import type Hls from 'hls.js'
 import toast from 'react-hot-toast'
 
-import { mediaAPI } from '../api/library'
+import { mediaAPI, libraryAPI } from '../api/library'
 import { api, hlsURL, streamURL } from '../api/client'
 import { danmakuAPI, type DanmakuAnime, type DanmakuLoadedInfo } from '../api/danmaku'
 import { playbackAPI } from '../api/playback'
 import { subtitlesAPI, type SubtitleTrack } from '../api/subtitles'
 import { systemAPI } from '../api/system'
 import type { Media } from '../types'
-import { getSeriesKey, isEpisodeLike } from '../utils/groupSeries'
+import { getSeriesKey, isEpisodeLike, seriesTitleFromPath } from '../utils/groupSeries'
 import { pickPlayerMode, needsTranscodeForBrowser, type PlayerMode } from './playerPageModel'
 import { PlayerTopBar } from './PlayerTopBar'
 import { PlayerVideoStage } from './PlayerVideoStage'
 import { PlayerDanmakuPanel } from '../components/PlayerDanmakuPanel'
+import { PlayerPlaylistPanel } from '../components/PlayerPlaylistPanel'
 
 // Fullscreen, dark-themed video page.
 //
@@ -79,6 +80,10 @@ export function PlayerPage() {
   const [danmakuOpacity, setDanmakuOpacity] = useState(1)
   const [danmakuFontSize, setDanmakuFontSize] = useState(24)
   const [danmakuArea, setDanmakuArea] = useState(1)
+
+  // 选集 / 播放列表状态
+  const [playlistEpisodes, setPlaylistEpisodes] = useState<Media[]>([])
+  const [playlistOpen, setPlaylistOpen] = useState(false)
 
   const teardownHls = useCallback((mediaId?: string, stopServer = false) => {
     if (hlsRef.current) {
@@ -272,14 +277,160 @@ export function PlayerPage() {
     }
   }, [media])
 
-  // ESC = back.
+  // 加载剧集/播放列表
+  useEffect(() => {
+    if (!id) return
+    let canceled = false
+    mediaAPI
+      .getEpisodes(id)
+      .then((res) => {
+        if (canceled) return
+        setPlaylistEpisodes(res.items ?? [])
+      })
+      .catch(() => {
+        if (canceled) return
+        if (media && (media.display_library_id || media.library_id)) {
+          const libId = media.display_library_id || media.library_id
+          const seriesKey = getSeriesKey(media)
+          if (seriesKey) {
+            libraryAPI
+              .listSeriesEpisodes(libId, seriesKey)
+              .then((res) => {
+                if (!canceled) setPlaylistEpisodes(res.items ?? [])
+              })
+              .catch(() => {
+                if (!canceled) setPlaylistEpisodes([])
+              })
+            return
+          }
+        }
+        setPlaylistEpisodes([])
+      })
+    return () => {
+      canceled = true
+    }
+  }, [id, media])
+
+  const currentEpisodeIndex = useMemo(() => {
+    if (!media || playlistEpisodes.length === 0) return -1
+    return playlistEpisodes.findIndex((e) => e.id === media.id)
+  }, [media, playlistEpisodes])
+
+  const prevEpisode = useMemo(() => {
+    if (currentEpisodeIndex > 0) {
+      return playlistEpisodes[currentEpisodeIndex - 1]
+    }
+    return null
+  }, [currentEpisodeIndex, playlistEpisodes])
+
+  const nextEpisode = useMemo(() => {
+    if (currentEpisodeIndex >= 0 && currentEpisodeIndex < playlistEpisodes.length - 1) {
+      return playlistEpisodes[currentEpisodeIndex + 1]
+    }
+    return null
+  }, [currentEpisodeIndex, playlistEpisodes])
+
+  const prevEpisodeTitle = useMemo(() => {
+    return prevEpisode ? formatEpisodeDisplay(prevEpisode, playlistEpisodes) : ''
+  }, [prevEpisode, playlistEpisodes])
+
+  const nextEpisodeTitle = useMemo(() => {
+    return nextEpisode ? formatEpisodeDisplay(nextEpisode, playlistEpisodes) : ''
+  }, [nextEpisode, playlistEpisodes])
+
+  const playEpisode = useCallback(
+    (target: Media) => {
+      navigate(
+        {
+          pathname: `/play/${target.id}`,
+          search: location.search,
+        },
+        { state: location.state },
+      )
+    },
+    [navigate, location.search, location.state],
+  )
+
+  const handlePrevEpisode = useCallback(() => {
+    if (prevEpisode) {
+      playEpisode(prevEpisode)
+    }
+  }, [prevEpisode, playEpisode])
+
+  const handleNextEpisode = useCallback(() => {
+    if (nextEpisode) {
+      playEpisode(nextEpisode)
+    }
+  }, [nextEpisode, playEpisode])
+
+  const togglePlaylistOpen = useCallback(() => {
+    setPlaylistOpen((prev) => {
+      const next = !prev
+      if (next) setDanmakuOpen(false)
+      return next
+    })
+  }, [])
+
+  const toggleDanmakuOpen = useCallback(() => {
+    setDanmakuOpen((prev) => {
+      const next = !prev
+      if (next) setPlaylistOpen(false)
+      return next
+    })
+  }, [])
+
+  // 视频播放结束时自动播放下一集
+  useEffect(() => {
+    if (!ref.current || !nextEpisode) return
+    const video = ref.current
+    const onEnded = () => {
+      toast.success(`正在播放下一集：${nextEpisodeTitle || '下一集'}`)
+      playEpisode(nextEpisode)
+    }
+    video.addEventListener('ended', onEnded)
+    return () => {
+      video.removeEventListener('ended', onEnded)
+    }
+  }, [nextEpisode, nextEpisodeTitle, playEpisode])
+
+  // ESC = back 或关闭浮层，[ / ] 或 Shift+P / Shift+N 切换上一集/下一集
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') goBack()
+      const target = e.target as HTMLElement | null
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) {
+        return
+      }
+
+      if (e.key === 'Escape') {
+        if (playlistOpen) {
+          setPlaylistOpen(false)
+          return
+        }
+        if (danmakuOpen) {
+          setDanmakuOpen(false)
+          return
+        }
+        goBack()
+      } else if (e.key === '[' || (e.shiftKey && e.key.toLowerCase() === 'p')) {
+        if (prevEpisode) {
+          e.preventDefault()
+          handlePrevEpisode()
+        }
+      } else if (e.key === ']' || (e.shiftKey && e.key.toLowerCase() === 'n')) {
+        if (nextEpisode) {
+          e.preventDefault()
+          handleNextEpisode()
+        }
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [goBack])
+  }, [goBack, prevEpisode, nextEpisode, handlePrevEpisode, handleNextEpisode, playlistOpen, danmakuOpen])
 
   const toggleMode = useCallback(() => {
     const next = mode === 'hls' ? 'direct' : 'hls'
@@ -344,9 +495,27 @@ export function PlayerPage() {
         danmakuSearch={danmakuSearch}
         danmakuEpisodeId={danmakuEpisodeId}
         danmakuOpen={danmakuOpen}
-        onToggleDanmaku={() => setDanmakuOpen((v) => !v)}
+        onToggleDanmaku={toggleDanmakuOpen}
         onDanmakuLoaded={danmakuLoaded}
         onDanmakuCandidates={danmakuGotCandidates}
+        hasPrevEpisode={Boolean(prevEpisode)}
+        hasNextEpisode={Boolean(nextEpisode)}
+        onPrevEpisode={handlePrevEpisode}
+        onNextEpisode={handleNextEpisode}
+        prevEpisodeTitle={prevEpisodeTitle}
+        nextEpisodeTitle={nextEpisodeTitle}
+        playlistOpen={playlistOpen}
+        hasPlaylist={playlistEpisodes.length > 0}
+        onTogglePlaylist={togglePlaylistOpen}
+        playlistPanel={
+          <PlayerPlaylistPanel
+            open={playlistOpen}
+            onClose={() => setPlaylistOpen(false)}
+            currentMediaId={media?.id ?? ''}
+            episodes={playlistEpisodes}
+            onSelectEpisode={playEpisode}
+          />
+        }
         danmakuPanel={
           <PlayerDanmakuPanel
             open={danmakuOpen}
@@ -372,4 +541,42 @@ export function PlayerPage() {
       />
     </div>
   )
+}
+
+function formatEpisodeDisplay(ep: Media, siblings: Media[]): string {
+  const title = ep.episode_title?.trim()
+  if (title && !looksLikeSeriesTitle(ep, title, siblings)) {
+    return title
+  }
+
+  const mediaTitle = ep.title?.trim()
+  if (mediaTitle && !looksLikeSeriesTitle(ep, mediaTitle, siblings)) {
+    return mediaTitle
+  }
+
+  return ep.episode_num > 0 ? `第 ${ep.episode_num} 集` : mediaTitle || title || '未命名'
+}
+
+function looksLikeSeriesTitle(ep: Media, title: string, siblings: Media[]): boolean {
+  const normalized = normalizeEpisodeTitle(title)
+  if (!normalized) return true
+  if (ep.original_name && normalizeEpisodeTitle(ep.original_name) === normalized) return true
+  const pathTitle = seriesTitleFromPath(ep.path)
+  if (pathTitle && normalizeEpisodeTitle(pathTitle) === normalized) return true
+
+  const siblingTitles = new Set(
+    siblings
+      .map((item) => normalizeEpisodeTitle(item.title))
+      .filter(Boolean),
+  )
+  return siblingTitles.size === 1 && siblingTitles.has(normalized) && siblings.length > 1
+}
+
+function normalizeEpisodeTitle(value?: string): string {
+  return (value ?? '')
+    .toLowerCase()
+    .replace(/\s*\((?:19|20)\d{2}\)\s*/g, ' ')
+    .replace(/\s*\{(?:tmdb|tmdbid|douban|bangumi|bgm|thetvdb|tvdb)[\s:=#-]*[a-z0-9_-]+\}\s*/g, ' ')
+    .replace(/[\s._-]+/g, ' ')
+    .trim()
 }

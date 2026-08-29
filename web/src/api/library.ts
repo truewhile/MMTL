@@ -197,6 +197,9 @@ export const mediaAPI = {
 
   get: (id: string) => api.get<Media>(`/media/${id}`).then((r) => r.data),
 
+  getEpisodes: (id: string) =>
+    api.get<{ items: Media[]; total: number }>(`/media/${id}/episodes`).then((r) => r.data),
+
   updateMetadata: (id: string, payload: MediaMetadataUpdate) =>
     api.patch<Media>(`/media/${id}/metadata`, payload, { timeout: LONG_REQUEST_TIMEOUT }).then((r) => r.data),
 

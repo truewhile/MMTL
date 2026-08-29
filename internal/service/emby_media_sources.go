@@ -199,7 +199,9 @@ func (e *EmbyService) appendSubtitleStreams(ctx context.Context, streams []map[s
 	if e == nil || e.subtitle == nil || m == nil {
 		return streams
 	}
-	tracks, err := e.subtitle.Discover(ctx, m.ID)
+	// Emby 字幕只列表外挂字幕文件：云盘/strm 媒体的容器内嵌字幕不做服务端
+	// 提取，客户端直连播放直链时自行解析。
+	tracks, err := e.subtitle.DiscoverExternalOnly(ctx, m.ID)
 	if err != nil || len(tracks) == 0 {
 		return streams
 	}
