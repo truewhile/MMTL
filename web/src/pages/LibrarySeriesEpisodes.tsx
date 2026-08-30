@@ -69,7 +69,10 @@ export function LibrarySeriesEpisodes({
               className="group flex items-center gap-3 rounded-xl border border-sand-200 bg-white p-3 shadow-card transition-all hover:border-brand-300 hover:shadow-card-hover"
             >
               <Link to={`/play/${ep.id}`} state={{ from: playbackFrom }} className="flex min-w-0 flex-1 items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-brand-50 text-brand-600 font-semibold text-sm">
+                <div
+                  className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-brand-50"
+                  title={ep.episode_num > 0 ? `第 ${ep.episode_num} 集` : episodeDisplayTitle(ep, visibleEpisodes)}
+                >
                   {ep.backdrop_url || ep.poster_url ? (
                     <img
                       src={imageURL(ep.backdrop_url || ep.poster_url || '', ep.updated_at)}
@@ -78,7 +81,12 @@ export function LibrarySeriesEpisodes({
                       referrerPolicy="no-referrer"
                     />
                   ) : (
-                    ep.episode_num || '—'
+                    <span className="text-brand-600 font-semibold text-sm">{ep.episode_num || '—'}</span>
+                  )}
+                  {ep.episode_num > 0 && (
+                    <span className="absolute bottom-0 right-0 rounded-tl bg-black/70 px-1 py-px text-[9px] font-bold text-white">
+                      {ep.episode_num}
+                    </span>
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
