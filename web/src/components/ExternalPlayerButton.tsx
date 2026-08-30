@@ -42,6 +42,7 @@ export function ExternalPlayerButton({
     <>
       <button
         type="button"
+        title={compact ? '使用外部播放器播放' : undefined}
         disabled={loading}
         onClick={(event) => {
           event.preventDefault()
@@ -50,7 +51,7 @@ export function ExternalPlayerButton({
         }}
         className={
           compact
-            ? 'rounded-lg border border-primary-400/35 bg-white px-2 py-1 text-xs font-semibold text-brand-500 hover:bg-primary-400/10 disabled:opacity-50'
+            ? 'shrink-0 inline-flex items-center rounded-lg border border-primary-400/35 bg-white px-2 py-1 text-xs font-semibold text-brand-500 hover:bg-primary-400/10 disabled:opacity-50 transition-colors whitespace-nowrap'
             : 'btn-outline border-brand-500/30 px-5 text-[#c9954a] hover:border-brand-500 hover:bg-brand-50'
         }
       >

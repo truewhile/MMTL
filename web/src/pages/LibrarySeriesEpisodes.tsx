@@ -62,48 +62,53 @@ export function LibrarySeriesEpisodes({
         <h3 className="mb-3 font-display text-lg font-semibold text-ink-600">
           {displaySeason === 0 ? '特别篇' : `第 ${displaySeason} 季`}
         </h3>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-          {visibleEpisodes.map((ep) => (
-            <div
-              key={ep.id}
-              className="group flex items-center gap-3 rounded-xl border border-sand-200 bg-white p-3 shadow-card transition-all hover:border-brand-300 hover:shadow-card-hover"
-            >
-              <Link to={`/play/${ep.id}`} state={{ from: playbackFrom }} className="flex min-w-0 flex-1 items-center gap-3">
-                <div
-                  className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-brand-50"
-                  title={ep.episode_num > 0 ? `第 ${ep.episode_num} 集` : episodeDisplayTitle(ep, visibleEpisodes)}
-                >
-                  {ep.backdrop_url || ep.poster_url ? (
-                    <img
-                      src={imageURL(ep.backdrop_url || ep.poster_url || '', ep.updated_at)}
-                      alt=""
-                      className="h-full w-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <span className="text-brand-600 font-semibold text-sm">{ep.episode_num || '—'}</span>
-                  )}
-                  {ep.episode_num > 0 && (
-                    <span className="absolute bottom-0 right-0 rounded-tl bg-black/70 px-1 py-px text-[9px] font-bold text-white">
-                      {ep.episode_num}
-                    </span>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-ink-600">
-                    {episodeDisplayTitle(ep, visibleEpisodes)}
-                  </p>
-                  <p className="text-xs text-sand-500">
-                    {ep.duration_sec > 0
-                      ? `${Math.floor(ep.duration_sec / 60)} 分钟`
-                      : formatSize(ep.size_bytes)}
-                  </p>
-                </div>
-                <Play size={14} className="shrink-0 text-gray-500 opacity-0 transition-opacity group-hover:opacity-100 group-hover:text-brand-500" />
-              </Link>
-              <ExternalPlayerButton mediaId={ep.id} label="外部" compact />
-            </div>
-          ))}
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+          {visibleEpisodes.map((ep) => {
+            const displayTitle = episodeDisplayTitle(ep, visibleEpisodes)
+            return (
+              <div
+                key={ep.id}
+                className="group flex items-center justify-between gap-3 rounded-xl border border-sand-200 bg-white p-2.5 shadow-card transition-all hover:border-brand-300 hover:shadow-card-hover"
+              >
+                <Link to={`/play/${ep.id}`} state={{ from: playbackFrom }} className="flex min-w-0 flex-1 items-center gap-3">
+                  <div
+                    className="relative flex h-11 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-brand-50/70 border border-sand-200/60"
+                    title={displayTitle}
+                  >
+                    {ep.backdrop_url || ep.poster_url ? (
+                      <img
+                        src={imageURL(ep.backdrop_url || ep.poster_url || '', ep.updated_at)}
+                        alt=""
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <span className="text-brand-600 font-bold text-sm">{ep.episode_num || '—'}</span>
+                    )}
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                      <Play size={15} className="fill-white text-white drop-shadow-sm" />
+                    </div>
+                    {ep.episode_num > 0 && (
+                      <span className="absolute bottom-0 right-0 rounded-tl bg-black/75 px-1 py-0.5 text-[9px] font-bold leading-none text-white backdrop-blur-[2px]">
+                        {ep.episode_num}
+                      </span>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-ink-600 transition-colors group-hover:text-brand-600" title={displayTitle}>
+                      {displayTitle}
+                    </p>
+                    <p className="text-xs text-sand-500 whitespace-nowrap">
+                      {ep.duration_sec > 0
+                        ? `${Math.floor(ep.duration_sec / 60)} 分钟`
+                        : formatSize(ep.size_bytes)}
+                    </p>
+                  </div>
+                </Link>
+                <ExternalPlayerButton mediaId={ep.id} label="外部" compact />
+              </div>
+            )
+          })}
         </div>
       </div>
     </>
@@ -111,17 +116,29 @@ export function LibrarySeriesEpisodes({
 }
 
 function episodeDisplayTitle(ep: Media, siblings: Media[]): string {
-  const title = ep.episode_title?.trim()
-  if (title && !looksLikeSeriesTitle(ep, title, siblings)) {
-    return title
+  let mainTitle = ''
+  const epTitle = ep.episode_title?.trim()
+  if (epTitle && !looksLikeSeriesTitle(ep, epTitle, siblings)) {
+    mainTitle = epTitle
+  } else {
+    const mediaTitle = ep.title?.trim()
+    if (mediaTitle && !looksLikeSeriesTitle(ep, mediaTitle, siblings)) {
+      mainTitle = mediaTitle
+    }
   }
 
-  const mediaTitle = ep.title?.trim()
-  if (mediaTitle && !looksLikeSeriesTitle(ep, mediaTitle, siblings)) {
-    return mediaTitle
+  if (ep.episode_num > 0) {
+    if (!mainTitle) {
+      return `第 ${ep.episode_num} 集`
+    }
+    const prefixRegex = new RegExp(`^(第\\s*0*${ep.episode_num}\\s*集|ep?\\.?\\s*0*${ep.episode_num}\\b)`, 'i')
+    if (prefixRegex.test(mainTitle)) {
+      return mainTitle
+    }
+    return `第 ${ep.episode_num} 集 · ${mainTitle}`
   }
 
-  return ep.episode_num > 0 ? `第 ${ep.episode_num} 集` : mediaTitle || title || '未命名'
+  return mainTitle || '未命名'
 }
 
 function looksLikeSeriesTitle(ep: Media, title: string, siblings: Media[]): boolean {
