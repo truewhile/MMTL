@@ -1,10 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 
+import { historyAPI } from '../api/history'
 import type { Media } from '../types'
 import { useAuthStore } from '../stores/auth'
 import type { SeriesCard } from '../utils/groupSeries'
+import {
+  sortMediaList,
+  sortSeriesList,
+  type SortField,
+  type SortOrder,
+} from '../utils/mediaSort'
 import { LibraryPageDialogs } from './LibraryPageDialogs'
 import { LibraryPageHeader } from './LibraryPageHeader'
 import { LibraryMediaSections } from './LibraryMediaSections'
@@ -25,6 +32,53 @@ export function LibraryPage() {
   const [seriesMetadataEditOpen, setSeriesMetadataEditOpen] = useState(false)
   const [manualMovie, setManualMovie] = useState<Media | null>(null)
 
+  // 排序状态（支持按库记忆）
+  const [sortField, setSortField] = useState<SortField>(() => {
+    const saved = localStorage.getItem(`mmtl_lib_sort_field_${id}`) || localStorage.getItem('mmtl_lib_sort_field')
+    return (saved as SortField) || 'title'
+  })
+  const [sortOrder, setSortOrder] = useState<SortOrder>(() => {
+    const saved = localStorage.getItem(`mmtl_lib_sort_order_${id}`) || localStorage.getItem('mmtl_lib_sort_order')
+    return (saved as SortOrder) || 'asc'
+  })
+  const [randomSeed, setRandomSeed] = useState(() => Date.now())
+  const [historyMap, setHistoryMap] = useState<Map<string, string>>(new Map())
+
+  useEffect(() => {
+    historyAPI
+      .list(1000)
+      .then((historyItems) => {
+        const map = new Map<string, string>()
+        for (const item of historyItems ?? []) {
+          if (item.media_id && item.watched_at) {
+            if (!map.has(item.media_id) || new Date(item.watched_at) > new Date(map.get(item.media_id)!)) {
+              map.set(item.media_id, item.watched_at)
+            }
+          }
+        }
+        setHistoryMap(map)
+      })
+      .catch(() => {})
+  }, [])
+
+  const handleSortChange = (field: SortField, order: SortOrder) => {
+    setSortField(field)
+    setSortOrder(order)
+    if (id) {
+      localStorage.setItem(`mmtl_lib_sort_field_${id}`, field)
+      localStorage.setItem(`mmtl_lib_sort_order_${id}`, order)
+    }
+    localStorage.setItem('mmtl_lib_sort_field', field)
+    localStorage.setItem('mmtl_lib_sort_order', order)
+    if (field === 'random') {
+      setRandomSeed(Date.now())
+    }
+  }
+
+  const handleReshuffle = () => {
+    setRandomSeed(Date.now())
+  }
+
   // 剧集模式：选中某个剧集后展开详情
   const [selectedSeries, setSelectedSeries] = useState<SeriesCard | null>(null)
   const [selectedSeason, setSelectedSeason] = useState<number | null>(null)
@@ -42,6 +96,14 @@ export function LibraryPage() {
     loadingAllText,
     reloadCurrentLibrary,
   } = useLibraryData(id, selectedSeries)
+
+  const sortedItems = useMemo(() => {
+    return sortMediaList(items, sortField, sortOrder, randomSeed, historyMap)
+  }, [items, sortField, sortOrder, randomSeed, historyMap])
+
+  const sortedSeriesCards = useMemo(() => {
+    return sortSeriesList(seriesCards, sortField, sortOrder, randomSeed, historyMap)
+  }, [seriesCards, sortField, sortOrder, randomSeed, historyMap])
 
   const {
     scanning,
@@ -66,7 +128,7 @@ export function LibraryPage() {
     isSeriesLibrary,
     isSeries,
     loading,
-    seriesCards,
+    seriesCards: sortedSeriesCards,
     searchParams,
     setSearchParams,
     selectedSeries,
@@ -116,7 +178,7 @@ export function LibraryPage() {
       {!selectedSeries && (
         <LibraryPageHeader
           library={library}
-          itemCount={isSeries ? seriesCards.length : total}
+          itemCount={isSeries ? sortedSeriesCards.length : total}
           loadingAllText={loadingAllText}
           scanProgress={scanProgress}
           isAdmin={role === 'admin'}
@@ -124,6 +186,10 @@ export function LibraryPage() {
           scanning={scanning}
           scraping={scraping}
           repairing={repairing}
+          sortField={sortField}
+          sortOrder={sortOrder}
+          onSortChange={handleSortChange}
+          onReshuffle={handleReshuffle}
           onScrapeEpisodeArtworkChange={setScrapeEpisodeArtwork}
           onScan={handleScan}
           onScrape={() => setScrapeDialogOpen(true)}
@@ -133,8 +199,8 @@ export function LibraryPage() {
 
       <LibraryMediaSections
         isSeries={isSeries}
-        items={items}
-        seriesCards={seriesCards}
+        items={sortedItems}
+        seriesCards={sortedSeriesCards}
         selectedSeries={selectedSeries}
         loading={loading}
         movieActions={movieActions}
