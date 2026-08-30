@@ -5,6 +5,7 @@ import { adminAPI } from '../api/admin'
 import type { User } from '../types'
 import { confirmAction } from '../components/confirmAction'
 import { requestPassword } from '../components/requestPassword'
+import { AdminUserLibrariesDialog } from '../components/AdminUserLibrariesDialog'
 import { AdminUsersForm } from './AdminUsersForm'
 import { AdminUsersTable } from './AdminUsersTable'
 
@@ -15,6 +16,8 @@ export function AdminUsersPanel() {
   const [editingID, setEditingID] = useState<string | null>(null)
   const [editingUsername, setEditingUsername] = useState('')
   const [resettingPasswordID, setResettingPasswordID] = useState<string | null>(null)
+  const [configuringLibrariesUser, setConfiguringLibrariesUser] = useState<User | null>(null)
+
   const refresh = async () => {
     setUsers(await adminAPI.listUsers())
   }
@@ -148,8 +151,19 @@ export function AdminUsersPanel() {
         onCancelEdit={() => setEditingID(null)}
         onStartEdit={startEdit}
         onResetPassword={resetPassword}
+        onConfigureLibraries={(u) => setConfiguringLibrariesUser(u)}
         onToggleStatus={toggleStatus}
         onDeleteUser={deleteUser}
+      />
+
+      <AdminUserLibrariesDialog
+        user={configuringLibrariesUser}
+        isOpen={Boolean(configuringLibrariesUser)}
+        onClose={() => setConfiguringLibrariesUser(null)}
+        onSaved={async (updated) => {
+          setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)))
+          await refresh()
+        }}
       />
     </div>
   )

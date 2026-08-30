@@ -1,4 +1,14 @@
-import { KeyRound, Loader2, Pencil, ShieldCheck, Trash2, UserCheck, UserX, X } from 'lucide-react'
+import {
+  FolderLock,
+  KeyRound,
+  Loader2,
+  Pencil,
+  ShieldCheck,
+  Trash2,
+  UserCheck,
+  UserX,
+  X,
+} from 'lucide-react'
 
 import type { User } from '../types'
 
@@ -12,6 +22,7 @@ type AdminUsersTableProps = {
   onCancelEdit: () => void
   onStartEdit: (user: User) => void
   onResetPassword: (user: User) => void
+  onConfigureLibraries: (user: User) => void
   onToggleStatus: (user: User) => void
   onDeleteUser: (user: User) => void
 }
@@ -26,6 +37,7 @@ export function AdminUsersTable({
   onCancelEdit,
   onStartEdit,
   onResetPassword,
+  onConfigureLibraries,
   onToggleStatus,
   onDeleteUser,
 }: AdminUsersTableProps) {
@@ -36,6 +48,7 @@ export function AdminUsersTable({
           <tr>
             <th className="py-2">用户名</th>
             <th>角色</th>
+            <th>媒体库权限</th>
             <th>状态</th>
             <th>权限说明</th>
             <th>最近登录</th>
@@ -60,6 +73,27 @@ export function AdminUsersTable({
                 )}
               </td>
               <td className="text-ink-100">{u.role === 'admin' ? '管理员' : '观看用户'}</td>
+              <td>
+                {u.role === 'admin' ? (
+                  <span className="inline-flex items-center rounded-full bg-sand-100 px-2.5 py-0.5 text-xs text-sand-600 font-medium">
+                    全库 (管理员)
+                  </span>
+                ) : !u.allowed_library_ids || u.allowed_library_ids.length === 0 ? (
+                  <span className="inline-flex items-center rounded-full bg-green-50 border border-green-200/80 px-2.5 py-0.5 text-xs font-medium text-green-700">
+                    全部媒体库 (默认)
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onConfigureLibraries(u)}
+                    className="inline-flex items-center gap-1 rounded-full bg-brand-50 border border-brand-300 px-2.5 py-0.5 text-xs font-semibold text-brand-700 hover:bg-brand-100/70 transition-colors"
+                    title="点击修改媒体库访问权限"
+                  >
+                    <FolderLock size={12} />
+                    <span>已指定 {u.allowed_library_ids.length} 个库</span>
+                  </button>
+                )}
+              </td>
               <td className={u.is_active ? 'text-green-500' : 'text-red-400'}>
                 {u.is_active ? '正常' : '已禁用'}
               </td>
@@ -92,11 +126,19 @@ export function AdminUsersTable({
                 ) : (
                   <button
                     className="rounded-lg border border-primary-400/40 px-2 py-1 text-xs text-brand-500 hover:bg-primary-400/10"
+                    title="重命名用户"
                     onClick={() => onStartEdit(u)}
                   >
                     <Pencil size={12} />
                   </button>
                 )}
+                <button
+                  className="rounded-lg border border-brand-400/40 px-2 py-1 text-xs text-brand-600 hover:bg-brand-400/10"
+                  title="配置媒体库访问权限"
+                  onClick={() => onConfigureLibraries(u)}
+                >
+                  <FolderLock size={12} />
+                </button>
                 <button
                   className="rounded-lg border border-amber-400/40 px-2 py-1 text-xs text-amber-500 hover:bg-amber-400/10"
                   title="重置密码"

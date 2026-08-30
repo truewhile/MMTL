@@ -50,7 +50,20 @@ func UserDefaultMediaVisibility(ctx context.Context, repo *repository.Container,
 		visibility.IncludeNSFW = false
 	}
 	visibility.HiddenLibraryIDs = hiddenAdultLibraryIDs(ctx, repo, visibility.IncludeNSFW)
-	if userID == "" || repo.PlayProfile == nil {
+	if userID == "" {
+		return visibility
+	}
+
+	if repo.User != nil {
+		user, err := repo.User.FindByID(ctx, userID)
+		if err == nil && user != nil && user.Role != "admin" {
+			if userAllowed := user.DecodeAllowedLibraryIDs(); len(userAllowed) > 0 {
+				visibility.AllowedLibraryIDs = userAllowed
+			}
+		}
+	}
+
+	if repo.PlayProfile == nil {
 		return visibility
 	}
 	rows, err := repo.PlayProfile.ListByUser(ctx, userID)
@@ -62,11 +75,42 @@ func UserDefaultMediaVisibility(ctx context.Context, repo *repository.Container,
 			continue
 		}
 		visibility.IncludeNSFW = visibility.IncludeNSFW && row.AllowAdult
-		visibility.AllowedLibraryIDs = DecodeAllowedLibraryIDs(row.AllowedLibraryIDs)
+		profileAllowed := DecodeAllowedLibraryIDs(row.AllowedLibraryIDs)
+		if len(profileAllowed) > 0 {
+			if len(visibility.AllowedLibraryIDs) > 0 {
+				visibility.AllowedLibraryIDs = IntersectStrings(visibility.AllowedLibraryIDs, profileAllowed)
+			} else {
+				visibility.AllowedLibraryIDs = profileAllowed
+			}
+		}
 		visibility.HiddenLibraryIDs = hiddenAdultLibraryIDs(ctx, repo, visibility.IncludeNSFW)
 		break
 	}
 	return visibility
+}
+
+// IntersectStrings 计算两个字符串切片的交集。
+func IntersectStrings(a, b []string) []string {
+	if len(a) == 0 {
+		return b
+	}
+	if len(b) == 0 {
+		return a
+	}
+	set := make(map[string]struct{}, len(b))
+	for _, s := range b {
+		set[s] = struct{}{}
+	}
+	var out []string
+	for _, s := range a {
+		if _, ok := set[s]; ok {
+			out = append(out, s)
+		}
+	}
+	if len(out) == 0 {
+		return []string{"__no_access__"}
+	}
+	return out
 }
 
 // DecodeAllowedLibraryIDs normalises a PlayProfile allowed-library JSON string.

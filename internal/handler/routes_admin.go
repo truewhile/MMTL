@@ -96,6 +96,7 @@ func registerAdminUserRoutes(admin *gin.RouterGroup, svc *service.Container) {
 	admin.PATCH("/users/:id/password", resetUserPasswordHandler(svc))
 	admin.PATCH("/users/:id/status", updateUserStatusHandler(svc))
 	admin.PATCH("/users/:id/role", adminUpdateRoleHandler(svc))
+	admin.PATCH("/users/:id/libraries", updateUserLibrariesHandler(svc))
 	admin.DELETE("/users/:id", deleteUserHandler(svc))
 	admin.GET("/settings", listSettingsHandler(svc))
 	admin.PUT("/settings", updateSettingHandler(svc))

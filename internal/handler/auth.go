@@ -89,6 +89,7 @@ func meHandler(svc *service.Container) gin.HandlerFunc {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 			return
 		}
+		u.PopulateComputedFields()
 		c.JSON(http.StatusOK, u)
 	}
 }

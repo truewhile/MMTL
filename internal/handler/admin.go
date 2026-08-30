@@ -3,6 +3,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -26,6 +27,9 @@ func listUsersHandler(svc *service.Container) gin.HandlerFunc {
 		}
 		if svc.Sessions != nil {
 			svc.Sessions.ApplyToUsers(c.Request.Context(), users)
+		}
+		for i := range users {
+			users[i].PopulateComputedFields()
 		}
 		c.JSON(http.StatusOK, users)
 	}
@@ -188,19 +192,77 @@ func updateUserStatusHandler(svc *service.Container) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		if req.IsActive {
-			_ = svc.Repo.UserDevice.SetKickedByUser(c.Request.Context(), userID, false)
-		} else {
-			_ = svc.Repo.UserDevice.SetKickedByUser(c.Request.Context(), userID, true)
+			if req.IsActive {
+				_ = svc.Repo.UserDevice.SetKickedByUser(c.Request.Context(), userID, false)
+			} else {
+				_ = svc.Repo.UserDevice.SetKickedByUser(c.Request.Context(), userID, true)
+			}
+			updated, err := svc.Repo.User.FindByID(c.Request.Context(), userID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			updated.PopulateComputedFields()
+			c.JSON(http.StatusOK, updated)
 		}
-		updated, err := svc.Repo.User.FindByID(c.Request.Context(), userID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, updated)
 	}
-}
+
+	type adminUpdateUserLibrariesReq struct {
+		AllowedLibraryIDs *[]string `json:"allowed_library_ids"`
+	}
+
+	func updateUserLibrariesHandler(svc *service.Container) gin.HandlerFunc {
+		return func(c *gin.Context) {
+			var req adminUpdateUserLibrariesReq
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			userID := c.Param("id")
+			user, err := svc.Repo.User.FindByID(c.Request.Context(), userID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			if user == nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+				return
+			}
+
+			var rawJSON string
+			if req.AllowedLibraryIDs != nil && len(*req.AllowedLibraryIDs) > 0 {
+				var cleanIDs []string
+				for _, id := range *req.AllowedLibraryIDs {
+					trimmed := strings.TrimSpace(id)
+					if trimmed != "" {
+						cleanIDs = append(cleanIDs, trimmed)
+					}
+				}
+				if len(cleanIDs) > 0 {
+					data, err := json.Marshal(cleanIDs)
+					if err != nil {
+						c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+						return
+					}
+					rawJSON = string(data)
+				}
+			}
+
+			updates := map[string]any{"allowed_library_ids": rawJSON}
+			if err := svc.Repo.User.UpdateFields(c.Request.Context(), userID, updates); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			updated, err := svc.Repo.User.FindByID(c.Request.Context(), userID)
+			if err != nil || updated == nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to reload user"})
+				return
+			}
+			updated.PopulateComputedFields()
+			c.JSON(http.StatusOK, updated)
+		}
+	}
 
 func annotateProtectedUsers(ctx context.Context, svc *service.Container, users []model.User) error {
 	firstAdmin, err := svc.Repo.User.FirstAdmin(ctx)
