@@ -50,6 +50,7 @@ export function MediaDetailPoster({ media }: MediaDetailArtworkProps) {
 
         <Link
           to={`/play/${media.id}`}
+          state={{ from: `/media/${media.id}` }}
           className="absolute inset-0 bg-[#111827]/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
         >
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-500 text-white shadow-xl transform scale-90 group-hover:scale-100 transition-transform">
