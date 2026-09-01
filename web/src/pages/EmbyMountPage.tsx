@@ -310,10 +310,11 @@ export function EmbyMountPage() {
 
   const applyReorder = async (nextMounts: EmbyMount[]) => {
     const prevMounts = mounts
-    setMounts(nextMounts)
+    const updated = nextMounts.map((m, idx) => ({ ...m, sort_order: idx }))
+    setMounts(updated)
     setReordering(true)
     try {
-      await embyAPI.reorderMounts(nextMounts.map((m) => m.id))
+      await embyAPI.reorderMounts(updated.map((m) => m.id))
       toast.success('媒体库顺序已更新')
     } catch (err) {
       setMounts(prevMounts)
@@ -347,6 +348,7 @@ export function EmbyMountPage() {
 
   const handleDragStart = (e: React.DragEvent, id: string) => {
     e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', id)
     setDraggingId(id)
   }
 
@@ -358,18 +360,18 @@ export function EmbyMountPage() {
     }
   }
 
-  const handleDrop = (overId: string, accountId: string) => {
-    if (!draggingId || draggingId === overId) {
-      setDraggingId(null)
-      setDragOverId(null)
+  const handleDrop = (e: React.DragEvent, overId: string, accountId: string) => {
+    e.preventDefault()
+    const fromId = draggingId || e.dataTransfer.getData('text/plain')
+    setDraggingId(null)
+    setDragOverId(null)
+    if (!fromId || fromId === overId) {
       return
     }
     const acctMounts = mounts.filter((item) => item.account_id === accountId)
-    const fromIdx = acctMounts.findIndex((item) => item.id === draggingId)
+    const fromIdx = acctMounts.findIndex((item) => item.id === fromId)
     const toIdx = acctMounts.findIndex((item) => item.id === overId)
     if (fromIdx < 0 || toIdx < 0) {
-      setDraggingId(null)
-      setDragOverId(null)
       return
     }
     const newAcctMounts = [...acctMounts]
@@ -383,8 +385,6 @@ export function EmbyMountPage() {
       }
       return item
     })
-    setDraggingId(null)
-    setDragOverId(null)
     applyReorder(nextMounts)
   }
 
@@ -544,7 +544,7 @@ export function EmbyMountPage() {
                       <div
                         key={m.id}
                         onDragOver={(e) => handleDragOver(e, m.id)}
-                        onDrop={() => handleDrop(m.id, acct.id)}
+                        onDrop={(e) => handleDrop(e, m.id, acct.id)}
                         className={`flex items-center gap-3 rounded-xl border px-3 py-3 transition-colors ${
                           draggingId === m.id
                             ? 'border-dashed border-brand-400 bg-brand-50/20 opacity-50'

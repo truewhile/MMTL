@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -146,13 +147,13 @@ func (r *EmbyRemoteService) mapRemoteMountToLibrary(mount *model.EmbyMount, acct
 	case "music":
 		libType = "music"
 	}
-		lib := &model.Library{
-			Base:      model.Base{ID: EncodeEmbyRemoteID(mount.ID, mount.RemoteViewID)},
-			Name:      name,
-			Type:      libType,
-			Enabled:   true,
-			SortOrder: 1000 + mount.SortOrder, // 远程库排在本地库之后，且保持挂载库排序
-		}
+	lib := &model.Library{
+		Base:      model.Base{ID: EncodeEmbyRemoteID(mount.ID, mount.RemoteViewID)},
+		Name:      name,
+		Type:      libType,
+		Enabled:   true,
+		SortOrder: 1000 + mount.SortOrder, // 远程库排在本地库之后，且保持挂载库排序
+	}
 	// 远程媒体库封面只有真实存在图片标签才下发。
 	if remoteItemHasImageTag(item, "Primary") {
 		lib.CoverURL = r.remoteItemImageURL(cfg, mount.RemoteViewID, "Primary")
@@ -177,16 +178,24 @@ func (r *EmbyRemoteService) MapRemoteItemToMedia(ctx context.Context, mount *mod
 	if _, rid, ok := DecodeEmbyRemoteID(seriesID); ok {
 		seriesID = rid
 	}
+	rating := remoteItemFloat(item, "CommunityRating")
+	if rating == 0 {
+		rating = remoteItemFloat(item, "CriticRating")
+	}
 	media := model.Media{
 		Base:         model.Base{ID: EncodeEmbyRemoteID(encodeScope, remoteID)},
 		Title:        remoteItemString(item, "Name"),
 		OriginalName: remoteItemString(item, "OriginalTitle"),
 		Overview:     remoteItemString(item, "Overview"),
 		Year:         remoteItemInt(item, "ProductionYear"),
-		Rating:       float32(remoteItemFloat(item, "CommunityRating")),
+		Rating:       float32(rating),
 		Path:         remoteItemString(item, "Path"),
 		Genres:       remoteItemGenres(item),
 		ScrapeStatus: "done",
+	}
+	if date, ok := parseEmbyRemoteDate(remoteItemString(item, "DateCreated")); ok {
+		media.CreatedAt = date
+		media.UpdatedAt = date
 	}
 	// 只有远程明确存在图片标签才下发图片 URL。
 	if remoteItemHasImageTag(item, "Primary") {
@@ -198,8 +207,16 @@ func (r *EmbyRemoteService) MapRemoteItemToMedia(ctx context.Context, mount *mod
 	if ticks := remoteItemInt64(item, "RunTimeTicks"); ticks > 0 {
 		media.DurationSec = int(ticks / 10_000_000)
 	}
-	if date, ok := embyPremiereDate(remoteItemString(item, "PremiereDate")); ok {
+	if date, ok := parseEmbyRemoteDate(remoteItemString(item, "PremiereDate")); ok {
 		media.ReleaseDate = date.Format("2006-01-02")
+		if media.Year == 0 {
+			media.Year = date.Year()
+		}
+	} else if date, ok := embyPremiereDate(remoteItemString(item, "PremiereDate")); ok {
+		media.ReleaseDate = date.Format("2006-01-02")
+		if media.Year == 0 {
+			media.Year = date.Year()
+		}
 	}
 	if providerIDs, ok := item["ProviderIds"].(map[string]any); ok {
 		if v := anyString(providerIDs["Tmdb"]); v != "" {
@@ -309,7 +326,7 @@ func (r *EmbyRemoteService) RemoteLibraryMedia(ctx context.Context, mount *model
 	q.Set("Recursive", "false")
 	q.Set("StartIndex", strconv.Itoa(offset))
 	q.Set("Limit", strconv.Itoa(limit))
-	q.Set("Fields", "Overview,Genres,ProviderIds,Path,SeriesPrimaryImage,MediaStreams,MediaSources")
+	q.Set("Fields", "Overview,Genres,ProviderIds,Path,SeriesPrimaryImage,MediaStreams,MediaSources,DateCreated,PremiereDate,ProductionYear,CommunityRating,CriticRating")
 	var body struct {
 		Items            []map[string]any `json:"Items"`
 		TotalRecordCount int64            `json:"TotalRecordCount"`
@@ -338,7 +355,7 @@ func (r *EmbyRemoteService) RemoteMediaDetail(ctx context.Context, mount *model.
 		return nil, err
 	}
 	path := "/Users/" + url.PathEscape(r.remoteUserID(cfg)) + "/Items/" + url.PathEscape(remoteID)
-	path += "?Fields=Overview,Genres,ProviderIds,People,Studios,Path,MediaStreams,MediaSources"
+	path += "?Fields=Overview,Genres,ProviderIds,People,Studios,Path,MediaStreams,MediaSources,DateCreated,PremiereDate,ProductionYear,CommunityRating,CriticRating"
 	var out map[string]any
 	if err := r.doGet(ctx, acct, cfg, path, nil, &out); err != nil {
 		return nil, err
@@ -399,7 +416,7 @@ func (r *EmbyRemoteService) remoteEpisodesOf(ctx context.Context, mount *model.E
 	q.Set("Recursive", "true")
 	q.Set("StartIndex", "0")
 	q.Set("Limit", "500")
-	q.Set("Fields", "Overview,Genres,ProviderIds,Path,SeriesPrimaryImage,MediaStreams,MediaSources")
+	q.Set("Fields", "Overview,Genres,ProviderIds,Path,SeriesPrimaryImage,MediaStreams,MediaSources,DateCreated,PremiereDate,ProductionYear,CommunityRating,CriticRating")
 	var body struct {
 		Items            []map[string]any `json:"Items"`
 		TotalRecordCount int64            `json:"TotalRecordCount"`
@@ -433,7 +450,7 @@ func (r *EmbyRemoteService) RemoteSeriesCards(ctx context.Context, mount *model.
 	q.Set("Recursive", "false")
 	q.Set("StartIndex", "0")
 	q.Set("Limit", "1000")
-	q.Set("Fields", "Overview,Genres,ProviderIds,Path,RecursiveItemCount,SeriesPrimaryImage")
+	q.Set("Fields", "Overview,Genres,ProviderIds,Path,RecursiveItemCount,SeriesPrimaryImage,DateCreated,PremiereDate,ProductionYear,CommunityRating,CriticRating")
 	var body struct {
 		Items []map[string]any `json:"Items"`
 	}
@@ -696,3 +713,23 @@ func RemoteItemCollectionType(item map[string]any) string {
 
 // RemoteItemChildCount 提取远程 View 条目的 ChildCount。
 func RemoteItemChildCount(item map[string]any) int { return remoteItemInt(item, "ChildCount") }
+
+func parseEmbyRemoteDate(s string) (time.Time, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02T15:04:05.9999999Z",
+		"2006-01-02T15:04:05.9999999",
+		"2006-01-02T15:04:05",
+		"2006-01-02",
+	} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
