@@ -1,4 +1,3 @@
-import { isRemoteEmbyID } from '../utils/remoteEmby'
 import { ArrowLeft, Heart, Play, RefreshCw } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
@@ -7,6 +6,7 @@ import { ManualScrapeDialog } from '../components/ManualScrapeDialog'
 import { MetadataEditDialog } from '../components/MetadataEditDialog'
 import { OrganizeMediaDialog } from '../components/OrganizeMediaDialog'
 import type { Media } from '../types'
+import { isDirectStreamMedia } from './playerPageModel'
 import { MediaDetailAdminPanel } from './MediaDetailAdminPanel'
 import { MediaDetailPoster } from './MediaDetailArtwork'
 import { MediaDetailMetadata } from './MediaDetailMetadata'
@@ -96,7 +96,7 @@ export function MediaDetailPlaybackActions({
         <span>立即播放</span>
       </Link>
 
-      {!isRemoteEmbyID(media.id) && (
+      {!isDirectStreamMedia(media) && (
         <Link
         to={`/play/${media.id}?mode=hls`}
         state={{ from: `/media/${media.id}` }}

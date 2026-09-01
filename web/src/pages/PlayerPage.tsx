@@ -11,7 +11,8 @@ import { subtitlesAPI, type SubtitleTrack } from '../api/subtitles'
 import { systemAPI } from '../api/system'
 import type { Media } from '../types'
 import { getSeriesKey, seriesTitleFromPath } from '../utils/groupSeries'
-import { pickPlayerMode, needsTranscodeForBrowser, type PlayerMode } from './playerPageModel'
+import { isRemoteEmbyID } from '../utils/remoteEmby'
+import { pickPlayerMode, needsTranscodeForBrowser, isDirectStreamMedia, type PlayerMode } from './playerPageModel'
 import { PlayerTopBar } from './PlayerTopBar'
 import { PlayerVideoStage } from './PlayerVideoStage'
 import { PlayerDanmakuPanel } from '../components/PlayerDanmakuPanel'
@@ -186,10 +187,11 @@ export function PlayerPage() {
     if (!id) return
     mediaAPI.get(id).then((m) => {
       setMedia(m)
+      const isDirect = isDirectStreamMedia(m)
       const forced = params.get('mode') as PlayerMode | null
       const auto = pickPlayerMode(m)
-      // 直连解码模式下忽略 ?mode=hls 与自动判定，始终 direct play。
-      setMode(directOnly ? 'direct' : (forced ?? auto))
+      // 直连解码模式以及 STRM / Emby 挂载等直连媒体，忽略 ?mode=hls，始终 direct play。
+      setMode(directOnly || isDirect ? 'direct' : (forced ?? auto))
       setPlayerError('')
     })
     subtitlesAPI
@@ -429,12 +431,18 @@ export function PlayerPage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [goBack, prevEpisode, nextEpisode, handlePrevEpisode, handleNextEpisode, playlistOpen, danmakuOpen])
 
+  const isDirectStream = isDirectStreamMedia(media)
+
   const toggleMode = useCallback(() => {
+    if (isDirectStream) {
+      toast('该媒体为直连播放，无需且不支持转码')
+      return
+    }
     const next = mode === 'hls' ? 'direct' : 'hls'
     setMode(next)
     params.set('mode', next)
     setParams(params, { replace: true })
-  }, [mode, params, setParams])
+  }, [isDirectStream, mode, params, setParams])
 
   // 用户切换字幕轨道：-1=关闭；记忆偏好，下次播放默认沿用。
   const selectSubtitle = useCallback((index: number) => {
@@ -450,7 +458,13 @@ export function PlayerPage() {
     // 浏览器对 <video src> 的错误描述非常有限，把详细原因
     // 转给开发者控制台 + 一条 toast；常见原因是 codec 不支持。
     if (mode === 'direct') {
-      if (directOnly) {
+      if (isRemoteEmbyID(media?.id)) {
+        setPlayerError('直接播放失败。该媒体为远程 Emby 挂载直连播放（不进行转码）；当前浏览器可能不支持该视频编码或音频格式，建议使用外部播放器（如 PotPlayer / VLC / IINA）播放。')
+        toast.error('直接播放失败，建议使用外部播放器')
+      } else if (isDirectStreamMedia(media)) {
+        setPlayerError('直接播放失败。该媒体为 STRM 远程直连播放（不进行转码）；当前浏览器可能不支持该视频编码或音频格式，建议使用外部播放器播放。')
+        toast.error('直接播放失败，建议使用外部播放器')
+      } else if (directOnly) {
         setPlayerError('直接播放失败。当前为「客户端直连解码」模式，宿主机不转码；请使用支持该编码/封装的播放器（如 Infuse / VLC / Emby 客户端）播放，或关闭直连解码模式。')
         toast.error('直接播放失败（客户端直连解码模式）')
       } else if (hlsUnavailable) {
@@ -467,12 +481,20 @@ export function PlayerPage() {
 
     setPlayerError('视频播放失败，请检查文件是否存在，或确认 ffmpeg 已正确配置。')
     toast.error('视频播放失败，请检查文件是否存在')
-  }, [directOnly, hlsUnavailable, mode, params, setParams])
+  }, [directOnly, hlsUnavailable, media, mode, params, setParams])
 
   return (
     <div className="relative flex h-full w-full flex-1 flex-col overflow-hidden bg-black">
       <PlayerTopBar
         directOnly={directOnly}
+        isDirectStream={isDirectStream}
+        directStreamLabel={
+          isRemoteEmbyID(media?.id)
+            ? 'Emby 直连播放'
+            : isDirectStream
+            ? 'STRM 直连播放'
+            : undefined
+        }
         mode={mode}
         onBack={goBack}
         onToggleMode={toggleMode}

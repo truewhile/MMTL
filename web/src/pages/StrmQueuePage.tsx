@@ -309,7 +309,10 @@ export function StrmQueuePanel({ kind }: { kind: 'download' | 'upload' }) {
                   onClick={(e) => {
                     e.currentTarget.closest('details')?.removeAttribute('open')
                     runGlobalBatch(
-                      () => strmAPI.retryFailedDownloads(),
+                      () =>
+                        isDownload
+                          ? strmAPI.retryFailedDownloads()
+                          : strmAPI.retryFailedUploads(),
                       '确定重新入队所有失败任务？',
                     )
                   }}
@@ -340,23 +343,26 @@ export function StrmQueuePanel({ kind }: { kind: 'download' | 'upload' }) {
                 </button>
               )}
               <div className="my-1 border-t border-gray-100" />
-              {isDownload && (
-                <button
-                  type="button"
-                  disabled={batchBusy}
-                  onClick={(e) => {
-                    e.currentTarget.closest('details')?.removeAttribute('open')
-                    runGlobalBatch(
-                      () => strmAPI.clearDoneDownloads(),
-                      '确定清空所有已完成的下载记录？',
-                    )
-                  }}
-                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-ink-100 hover:bg-gray-50"
-                >
-                  <CheckCircle2 size={13} className="text-emerald-500" />
-                  <span>清空已完成记录</span>
-                </button>
-              )}
+              <button
+                type="button"
+                disabled={batchBusy}
+                onClick={(e) => {
+                  e.currentTarget.closest('details')?.removeAttribute('open')
+                  runGlobalBatch(
+                    () =>
+                      isDownload
+                        ? strmAPI.clearDoneDownloads()
+                        : strmAPI.clearDoneUploads(),
+                    isDownload
+                      ? '确定清空所有已完成的下载记录？'
+                      : '确定清空所有已完成的上传记录？',
+                  )
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-ink-100 hover:bg-gray-50"
+              >
+                <CheckCircle2 size={13} className="text-emerald-500" />
+                <span>清空已完成记录</span>
+              </button>
               <button
                 type="button"
                 disabled={batchBusy}
@@ -375,23 +381,24 @@ export function StrmQueuePanel({ kind }: { kind: 'download' | 'upload' }) {
                 <Ban size={13} className="text-amber-500" />
                 <span>清空已取消记录</span>
               </button>
-              {isDownload && (
-                <button
-                  type="button"
-                  disabled={batchBusy}
-                  onClick={(e) => {
-                    e.currentTarget.closest('details')?.removeAttribute('open')
-                    runGlobalBatch(
-                      () => strmAPI.clearFinishedDownloads(),
-                      '确定清空所有已完成、失败及取消的历史记录？',
-                    )
-                  }}
-                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-rose-500 hover:bg-rose-50"
-                >
-                  <Trash2 size={13} />
-                  <span>清空全部历史记录</span>
-                </button>
-              )}
+              <button
+                type="button"
+                disabled={batchBusy}
+                onClick={(e) => {
+                  e.currentTarget.closest('details')?.removeAttribute('open')
+                  runGlobalBatch(
+                    () =>
+                      isDownload
+                        ? strmAPI.clearFinishedDownloads()
+                        : strmAPI.clearFinishedUploads(),
+                    '确定清空所有已完成、失败及取消的历史记录？',
+                  )
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-rose-500 hover:bg-rose-50"
+              >
+                <Trash2 size={13} />
+                <span>清空全部历史记录</span>
+              </button>
             </div>
           </details>
         </div>

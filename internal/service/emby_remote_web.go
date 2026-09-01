@@ -191,6 +191,59 @@ func (r *EmbyRemoteService) MapRemoteItemToMedia(ctx context.Context, mount *mod
 			media.DoubanID = v
 		}
 	}
+	media.Container = remoteItemString(item, "Container")
+	media.Width = remoteItemInt(item, "Width")
+	media.Height = remoteItemInt(item, "Height")
+
+	extractStreamInfo := func(streams []any) {
+		for _, s := range streams {
+			sm, ok := s.(map[string]any)
+			if !ok {
+				continue
+			}
+			typ := remoteItemString(sm, "Type")
+			if strings.EqualFold(typ, "Video") {
+				if media.VideoCodec == "" {
+					media.VideoCodec = remoteItemString(sm, "Codec")
+				}
+				if media.Width == 0 {
+					media.Width = remoteItemInt(sm, "Width")
+				}
+				if media.Height == 0 {
+					media.Height = remoteItemInt(sm, "Height")
+				}
+			} else if strings.EqualFold(typ, "Audio") {
+				if media.AudioCodec == "" {
+					media.AudioCodec = remoteItemString(sm, "Codec")
+				}
+			}
+		}
+	}
+
+	if streams, ok := item["MediaStreams"].([]any); ok {
+		extractStreamInfo(streams)
+	} else if streams, ok := item["MediaStreams"].([]map[string]any); ok {
+		anyStreams := make([]any, len(streams))
+		for i, v := range streams {
+			anyStreams[i] = v
+		}
+		extractStreamInfo(anyStreams)
+	}
+
+	if sources, ok := item["MediaSources"].([]any); ok && len(sources) > 0 {
+		if sourceMap, ok := sources[0].(map[string]any); ok {
+			if media.Container == "" {
+				media.Container = remoteItemString(sourceMap, "Container")
+			}
+			if media.SizeBytes == 0 {
+				media.SizeBytes = remoteItemInt64(sourceMap, "Size")
+			}
+			if streams, ok := sourceMap["MediaStreams"].([]any); ok && (media.VideoCodec == "" || media.AudioCodec == "") {
+				extractStreamInfo(streams)
+			}
+		}
+	}
+
 	switch remoteItemString(item, "Type") {
 	case "Episode":
 		media.SeasonNum = remoteItemInt(item, "ParentIndexNumber")
@@ -221,13 +274,21 @@ func (r *EmbyRemoteService) RemoteLibraryMedia(ctx context.Context, mount *model
 	if itemTypes == "" {
 		itemTypes = "Movie,Series" // 未知类型时两者都取（前端自行按 episode-like 分组）
 	}
+	cacheKey := r.remoteCacheKey("library-media", acct.ID, mount.ID, remoteViewID, itemTypes, strconv.Itoa(offset), strconv.Itoa(limit))
+	var cached struct {
+		Items            []model.Media `json:"items"`
+		TotalRecordCount int64         `json:"total_record_count"`
+	}
+	if r.cache != nil && r.cache.GetJSON(ctx, cacheKey, &cached) {
+		return cached.Items, cached.TotalRecordCount, nil
+	}
 	q := url.Values{}
 	q.Set("ParentId", remoteViewID)
 	q.Set("IncludeItemTypes", itemTypes)
 	q.Set("Recursive", "false")
 	q.Set("StartIndex", strconv.Itoa(offset))
 	q.Set("Limit", strconv.Itoa(limit))
-	q.Set("Fields", "Overview,Genres,ProviderIds,Path,SeriesPrimaryImage")
+	q.Set("Fields", "Overview,Genres,ProviderIds,Path,SeriesPrimaryImage,MediaStreams,MediaSources")
 	var body struct {
 		Items            []map[string]any `json:"Items"`
 		TotalRecordCount int64            `json:"TotalRecordCount"`
@@ -240,6 +301,12 @@ func (r *EmbyRemoteService) RemoteLibraryMedia(ctx context.Context, mount *model
 		RewriteEmbyRemoteIDs(it, mount.ID) // 嵌套/关联 ID 一并伪装
 		items = append(items, r.MapRemoteItemToMedia(ctx, mount, acct, cfg, it))
 	}
+	if r.cache != nil {
+		r.cache.SetJSON(ctx, cacheKey, struct {
+			Items            []model.Media `json:"items"`
+			TotalRecordCount int64         `json:"total_record_count"`
+		}{Items: items, TotalRecordCount: body.TotalRecordCount}, r.remoteMediaCacheTTL())
+	}
 	return items, body.TotalRecordCount, nil
 }
 
@@ -250,7 +317,7 @@ func (r *EmbyRemoteService) RemoteMediaDetail(ctx context.Context, mount *model.
 		return nil, err
 	}
 	path := "/Users/" + url.PathEscape(r.remoteUserID(cfg)) + "/Items/" + url.PathEscape(remoteID)
-	path += "?Fields=Overview,Genres,ProviderIds,People,Studios,Path"
+	path += "?Fields=Overview,Genres,ProviderIds,People,Studios,Path,MediaStreams,MediaSources"
 	var out map[string]any
 	if err := r.doGet(ctx, acct, cfg, path, nil, &out); err != nil {
 		return nil, err
@@ -311,7 +378,7 @@ func (r *EmbyRemoteService) remoteEpisodesOf(ctx context.Context, mount *model.E
 	q.Set("Recursive", "true")
 	q.Set("StartIndex", "0")
 	q.Set("Limit", "500")
-	q.Set("Fields", "Overview,Genres,ProviderIds,Path,SeriesPrimaryImage")
+	q.Set("Fields", "Overview,Genres,ProviderIds,Path,SeriesPrimaryImage,MediaStreams,MediaSources")
 	var body struct {
 		Items            []map[string]any `json:"Items"`
 		TotalRecordCount int64            `json:"TotalRecordCount"`
@@ -333,6 +400,11 @@ func (r *EmbyRemoteService) RemoteSeriesCards(ctx context.Context, mount *model.
 	cfg, err := r.configOf(acct)
 	if err != nil {
 		return nil, err
+	}
+	cacheKey := r.remoteCacheKey("series-cards", acct.ID, mount.ID, remoteViewID)
+	var cached []SeriesCard
+	if r.cache != nil && r.cache.GetJSON(ctx, cacheKey, &cached) {
+		return cached, nil
 	}
 	q := url.Values{}
 	q.Set("ParentId", remoteViewID)
@@ -361,6 +433,9 @@ func (r *EmbyRemoteService) RemoteSeriesCards(ctx context.Context, mount *model.
 		}
 		cards = append(cards, SeriesCard{Key: m.ID, Rep: m, LinkMedia: m, Count: count})
 	}
+	if r.cache != nil {
+		r.cache.SetJSON(ctx, cacheKey, cards, r.remoteMediaCacheTTL())
+	}
 	return cards, nil
 }
 
@@ -370,6 +445,11 @@ func (r *EmbyRemoteService) RemoteLatestCards(ctx context.Context, mount *model.
 	if err != nil {
 		return nil, err
 	}
+	cacheKey := r.remoteCacheKey("latest-cards", acct.ID, mount.ID, remoteViewID, strconv.Itoa(limit))
+	var cached []SeriesCard
+	if r.cache != nil && r.cache.GetJSON(ctx, cacheKey, &cached) {
+		return cached, nil
+	}
 	items, err := r.RemoteLatest(ctx, mount, acct, remoteViewID, limit)
 	if err != nil {
 		return nil, err
@@ -378,6 +458,9 @@ func (r *EmbyRemoteService) RemoteLatestCards(ctx context.Context, mount *model.
 	for _, it := range items {
 		m := r.MapRemoteItemToMedia(ctx, mount, acct, cfg, it)
 		cards = append(cards, SeriesCard{Key: m.ID, Rep: m, LinkMedia: m, Count: 0})
+	}
+	if r.cache != nil {
+		r.cache.SetJSON(ctx, cacheKey, cards, r.remoteMediaCacheTTL())
 	}
 	return cards, nil
 }
@@ -449,6 +532,8 @@ func remoteItemInt(item map[string]any, key string) int {
 		return int(v)
 	case int:
 		return v
+	case int64:
+		return int(v)
 	case string:
 		n, _ := strconv.Atoi(v)
 		return n
@@ -463,6 +548,8 @@ func remoteItemInt64(item map[string]any, key string) int64 {
 	switch v := item[key].(type) {
 	case float64:
 		return int64(v)
+	case int64:
+		return v
 	case int:
 		return int64(v)
 	case string:
@@ -572,6 +659,7 @@ func remoteItemTypeOf(m *model.Media) string {
 	}
 	return "Movie"
 }
+
 // ─── 供 handler 层使用的远程 View 条目取值（导出薄封装） ──────────────────────
 
 // RemoteItemIDString 提取远程 View 条目的 Id。
@@ -581,7 +669,9 @@ func RemoteItemIDString(item map[string]any) string { return remoteItemString(it
 func RemoteItemNameString(item map[string]any) string { return remoteItemString(item, "Name") }
 
 // RemoteItemCollectionType 提取远程 View 条目的 CollectionType。
-func RemoteItemCollectionType(item map[string]any) string { return remoteItemString(item, "CollectionType") }
+func RemoteItemCollectionType(item map[string]any) string {
+	return remoteItemString(item, "CollectionType")
+}
 
 // RemoteItemChildCount 提取远程 View 条目的 ChildCount。
 func RemoteItemChildCount(item map[string]any) int { return remoteItemInt(item, "ChildCount") }

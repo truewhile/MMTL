@@ -93,8 +93,11 @@ func registerAdminStrmRoutes(admin *gin.RouterGroup, svc *service.Container) {
 	admin.POST("/strm/uploads/:id/retry", retryStrmUploadHandler(svc))
 	admin.DELETE("/strm/uploads/:id", deleteStrmUploadHandler(svc))
 	admin.POST("/strm/uploads/batch", batchActionUploadsHandler(svc))
-	admin.POST("/strm/uploads/cancel-pending", cancelPendingUploadsHandler(svc))
+	admin.POST("/strm/uploads/clear-done", clearDoneUploadsHandler(svc))
+	admin.POST("/strm/uploads/clear-finished", clearFinishedUploadsHandler(svc))
 	admin.POST("/strm/uploads/clear-canceled", clearCanceledUploadsHandler(svc))
+	admin.POST("/strm/uploads/retry-failed", retryAllFailedUploadsHandler(svc))
+	admin.POST("/strm/uploads/cancel-pending", cancelPendingUploadsHandler(svc))
 }
 
 func registerAdminUserRoutes(admin *gin.RouterGroup, svc *service.Container) {

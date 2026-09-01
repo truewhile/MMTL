@@ -57,8 +57,11 @@ func TestStrmAdminRoutesAreRegistered(t *testing.T) {
 			"GET /api/admin/strm/uploads",
 			"POST /api/admin/strm/uploads/:id/cancel",
 			"POST /api/admin/strm/uploads/:id/retry",
-			"POST /api/admin/strm/uploads/cancel-pending",
+			"POST /api/admin/strm/uploads/clear-done",
+			"POST /api/admin/strm/uploads/clear-finished",
 			"POST /api/admin/strm/uploads/clear-canceled",
+			"POST /api/admin/strm/uploads/retry-failed",
+			"POST /api/admin/strm/uploads/cancel-pending",
 			"GET /api/strm/play/:provider/:file",
 	} {
 		if !routes[want] {

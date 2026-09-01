@@ -504,9 +504,42 @@ func clearCanceledUploadsHandler(svc *service.Container) gin.HandlerFunc {
 	}
 }
 
+func clearDoneUploadsHandler(svc *service.Container) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		n, err := svc.Strm.ClearDoneUploadTasks(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"deleted": n})
+	}
+}
+
+func clearFinishedUploadsHandler(svc *service.Container) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		n, err := svc.Strm.ClearFinishedUploadTasks(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"deleted": n})
+	}
+}
+
 func retryAllFailedDownloadsHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		n, err := svc.Strm.RetryAllFailedDownloadTasks(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"retried": n})
+	}
+}
+
+func retryAllFailedUploadsHandler(svc *service.Container) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		n, err := svc.Strm.RetryAllFailedUploadTasks(c.Request.Context())
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

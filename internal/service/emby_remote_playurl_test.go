@@ -2,6 +2,8 @@ package service
 
 import (
 	"testing"
+
+	"github.com/ShukeBta/MMTL/internal/model"
 )
 
 // rewriteSubtitleDeliveryURLs 只应改动字幕轨道的 DeliveryUrl，其余媒体流不动。
@@ -47,8 +49,51 @@ func TestRewriteSubtitleDeliveryURLsFallsBackIndexOne(t *testing.T) {
 	}
 	rewriteSubtitleDeliveryURLs(src, "/Videos/embyremote~acct-1~item-1", &EmbyRemoteConfig{})
 	streams := src["MediaStreams"].([]any)
-	want := "/Videos/embyremote~acct-1~item-1/Subtitles/1/Stream"
-	if got := streams[0].(map[string]any)["DeliveryUrl"]; got != want {
-		t.Fatalf("subtitle DeliveryUrl = %v, want %v", got, want)
+		want := "/Videos/embyremote~acct-1~item-1/Subtitles/1/Stream"
+		if got := streams[0].(map[string]any)["DeliveryUrl"]; got != want {
+			t.Fatalf("subtitle DeliveryUrl = %v, want %v", got, want)
+		}
+	}
+
+func TestMapRemoteItemToMediaExtractsCodecsAndContainer(t *testing.T) {
+	r := &EmbyRemoteService{}
+	item := map[string]any{
+		"Id":        "item-100",
+		"Name":      "Test Movie",
+		"Container": "mkv",
+		"MediaStreams": []any{
+			map[string]any{
+				"Type":   "Video",
+				"Codec":  "h264",
+				"Width":  1920,
+				"Height": 1080,
+			},
+			map[string]any{
+				"Type":  "Audio",
+				"Codec": "aac",
+			},
+		},
+		"MediaSources": []any{
+			map[string]any{
+				"Container": "mkv",
+				"Size":      int64(104857600),
+			},
+		},
+	}
+	media := r.MapRemoteItemToMedia(t.Context(), nil, &model.StrmAccount{Base: model.Base{ID: "acct-1"}}, &EmbyRemoteConfig{}, item)
+	if media.Container != "mkv" {
+		t.Fatalf("media.Container = %v, want mkv", media.Container)
+	}
+	if media.VideoCodec != "h264" {
+		t.Fatalf("media.VideoCodec = %v, want h264", media.VideoCodec)
+	}
+	if media.AudioCodec != "aac" {
+		t.Fatalf("media.AudioCodec = %v, want aac", media.AudioCodec)
+	}
+	if media.Width != 1920 || media.Height != 1080 {
+		t.Fatalf("resolution = %dx%d, want 1920x1080", media.Width, media.Height)
+	}
+	if media.SizeBytes != 104857600 {
+		t.Fatalf("size = %d, want 104857600", media.SizeBytes)
 	}
 }

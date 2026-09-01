@@ -675,11 +675,55 @@ func (r *StrmUploadTaskRepository) CancelBatch(ctx context.Context, ids []string
 	return count, err
 }
 
+// ClearDone 清空全部已完成上传任务。
+func (r *StrmUploadTaskRepository) ClearDone(ctx context.Context) (int64, error) {
+	var count int64
+	err := withSQLiteBusyRetry(ctx, func() error {
+		res := r.db.WithContext(ctx).Unscoped().Where("status = ?", model.StrmTaskDone).Delete(&model.StrmUploadTask{})
+		count = res.RowsAffected
+		return res.Error
+	})
+	return count, err
+}
+
+// ClearFinished 清空全部已完成与失败上传任务（包括已完成、失败及取消）。
+func (r *StrmUploadTaskRepository) ClearFinished(ctx context.Context) (int64, error) {
+	var count int64
+	err := withSQLiteBusyRetry(ctx, func() error {
+		res := r.db.WithContext(ctx).Unscoped().Where("status IN ?", []string{model.StrmTaskDone, model.StrmTaskFailed, model.StrmTaskCanceled}).
+			Delete(&model.StrmUploadTask{})
+		count = res.RowsAffected
+		return res.Error
+	})
+	return count, err
+}
+
 // ClearCanceled 清空全部已取消上传任务。
 func (r *StrmUploadTaskRepository) ClearCanceled(ctx context.Context) (int64, error) {
 	var count int64
 	err := withSQLiteBusyRetry(ctx, func() error {
 		res := r.db.WithContext(ctx).Unscoped().Where("status = ?", model.StrmTaskCanceled).Delete(&model.StrmUploadTask{})
+		count = res.RowsAffected
+		return res.Error
+	})
+	return count, err
+}
+
+// RetryAllFailed 把所有失败任务重置回待处理，清空错误与重试计数。
+func (r *StrmUploadTaskRepository) RetryAllFailed(ctx context.Context) (int64, error) {
+	var count int64
+	err := withSQLiteBusyRetry(ctx, func() error {
+		res := r.db.WithContext(ctx).Model(&model.StrmUploadTask{}).
+			Where("status = ?", model.StrmTaskFailed).
+			Updates(map[string]any{
+				"status":      model.StrmTaskPending,
+				"error":       "",
+				"retry_count": 0,
+				"next_try_at": nil,
+				"started_at":  nil,
+				"finished_at": nil,
+				"updated_at":  time.Now(),
+			})
 		count = res.RowsAffected
 		return res.Error
 	})

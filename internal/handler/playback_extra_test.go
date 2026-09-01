@@ -401,11 +401,81 @@ func newPlaybackScopeTestRouter(t *testing.T) (*gin.Engine, *service.Container, 
 		t.Fatal(err)
 	}
 
-	router := gin.New()
-	api := router.Group("/api")
-	api.Use(middleware.AuthRequired(cfg.Secrets.JWTSecret))
-	api.GET("/playback/:id/external-url", externalURLHandler(svc))
-	api.GET("/playback/:id/external-players", externalPlayersHandler(svc))
-	api.GET("/stream/:id", streamHandler(svc))
-	return router, svc, cfg.Secrets.JWTSecret
+		router := gin.New()
+		api := router.Group("/api")
+		api.Use(middleware.AuthRequired(cfg.Secrets.JWTSecret))
+		api.GET("/playback/:id/info", playbackInfoHandler(svc))
+		api.GET("/playback/:id/external-url", externalURLHandler(svc))
+		api.GET("/playback/:id/external-players", externalPlayersHandler(svc))
+		api.GET("/stream/:id", streamHandler(svc))
+		api.GET("/hls/:id/index.m3u8", hlsPlaylistHandler(svc))
+		api.GET("/media/:id/subtitles", listSubtitlesHandler(svc))
+		return router, svc, cfg.Secrets.JWTSecret
+	}
+
+func TestPlaybackInfoForSTRMMediaDisablesHLS(t *testing.T) {
+	router, _, secret := newPlaybackScopeTestRouter(t)
+	loginToken := signedTestToken(t, secret)
+
+	req := httptest.NewRequest(http.MethodGet, "http://nas.local/api/playback/media-1/info", nil)
+	req.Header.Set("Authorization", "Bearer "+loginToken)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
+	}
+	var payload struct {
+		StreamURL string `json:"stream_url"`
+		HlsURL    string `json:"hls_url"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if payload.StreamURL == "" {
+		t.Fatalf("expected non-empty stream_url")
+	}
+	if payload.HlsURL != "" {
+		t.Fatalf("expected empty hls_url for STRM media, got %q", payload.HlsURL)
+	}
 }
+
+func TestHLSPlaylistForRemoteEmbyMediaDisabled(t *testing.T) {
+	router, svc, secret := newPlaybackScopeTestRouter(t)
+	svc.EmbyRemote = &service.EmbyRemoteService{}
+	loginToken := signedTestToken(t, secret)
+
+	req := httptest.NewRequest(http.MethodGet, "http://nas.local/api/hls/embyremote~acct1~item1/index.m3u8", nil)
+	req.Header.Set("Authorization", "Bearer "+loginToken)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d (409 StatusConflict)", w.Code, http.StatusConflict)
+	}
+}
+
+func TestListSubtitlesForRemoteEmbyMediaReturnsEmptyTracks(t *testing.T) {
+	router, svc, secret := newPlaybackScopeTestRouter(t)
+	svc.EmbyRemote = &service.EmbyRemoteService{}
+	loginToken := signedTestToken(t, secret)
+
+	req := httptest.NewRequest(http.MethodGet, "http://nas.local/api/media/embyremote~acct1~item1/subtitles", nil)
+	req.Header.Set("Authorization", "Bearer "+loginToken)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 OK", w.Code)
+	}
+	var payload struct {
+		Tracks []any `json:"tracks"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if payload.Tracks == nil || len(payload.Tracks) != 0 {
+		t.Fatalf("expected empty tracks array, got %v", payload.Tracks)
+	}
+}
+

@@ -15,6 +15,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -69,6 +71,7 @@ type EmbyRemoteService struct {
 	repo   *repository.Container
 	crypto *CryptoService
 	http   *http.Client
+	cache  *RuntimeCacheService
 }
 
 // NewEmbyRemoteService 构造远程 Emby 聚合服务。
@@ -82,6 +85,32 @@ func NewEmbyRemoteService(cfg *config.Config, log *zap.Logger, repo *repository.
 			Timeout:   embyRemoteHTTPTimeout,
 			Transport: &embyRemoteTransport{base: http.DefaultTransport},
 		},
+	}
+}
+
+func (r *EmbyRemoteService) SetRuntimeCache(cache *RuntimeCacheService) *EmbyRemoteService {
+	if r != nil {
+		r.cache = cache
+	}
+	return r
+}
+
+func (r *EmbyRemoteService) remoteMediaCacheTTL() time.Duration {
+	seconds := 15
+	if r != nil && r.cfg != nil && r.cfg.Cache.MediaTTLSeconds > 0 {
+		seconds = r.cfg.Cache.MediaTTLSeconds
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+func (r *EmbyRemoteService) remoteCacheKey(parts ...string) string {
+	sum := sha1.Sum([]byte(strings.Join(parts, "|")))
+	return "media:embyremote:" + hex.EncodeToString(sum[:])
+}
+
+func (r *EmbyRemoteService) invalidateRemoteMediaCache(ctx context.Context) {
+	if r != nil && r.cache != nil {
+		r.cache.DeletePrefix(ctx, "media:embyremote:")
 	}
 }
 
@@ -143,6 +172,7 @@ func (r *EmbyRemoteService) CreateMount(ctx context.Context, m *model.EmbyMount)
 	if err := r.repo.EmbyMount.Create(ctx, m); err != nil {
 		return nil, err
 	}
+	r.invalidateRemoteMediaCache(ctx)
 	return m, nil
 }
 
@@ -172,6 +202,7 @@ func (r *EmbyRemoteService) CreateMounts(ctx context.Context, mounts []*model.Em
 	if err := r.repo.EmbyMount.CreateInBatches(ctx, fresh, 50); err != nil {
 		return 0, err
 	}
+	r.invalidateRemoteMediaCache(ctx)
 	return len(fresh), nil
 }
 
@@ -187,12 +218,17 @@ func (r *EmbyRemoteService) UpdateMount(ctx context.Context, id string, m *model
 	if err := r.repo.EmbyMount.Update(ctx, existing); err != nil {
 		return nil, err
 	}
+	r.invalidateRemoteMediaCache(ctx)
 	return existing, nil
 }
 
 // DeleteMount 删除挂载。
 func (r *EmbyRemoteService) DeleteMount(ctx context.Context, id string) error {
-	return r.repo.EmbyMount.Delete(ctx, id)
+	err := r.repo.EmbyMount.Delete(ctx, id)
+	if err == nil {
+		r.invalidateRemoteMediaCache(ctx)
+	}
+	return err
 }
 
 // FullMountAccount 把账号的全部远程媒体库（View）挂载进来（幂等，已存在跳过）。
@@ -407,12 +443,12 @@ func (r *EmbyRemoteService) doGet(ctx context.Context, acct *model.StrmAccount, 
 			// token 失效：清空后重认证重试一次。
 			cfg.Token = ""
 			if acct != nil {
-raw := map[string]string{}
-			_ = json.Unmarshal([]byte(acct.Config), &raw)
-			delete(raw, "api_key")
-			enc, _ := json.Marshal(raw)
-			acct.Config = string(enc)
-			_ = r.repo.StrmAccount.Update(ctx, acct)
+				raw := map[string]string{}
+				_ = json.Unmarshal([]byte(acct.Config), &raw)
+				delete(raw, "api_key")
+				enc, _ := json.Marshal(raw)
+				acct.Config = string(enc)
+				_ = r.repo.StrmAccount.Update(ctx, acct)
 			}
 			continue
 		}
@@ -457,12 +493,23 @@ func (r *EmbyRemoteService) RemoteViews(ctx context.Context, acct *model.StrmAcc
 	if err != nil {
 		return nil, err
 	}
+	cacheKey := r.remoteCacheKey("views", acct.ID, r.remoteUserID(cfg))
+	var cached []map[string]any
+	if r.cache != nil && r.cache.GetJSON(ctx, cacheKey, &cached) {
+		return cached, nil
+	}
 	q := url.Values{"api_key": {cfg.Token}}
 	var body struct {
 		Items []map[string]any `json:"Items"`
 	}
 	if err := r.doGet(ctx, acct, cfg, "/Users/"+url.PathEscape(r.remoteUserID(cfg))+"/Views", q, &body); err != nil {
 		return nil, err
+	}
+	if body.Items == nil {
+		body.Items = []map[string]any{}
+	}
+	if r.cache != nil {
+		r.cache.SetJSON(ctx, cacheKey, body.Items, r.remoteMediaCacheTTL())
 	}
 	return body.Items, nil
 }
