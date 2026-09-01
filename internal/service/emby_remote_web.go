@@ -109,7 +109,8 @@ func (r *EmbyRemoteService) mapRemoteViewToLibrary(acct *model.StrmAccount, cfg 
 }
 
 // MapRemoteItemToMedia 把远程 Emby item JSON 映射为本地 Media 结构。
-// poster/backdrop 填远程图片绝对地址（前端经 /api/img 同源代理拉取）。
+// poster/backdrop 只有在远程确实存在图片标签时才填 URL（避免对无图条目
+// 发出必失败的图片请求导致前端破图）；剧集回退到系列海报（SeriesPrimaryImage）。
 func (r *EmbyRemoteService) MapRemoteItemToMedia(ctx context.Context, acct *model.StrmAccount, cfg *EmbyRemoteConfig, item map[string]any) model.Media {
 	remoteID := remoteItemString(item, "Id")
 	// 条目可能已被 RewriteEmbyRemoteIDs 伪装（图片/嵌套 ID 需要原始远程 ID）。
@@ -128,10 +129,15 @@ func (r *EmbyRemoteService) MapRemoteItemToMedia(ctx context.Context, acct *mode
 		Year:         remoteItemInt(item, "ProductionYear"),
 		Rating:       float32(remoteItemFloat(item, "CommunityRating")),
 		Path:         remoteItemString(item, "Path"),
-		PosterURL:    r.remoteItemImageURL(cfg, remoteID, "Primary"),
-		BackdropURL:  r.remoteItemImageURL(cfg, remoteID, "Backdrop"),
 		Genres:       remoteItemGenres(item),
 		ScrapeStatus: "done",
+	}
+	// 只有远程明确存在图片标签才下发图片 URL。
+	if remoteItemHasImageTag(item, "Primary") {
+		media.PosterURL = r.remoteItemImageURL(cfg, remoteID, "Primary")
+	}
+	if remoteItemHasImageTag(item, "Backdrop") || len(remoteBackdropTags(item)) > 0 {
+		media.BackdropURL = r.remoteItemImageURL(cfg, remoteID, "Backdrop")
 	}
 	if ticks := remoteItemInt64(item, "RunTimeTicks"); ticks > 0 {
 		media.DurationSec = int(ticks / 10_000_000)
@@ -158,8 +164,10 @@ func (r *EmbyRemoteService) MapRemoteItemToMedia(ctx context.Context, acct *mode
 		if seriesName := remoteItemString(item, "SeriesName"); seriesName != "" {
 			media.Title = seriesName
 		}
-		// Emby 单集通常无独立海报：回退到系列海报，避免网页端空图。
-		if media.PosterURL == "" && seriesID != "" {
+		// 单集通常无独立海报：若远程返回 SeriesPrimaryImageTag（需要
+		// Fields=SeriesPrimaryImage）且系列有图，则回退到系列海报。
+		if media.PosterURL == "" && seriesID != "" &&
+			strings.TrimSpace(remoteItemString(item, "SeriesPrimaryImageTag")) != "" {
 			media.PosterURL = r.remoteItemImageURL(cfg, seriesID, "Primary")
 		}
 	default: // Movie / Series / Season / Folder
@@ -184,7 +192,7 @@ func (r *EmbyRemoteService) RemoteLibraryMedia(ctx context.Context, acct *model.
 	q.Set("Recursive", "false")
 	q.Set("StartIndex", strconv.Itoa(offset))
 	q.Set("Limit", strconv.Itoa(limit))
-	q.Set("Fields", "Overview,Genres,ProviderIds,Path")
+	q.Set("Fields", "Overview,Genres,ProviderIds,Path,SeriesPrimaryImage")
 	var body struct {
 		Items            []map[string]any `json:"Items"`
 		TotalRecordCount int64            `json:"TotalRecordCount"`
@@ -268,7 +276,7 @@ func (r *EmbyRemoteService) remoteEpisodesOf(ctx context.Context, acct *model.St
 	q.Set("Recursive", "true")
 	q.Set("StartIndex", "0")
 	q.Set("Limit", "500")
-	q.Set("Fields", "Overview,Genres,ProviderIds,Path")
+	q.Set("Fields", "Overview,Genres,ProviderIds,Path,SeriesPrimaryImage")
 	var body struct {
 		Items            []map[string]any `json:"Items"`
 		TotalRecordCount int64            `json:"TotalRecordCount"`
@@ -297,7 +305,7 @@ func (r *EmbyRemoteService) RemoteSeriesCards(ctx context.Context, acct *model.S
 	q.Set("Recursive", "false")
 	q.Set("StartIndex", "0")
 	q.Set("Limit", "1000")
-	q.Set("Fields", "Overview,Genres,ProviderIds,Path,RecursiveItemCount")
+	q.Set("Fields", "Overview,Genres,ProviderIds,Path,RecursiveItemCount,SeriesPrimaryImage")
 	var body struct {
 		Items []map[string]any `json:"Items"`
 	}
@@ -483,6 +491,40 @@ func (r *EmbyRemoteService) remoteItemImageURL(cfg *EmbyRemoteConfig, remoteID, 
 	}
 	return r.embyBase(cfg) + "/Items/" + url.PathEscape(remoteID) + "/Images/" + url.PathEscape(imageType) +
 		"?api_key=" + url.QueryEscape(cfg.Token)
+}
+
+// remoteItemHasImageTag 远程 item 是否带某类型图片标签（Emby 的 ImageTags map）。
+func remoteItemHasImageTag(item map[string]any, typ string) bool {
+	if item == nil {
+		return false
+	}
+	switch tags := item["ImageTags"].(type) {
+	case map[string]any:
+		_, ok := tags[typ]
+		return ok
+	case map[string]string:
+		_, ok := tags[typ]
+		return ok
+	}
+	return false
+}
+
+// remoteBackdropTags 远程 item 的 BackdropImageTags 数组。
+func remoteBackdropTags(item map[string]any) []any {
+	if item == nil {
+		return nil
+	}
+	switch tags := item["BackdropImageTags"].(type) {
+	case []any:
+		return tags
+	case []string:
+		out := make([]any, 0, len(tags))
+		for _, s := range tags {
+			out = append(out, s)
+		}
+		return out
+	}
+	return nil
 }
 
 // remoteItemTypeOf 从映射后的 Media 推断远程类型（无详情载荷时兜底）。
