@@ -1,11 +1,12 @@
 // STRM 管理相关类型定义（与后端 internal/model/strm.go 对应）。
-export type StrmProvider = 'cloud115' | 'clouddrive2' | 'openlist' | 'local'
+export type StrmProvider = 'cloud115' | 'clouddrive2' | 'openlist' | 'local' | 'emby_remote'
 
 export const STRM_PROVIDER_LABELS: Record<StrmProvider, string> = {
   cloud115: '115 网盘',
   clouddrive2: 'CloudDrive2',
   openlist: 'OpenList',
   local: '本地目录',
+  emby_remote: 'Emby 远程挂载',
 }
 
 export interface StrmAccount {

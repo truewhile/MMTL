@@ -12,8 +12,16 @@ import (
 	"github.com/ShukeBta/MMTL/internal/model"
 )
 
-// SetFavorite 把 mediaID 标为 userID 的收藏。
+// SetFavorite 把 mediaID 标为 userID 的收藏。远程 Emby 条目直接透传到对应
+// 服务器（本地不落库）。
 func (e *EmbyService) SetFavorite(ctx context.Context, userID, mediaID string, favorite bool) error {
+	if e.remote != nil && IsEmbyRemoteID(mediaID) {
+		acctID, remoteID, _ := DecodeEmbyRemoteID(mediaID)
+		if err := e.ProxyRemoteSetFavorite(ctx, acctID, remoteID, favorite); err != nil {
+			return err
+		}
+		return nil
+	}
 	if favorite {
 		var f model.Favorite
 		err := e.repo.DB.WithContext(ctx).
@@ -31,7 +39,15 @@ func (e *EmbyService) SetFavorite(ctx context.Context, userID, mediaID string, f
 }
 
 // MarkPlayed 把 mediaID 标为已看（写一个 100% 进度的 history 行）。
+// 远程 Emby 条目直接透传到对应服务器（本地不落库）。
 func (e *EmbyService) MarkPlayed(ctx context.Context, userID, mediaID string, played bool) error {
+	if e.remote != nil && IsEmbyRemoteID(mediaID) {
+		acctID, remoteID, _ := DecodeEmbyRemoteID(mediaID)
+		if err := e.ProxyRemoteSetPlayed(ctx, acctID, remoteID, played); err != nil {
+			return err
+		}
+		return nil
+	}
 	if !played {
 		return e.repo.DB.WithContext(ctx).
 			Where("user_id = ? AND media_id = ?", userID, mediaID).

@@ -46,6 +46,7 @@ type Container struct {
 	Scheduler        *SchedulerService
 	Storage          *StorageService
 	Emby             *EmbyService
+	EmbyRemote       *EmbyRemoteService
 	Backup           *BackupService
 	PlayProfiles     *PlayProfileService
 	Permissions      *PermissionService

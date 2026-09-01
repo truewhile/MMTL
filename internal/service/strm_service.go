@@ -73,7 +73,7 @@ var StrmSettingDefs = map[string]struct {
 }
 
 // StrmAccountSecretKeys 是账号配置中需要加密存储的字段。
-var StrmAccountSecretKeys = []string{"cookie", "password", "token", "access_token", "refresh_token"}
+var StrmAccountSecretKeys = []string{"cookie", "password", "token", "access_token", "refresh_token", "api_key"}
 
 // StrmService 提供 STRM 管理的能力。
 type StrmService struct {
@@ -245,6 +245,10 @@ func HasStrmAccountCredential(acct *model.StrmAccount) bool {
 		return strings.Contains(acct.Config, `"access_token"`)
 	case model.StrmProviderOpenList:
 		return strings.Contains(acct.Config, `"token"`) || strings.Contains(acct.Config, `"password"`)
+	case model.StrmProviderEmbyRemote:
+		// 远程 Emby：已保存接入地址与认证凭据（自动认证得到的 token 或手动 api_key）。
+		return strings.Contains(acct.Config, `"url"`) &&
+			(strings.Contains(acct.Config, `"token"`) || strings.Contains(acct.Config, `"api_key"`))
 	default:
 		return strings.Contains(acct.Config, `"password"`) || strings.Contains(acct.Config, `"token"`)
 	}
@@ -649,6 +653,8 @@ func providerLabel(provider string) string {
 		return "OpenList"
 	case model.StrmProviderLocal:
 		return "本地目录"
+	case model.StrmProviderEmbyRemote:
+		return "Emby 远程挂载"
 	default:
 		return provider
 	}
@@ -660,6 +666,7 @@ var StrmProviderLabels = map[string]string{
 	model.StrmProviderCloudDrive: "CloudDrive2",
 	model.StrmProviderOpenList:   "OpenList",
 	model.StrmProviderLocal:      "本地目录",
+	model.StrmProviderEmbyRemote: "Emby 远程挂载",
 }
 
 const defaultStrmUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 MMTL-Strm/1.0"

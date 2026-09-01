@@ -13,6 +13,7 @@ const (
 	StrmProviderCloudDrive = "clouddrive2" // CloudDrive2（WebDAV 桥接）
 	StrmProviderOpenList   = "openlist"    // OpenList / AList 兼容桥接
 	StrmProviderLocal      = "local"       // 本地目录（无账号）
+	StrmProviderEmbyRemote = "emby_remote" // 远程 Emby 服务器（API 网关聚合挂载，不走 STRM 同步）
 )
 
 // StrmAccount 是一个网盘账号（STRM 同步数据源凭据）。

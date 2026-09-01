@@ -34,10 +34,19 @@ func embyPlaybackInfoHandler(svc *service.Container) gin.HandlerFunc {
 // embySubtitleStreamHandler serves an external subtitle track advertised in a
 // MediaSource's MediaStreams via its Emby index
 // (/Videos/:id/Subtitles/:index/Stream). The index maps to a discovered
-// sideloaded subtitle file next to the video (SRT/ASS/SSA/VTT, local or
-// cloud://), following the same layout appended by mediaStreams.
+// sideloaded subtitle track next to the video (SRT/ASS/SSA/VTT, local or
+// cloud://), following the same layout appended by mediaStreams. 远程 Emby
+// 条目的字幕直接反向代理远程。
 func embySubtitleStreamHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		encodedID := c.Param("id")
+		if accountID, remoteID, ok := service.DecodeEmbyRemoteID(encodedID); ok {
+			if err := svc.Emby.ProxyRemoteSubtitle(c.Request.Context(), c.Writer, c.Request, accountID, remoteID, c.Param("index")); err != nil {
+				embyError(c, http.StatusNotFound, "subtitle not found")
+				return
+			}
+			return
+		}
 		uid := c.Param("userId")
 		if uid == "" {
 			uid = embyUserID(c)
@@ -213,12 +222,26 @@ func embyAppendAPIKey(raw, token string) string {
 	return u.String()
 }
 
-// embyVideoStreamHandler 是 GET /Videos/{id}/stream 的入口，
-// 直接代理到我们的 /api/stream/{id}（同一个 ServeFile）。
+// embyVideoStreamHandler 是 GET /Videos/{id}/stream 的入口。
+// 远程 Emby 条目（embyremote~ 前缀）走反向代理；本地条目直接代理到
+// /api/stream/{id}（同一个 ServeFile）。
 func embyVideoStreamHandler(svc *service.Container, cloudMode string) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		encodedID := c.Param("id")
+		if accountID, remoteID, ok := service.DecodeEmbyRemoteID(encodedID); ok {
+			if err := svc.Emby.ProxyRemoteVideoStream(c.Request.Context(), c.Writer, c.Request, accountID, remoteID); err != nil {
+				if errors.Is(err, service.ErrEmbyRemoteNotFound) {
+					c.Status(http.StatusNotFound)
+					return
+				}
+				if !c.Writer.Written() {
+					c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+				}
+			}
+			return
+		}
 		uid := embyUserID(c)
-		item, err := svc.Emby.Item(c.Request.Context(), c.Param("id"), uid)
+		item, err := svc.Emby.Item(c.Request.Context(), encodedID, uid)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -296,6 +319,11 @@ func embyShouldRedirectVideoStreamToSTRM(c *gin.Context, svc *service.Container,
 
 func embyVideoHLSPlaylistHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// 远程 Emby 条目不做本地转码（播放地址已由 PlaybackInfo 指向远程/代理直连）。
+		if service.IsEmbyRemoteID(c.Param("id")) {
+			c.Status(http.StatusNotFound)
+			return
+		}
 		uid := embyUserID(c)
 		item, err := svc.Emby.Item(c.Request.Context(), c.Param("id"), uid)
 		if err != nil || item == nil || svc.Stream == nil {
@@ -319,6 +347,10 @@ func embyVideoHLSPlaylistHandler(svc *service.Container) gin.HandlerFunc {
 
 func embyVideoHLSSegmentHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if service.IsEmbyRemoteID(c.Param("id")) {
+			c.Status(http.StatusNotFound)
+			return
+		}
 		uid := embyUserID(c)
 		item, err := svc.Emby.Item(c.Request.Context(), c.Param("id"), uid)
 		if err != nil || item == nil || svc.Stream == nil {

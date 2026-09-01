@@ -103,6 +103,8 @@ func (b *serviceContainerBuilder) initContentServices() {
 	b.c.DLNA = NewDLNAService(b.log)
 	b.c.Storage = NewStorageService(b.log, b.repos)
 	b.c.Emby = NewEmbyService(b.cfg, b.log, b.repos)
+	b.c.EmbyRemote = NewEmbyRemoteService(b.cfg, b.log, b.repos, b.c.Crypto)
+	b.c.Emby.SetEmbyRemote(b.c.EmbyRemote)
 	b.c.Backup = NewBackupService(b.cfg, b.log, b.repos.DB)
 	b.c.Media = NewMediaService(b.cfg, b.log, b.repos).SetRuntimeCache(b.c.Cache)
 	b.c.Stream = NewStreamService(b.cfg, b.log, b.repos, b.c.Transcoder)

@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/ShukeBta/MMTL/internal/model"
 )
 
@@ -124,7 +126,8 @@ func (e *EmbyService) userPayload(u *model.User) map[string]any {
 	}
 }
 
-// Views 返回 Emby 中"虚拟根目录"——每个 library 一个条目。
+// Views 返回 Emby 中"虚拟根目录"——每个 library 一个条目，外加所有启用的
+// 远程 Emby 挂载的媒体库（联邦聚合）。
 func (e *EmbyService) Views(ctx context.Context, userID string) (map[string]any, error) {
 	libs, err := e.repo.Library.List(ctx)
 	if err != nil {
@@ -132,14 +135,127 @@ func (e *EmbyService) Views(ctx context.Context, userID string) (map[string]any,
 	}
 	libs = FilterDisplayCloudLibraries(ctx, e.repo, libs)
 	visibility := e.mediaVisibility(ctx, userID)
-	items := make([]map[string]any, 0, len(libs))
+	items := make([]map[string]any, 0, len(libs)+4)
 	for _, l := range libs {
 		if !e.libraryVisibleFromCachedVisibility(l, visibility) {
 			continue
 		}
 		items = append(items, e.libraryAsView(ctx, &l))
 	}
+	for _, remote := range e.remoteViews(ctx) {
+		items = append(items, remote)
+	}
 	return map[string]any{"Items": items, "TotalRecordCount": len(items), "StartIndex": 0}, nil
+}
+
+// remoteViews 拉取全部启用远程 Emby 账号的媒体库视图。单个账号失败只跳过
+// 该账号（日志记录），不影响其他来源。
+func (e *EmbyService) remoteViews(ctx context.Context) []map[string]any {
+	if e == nil || e.remote == nil {
+		return nil
+	}
+	accounts, err := e.remote.ListAccounts(ctx)
+	if err != nil || len(accounts) == 0 {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(accounts)*2)
+	for i := range accounts {
+		acct := &accounts[i]
+		views, err := e.remote.RemoteViews(ctx, acct)
+		if err != nil {
+			if e.log != nil {
+				e.log.Warn("fetch remote emby views failed",
+					zap.String("account", acct.Name), zap.Error(err))
+			}
+			continue
+		}
+		for _, v := range views {
+			if view := e.remoteLibraryAsView(v, acct); view != nil {
+				out = append(out, view)
+			}
+		}
+	}
+	return out
+}
+
+// remoteLibraryAsView 把远程媒体的 CollectionFolder 视图标准化为本地视图
+// 同构的 payload（ID 伪装、名称前缀账号名以便区分多个远程来源）。
+func (e *EmbyService) remoteLibraryAsView(raw map[string]any, acct *model.StrmAccount) map[string]any {
+	if raw == nil {
+		return nil
+	}
+	remoteID, _ := raw["Id"].(string)
+	if remoteID == "" {
+		return nil
+	}
+	name, _ := raw["Name"].(string)
+	if name == "" {
+		name = acct.Name
+	}
+	collectionType, _ := raw["CollectionType"].(string)
+	if !isSupportedEmbyCollectionType(collectionType) {
+		collectionType = "mixed"
+	}
+	encoded := EncodeEmbyRemoteID(acct.ID, remoteID)
+	imageTags := map[string]string{}
+	if primary := embyRemoteImageTagsPrimary(raw); primary != "" {
+		imageTags["Primary"] = encoded
+	}
+	return map[string]any{
+		"Id":                       encoded,
+		"Name":                     acct.Name + " · " + name,
+		"CollectionType":           collectionType,
+		"ServerId":                 embyServerID,
+		"Type":                     "CollectionFolder",
+		"IsFolder":                 true,
+		"Path":                     "",
+		"SortName":                 strings.ToLower(name),
+		"DateCreated":              time.Now().UTC().Format(time.RFC3339),
+		"CanDelete":                false,
+		"CanDownload":              false,
+		"DisplayPreferencesId":     encoded,
+		"PrimaryImageItemId":       encoded,
+		"PrimaryImageAspectRatio":  1.7777777777777777,
+		"RecursiveItemCount":       0,
+		"ChildCount":               0,
+		"SpecialFeatureCount":      0,
+		"EnableMediaSourceDisplay": true,
+		"PlayAccess":               "Full",
+		"ExternalUrls":             []any{},
+		"ProviderIds":              map[string]string{},
+		"Genres":                   []string{},
+		"Tags":                     []string{},
+		"ImageTags":                imageTags,
+		"BackdropImageTags":        []string{},
+		"UserData": map[string]any{
+			"PlaybackPositionTicks": 0,
+			"PlayCount":             0,
+			"IsFavorite":            false,
+			"Played":                false,
+			"UnplayedItemCount":     0,
+		},
+	}
+}
+
+// embyRemoteImageTagsPrimary 提取远程 View 的 ImageTags.Primary 值。
+func embyRemoteImageTagsPrimary(raw map[string]any) string {
+	switch tags := raw["ImageTags"].(type) {
+	case map[string]any:
+		if s, ok := tags["Primary"].(string); ok {
+			return s
+		}
+	case map[string]string:
+		return tags["Primary"]
+	}
+	return ""
+}
+
+func isSupportedEmbyCollectionType(t string) bool {
+	switch t {
+	case "movies", "tvshows", "music", "mixed", "homevideos", "boxsets":
+		return true
+	}
+	return false
 }
 
 func (e *EmbyService) libraryAsView(ctx context.Context, l *model.Library) map[string]any {
