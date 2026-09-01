@@ -21,6 +21,8 @@ export interface StrmAccount {
   last_test_ok: boolean
   has_credential: boolean
   provider_label: string
+  /** 仅远程 Emby 挂载账号返回：播放流量是否经过 MMTL 代理 */
+  proxy_play?: boolean
 }
 
 export interface StrmAccountInput {

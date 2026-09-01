@@ -28,17 +28,25 @@ type strmAccountView struct {
 	model.StrmAccount
 	HasCredential bool   `json:"has_credential"`
 	ProviderLabel string `json:"provider_label"`
+	// ProxyPlay 仅远程 Emby 挂载账号返回：播放流量是否经过 MMTL 代理（编辑回显用）。
+	ProxyPlay *bool `json:"proxy_play,omitempty"`
 }
 
-func strmAccountViews(accounts []model.StrmAccount) []strmAccountView {
+func strmAccountViews(svc *service.Container, accounts []model.StrmAccount) []strmAccountView {
 	out := make([]strmAccountView, 0, len(accounts))
 	for i := range accounts {
 		a := accounts[i]
-		out = append(out, strmAccountView{
+		view := strmAccountView{
 			StrmAccount:   a,
 			HasCredential: service.HasStrmAccountCredential(&a),
 			ProviderLabel: providerLabelOf(a.Provider),
-		})
+		}
+		if a.Provider == model.StrmProviderEmbyRemote && svc != nil && svc.EmbyRemote != nil {
+			if proxyPlay, err := svc.EmbyRemote.ProxyPlayOf(&a); err == nil {
+				view.ProxyPlay = &proxyPlay
+			}
+		}
+		out = append(out, view)
 	}
 	return out
 }
@@ -58,7 +66,7 @@ func listStrmAccountsHandler(svc *service.Container) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(http.StatusOK, strmAccountViews(accounts))
+		c.JSON(http.StatusOK, strmAccountViews(svc, accounts))
 	}
 }
 
@@ -74,7 +82,7 @@ func createStrmAccountHandler(svc *service.Container) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		views := strmAccountViews([]model.StrmAccount{*acct})
+		views := strmAccountViews(svc, []model.StrmAccount{*acct})
 		c.JSON(http.StatusOK, views[0])
 	}
 }
@@ -92,7 +100,7 @@ func updateStrmAccountHandler(svc *service.Container) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		views := strmAccountViews([]model.StrmAccount{*acct})
+		views := strmAccountViews(svc, []model.StrmAccount{*acct})
 		c.JSON(http.StatusOK, views[0])
 	}
 }
@@ -114,7 +122,7 @@ func testStrmAccountHandler(svc *service.Container) gin.HandlerFunc {
 			c.JSON(http.StatusNotFound, gin.H{"error": "网盘账号不存在"})
 			return
 		}
-		views := strmAccountViews([]model.StrmAccount{*acct})
+		views := strmAccountViews(svc, []model.StrmAccount{*acct})
 		c.JSON(http.StatusOK, views[0])
 	}
 }

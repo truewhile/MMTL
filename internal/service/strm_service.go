@@ -237,6 +237,33 @@ func (s *StrmService) strmAccountConfig(acct *model.StrmAccount) (map[string]str
 	return cfg, nil
 }
 
+// mergeEmbyRemoteConfig 对远程 Emby 账号配置做合并式更新：config 中出现的键
+// 覆盖写入（敏感键按明文加密），未出现的键保留原密文；显式空字符串=清除。
+func (s *StrmService) mergeEmbyRemoteConfig(existing string, config map[string]string) (string, error) {
+	out := map[string]string{}
+	if strings.TrimSpace(existing) != "" {
+		if err := json.Unmarshal([]byte(existing), &out); err != nil {
+			return "", fmt.Errorf("decode account config: %w", err)
+		}
+	}
+	for k, v := range config {
+		if v == "" {
+			delete(out, k)
+			continue
+		}
+		if strmContains(StrmAccountSecretKeys, k) {
+			out[k] = s.crypto.Encrypt(v)
+		} else {
+			out[k] = v
+		}
+	}
+	data, err := json.Marshal(out)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
 // HasStrmAccountCredential 报告账号是否已配置核心凭据（用于前端展示）。
 func HasStrmAccountCredential(acct *model.StrmAccount) bool {
 	switch acct.Provider {
@@ -292,7 +319,16 @@ func (s *StrmService) UpdateStrmAccount(ctx context.Context, id, name string, en
 		acct.Enabled = *enabled
 	}
 	if len(config) > 0 {
-		enc, err := s.strmAccountConfigJSON(config, true)
+		var enc string
+		var err error
+		if acct.Provider == model.StrmProviderEmbyRemote {
+			// 远程 Emby 账号：合并式更新。config 中出现的键覆盖（敏感键按明文
+			// 加密写入），未出现的键保留原密文——避免编辑「代理开关」时把已
+			// 保存的地址与凭据清空。
+			enc, err = s.mergeEmbyRemoteConfig(acct.Config, config)
+		} else {
+			enc, err = s.strmAccountConfigJSON(config, true)
+		}
 		if err != nil {
 			return nil, err
 		}

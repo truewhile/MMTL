@@ -111,7 +111,7 @@ export function StrmAccountDialog({
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [token, setToken] = useState('')
-  const [proxyPlay, setProxyPlay] = useState(false)
+  const [proxyPlay, setProxyPlay] = useState(existing?.proxy_play ?? false)
   const [saving, setSaving] = useState(false)
 
   const buildConfig = (): Record<string, string> => {

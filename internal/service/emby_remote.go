@@ -272,6 +272,15 @@ func (r *EmbyRemoteService) TestConnection(ctx context.Context, acct *model.Strm
 	return r.doGet(ctx, acct, cfg, "/System/Info", nil, &out)
 }
 
+// ProxyPlayOf 返回账号是否配置了播放代理（供账号列表/编辑回显）。
+func (r *EmbyRemoteService) ProxyPlayOf(acct *model.StrmAccount) (bool, error) {
+	cfg, err := r.configOf(acct)
+	if err != nil {
+		return false, err
+	}
+	return cfg.ProxyPlay, nil
+}
+
 // ─── 元数据 / 目录聚合 ─────────────────────────────────────────────────────────
 
 // RemoteViews 拉取远程媒体库（View）列表，返回远程原始 view map（未重写）。
