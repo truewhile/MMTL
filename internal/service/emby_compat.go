@@ -153,7 +153,14 @@ func (e *EmbyService) Items(ctx context.Context, p ItemsParams) (map[string]any,
 			if mount == nil || acct == nil {
 				return emptyItemsEnvelope(p.StartIndex), nil
 			}
-			return e.remote.RemoteItems(ctx, mount, acct, p)
+			out, err := e.remote.RemoteItems(ctx, mount, acct, p)
+			if err != nil {
+				return nil, err
+			}
+			if err := e.mergeRemoteUserData(ctx, p.UserID, out); err != nil {
+				return nil, err
+			}
+			return out, nil
 		}
 		// 全局搜索：无 ParentId 且带搜索词 → 聚合本地 + 全部远程。
 		if p.ParentID == "" && p.SearchTerm != "" {
@@ -273,6 +280,9 @@ func (e *EmbyService) aggregatedSearch(ctx context.Context, p ItemsParams) (map[
 						zap.String("account", acct.Name), zap.Error(rerr))
 				}
 				continue
+			}
+			if err := e.mergeRemoteUserData(ctx, p.UserID, remote); err != nil {
+				return nil, err
 			}
 			if raw, ok := remote["Items"].([]any); ok {
 				results = append(results, remoteResult{items: raw})

@@ -31,6 +31,9 @@ func (e *EmbyService) PlaybackInfo(ctx context.Context, mediaID, userID string) 
 		if out == nil {
 			return nil, ErrEmbyRemoteNotFound
 		}
+		if err := e.mergeRemoteUserData(ctx, userID, out); err != nil {
+			return nil, err
+		}
 		out["PlaySessionId"] = fmt.Sprintf("remote-%s-%d", mountID, time.Now().Unix())
 		return out, nil
 	}

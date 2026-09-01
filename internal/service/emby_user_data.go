@@ -49,9 +49,13 @@ func (e *EmbyService) MarkPlayed(ctx context.Context, userID, mediaID string, pl
 		return nil
 	}
 	if !played {
-		return e.repo.DB.WithContext(ctx).
+		err := e.repo.DB.WithContext(ctx).
 			Where("user_id = ? AND media_id = ?", userID, mediaID).
 			Delete(&model.PlaybackHistory{}).Error
+		if err == nil {
+			e.invalidateEmbyItemsCache(ctx)
+		}
+		return err
 	}
 	m, err := e.repo.Media.FindByID(ctx, mediaID)
 	if err != nil || m == nil {
@@ -61,7 +65,7 @@ func (e *EmbyService) MarkPlayed(ctx context.Context, userID, mediaID string, pl
 	if dur <= 0 {
 		dur = 1
 	}
-	return e.repo.History.Upsert(ctx, &model.PlaybackHistory{
+	err = e.repo.History.Upsert(ctx, &model.PlaybackHistory{
 		UserID:     userID,
 		MediaID:    mediaID,
 		PositionMs: dur,
@@ -69,6 +73,10 @@ func (e *EmbyService) MarkPlayed(ctx context.Context, userID, mediaID string, pl
 		WatchedAt:  time.Now(),
 		Completed:  true,
 	})
+	if err == nil {
+		e.invalidateEmbyItemsCache(ctx)
+	}
+	return err
 }
 
 // RecordProgress 记录播放进度（来自 Emby 客户端的 /Sessions/Playing/Progress）。
@@ -82,7 +90,7 @@ func (e *EmbyService) RecordProgress(ctx context.Context, userID, mediaID string
 		}
 	}
 	completed := dur > 0 && pos >= dur*9/10
-	return e.repo.History.Upsert(ctx, &model.PlaybackHistory{
+	err := e.repo.History.Upsert(ctx, &model.PlaybackHistory{
 		UserID:     userID,
 		MediaID:    mediaID,
 		PositionMs: pos,
@@ -90,6 +98,115 @@ func (e *EmbyService) RecordProgress(ctx context.Context, userID, mediaID string
 		WatchedAt:  time.Now(),
 		Completed:  completed,
 	})
+	if err == nil {
+		e.invalidateEmbyItemsCache(ctx)
+	}
+	return err
+}
+
+// mergeRemoteUserData applies the current MMTL user's locally recorded playback
+// state to remote Emby payloads. Remote metadata remains authoritative unless the
+// user has played the item through MMTL.
+func (e *EmbyService) mergeRemoteUserData(ctx context.Context, userID string, payload any) error {
+	if strings.TrimSpace(userID) == "" || payload == nil {
+		return nil
+	}
+	items := remoteItemMaps(payload)
+	ids := make([]string, 0, len(items))
+	seen := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		id, _ := item["Id"].(string)
+		if !IsEmbyRemoteID(id) {
+			continue
+		}
+		if _, ok := seen[id]; !ok {
+			ids = append(ids, id)
+			seen[id] = struct{}{}
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	var histories []model.PlaybackHistory
+	if err := e.repo.DB.WithContext(ctx).Where("user_id = ? AND media_id IN ?", userID, ids).Find(&histories).Error; err != nil {
+		return err
+	}
+	byMediaID := make(map[string]*model.PlaybackHistory, len(histories))
+	for i := range histories {
+		byMediaID[histories[i].MediaID] = &histories[i]
+	}
+	for _, item := range items {
+		id, _ := item["Id"].(string)
+		if h := byMediaID[id]; h != nil {
+			item["UserData"] = mergedRemoteUserData(item["UserData"], h)
+		}
+	}
+	return nil
+}
+
+func remoteItemMaps(payload any) []map[string]any {
+	items := make([]map[string]any, 0)
+	var visit func(any)
+	visit = func(value any) {
+		switch typed := value.(type) {
+		case map[string]any:
+			if _, ok := typed["Id"].(string); ok {
+				items = append(items, typed)
+			}
+			if nested, ok := typed["Items"]; ok {
+				visit(nested)
+			}
+		case []any:
+			for _, value := range typed {
+				visit(value)
+			}
+		case []map[string]any:
+			for _, value := range typed {
+				visit(value)
+			}
+		}
+	}
+	visit(payload)
+	return items
+}
+
+func mergedRemoteUserData(raw any, history *model.PlaybackHistory) map[string]any {
+	userData := map[string]any{}
+	if existing, ok := raw.(map[string]any); ok {
+		for key, value := range existing {
+			userData[key] = value
+		}
+	}
+	duration := history.DurationMs
+	position := history.PositionMs
+	percentage := float64(0)
+	if duration > 0 {
+		percentage = float64(position) / float64(duration) * 100
+	}
+	userData["PlaybackPositionTicks"] = position * 10_000
+	userData["Played"] = history.Completed
+	userData["PlayedPercentage"] = percentage
+	if history.Completed {
+		playCount := 0
+		switch value := userData["PlayCount"].(type) {
+		case int:
+			playCount = value
+		case int64:
+			playCount = int(value)
+		case float64:
+			playCount = int(value)
+		}
+		if playCount < 1 {
+			userData["PlayCount"] = 1
+		}
+	}
+	return userData
+}
+
+func (e *EmbyService) invalidateEmbyItemsCache(ctx context.Context) {
+	if e.cache != nil {
+		e.cache.DeletePrefix(ctx, "media:emby:")
+	}
 }
 
 func splitCSV(s string) []string {

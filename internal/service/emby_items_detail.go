@@ -18,7 +18,14 @@ func (e *EmbyService) Item(ctx context.Context, mediaID, userID string) (map[str
 		if mount == nil || acct == nil {
 			return nil, nil
 		}
-		return e.remote.RemoteItem(ctx, mount, acct, remoteID)
+		out, err := e.remote.RemoteItem(ctx, mount, acct, remoteID)
+		if err != nil || out == nil {
+			return out, err
+		}
+		if err := e.mergeRemoteUserData(ctx, userID, out); err != nil {
+			return nil, err
+		}
+		return out, nil
 	}
 	if lib, err := e.repo.Library.FindByID(ctx, mediaID); err != nil {
 		return nil, err
@@ -91,7 +98,14 @@ func (e *EmbyService) LatestItems(ctx context.Context, userID, parentID string, 
 		if mount == nil || acct == nil {
 			return nil, nil
 		}
-		return e.remote.RemoteLatest(ctx, mount, acct, remoteParent, limit)
+		out, err := e.remote.RemoteLatest(ctx, mount, acct, remoteParent, limit)
+		if err != nil {
+			return nil, err
+		}
+		if err := e.mergeRemoteUserData(ctx, userID, out); err != nil {
+			return nil, err
+		}
+		return out, nil
 	}
 	cacheKey := e.embyLatestCacheKey(userID, parentID, limit)
 	var cached embyLatestCacheValue
@@ -172,27 +186,46 @@ func (e *EmbyService) ResumeItems(ctx context.Context, userID string, limit int)
 	if len(hist) == 0 {
 		return map[string]any{"Items": []any{}, "TotalRecordCount": 0}, nil
 	}
-	ids := make([]string, 0, len(hist))
-	posByID := map[string]int64{}
+
+	localIDs := make([]string, 0, len(hist))
 	for _, h := range hist {
-		ids = append(ids, h.MediaID)
-		posByID[h.MediaID] = h.PositionMs
-	}
-	var medias []model.Media
-	q := e.repo.DB.WithContext(ctx).Where("id IN ?", ids)
-	q = e.applyUserMediaVisibility(ctx, q, userID)
-	if err := q.Find(&medias).Error; err != nil {
-		return nil, err
+		if !IsEmbyRemoteID(h.MediaID) {
+			localIDs = append(localIDs, h.MediaID)
+		}
 	}
 	byID := map[string]*model.Media{}
-	for i := range medias {
-		byID[medias[i].ID] = &medias[i]
+	if len(localIDs) > 0 {
+		var medias []model.Media
+		q := e.repo.DB.WithContext(ctx).Where("id IN ?", localIDs)
+		q = e.applyUserMediaVisibility(ctx, q, userID)
+		if err := q.Find(&medias).Error; err != nil {
+			return nil, err
+		}
+		for i := range medias {
+			byID[medias[i].ID] = &medias[i]
+		}
 	}
+
 	items := make([]map[string]any, 0, len(hist))
 	for _, h := range hist {
 		if m, ok := byID[h.MediaID]; ok {
-			items = append(items, e.itemPayload(ctx, m, false, posByID[h.MediaID]))
+			items = append(items, e.itemPayload(ctx, m, false, h.PositionMs))
+			continue
 		}
+		if e.remote == nil || !IsEmbyRemoteID(h.MediaID) {
+			continue
+		}
+		mountID, remoteID, _ := DecodeEmbyRemoteID(h.MediaID)
+		mount, acct, err := e.remote.ResolveMount(ctx, mountID)
+		if err != nil || mount == nil || acct == nil {
+			continue
+		}
+		item, err := e.remote.RemoteItem(ctx, mount, acct, remoteID)
+		if err != nil || item == nil {
+			continue
+		}
+		item["UserData"] = mergedRemoteUserData(item["UserData"], &h)
+		items = append(items, item)
 	}
 	return map[string]any{"Items": items, "TotalRecordCount": len(items)}, nil
 }
