@@ -502,8 +502,8 @@ function RecordSection({ records, onDeleted }: { records: StrmSyncRecord[]; onDe
       {records.length === 0 ? (
         <p className="rounded-xl bg-gray-50 px-4 py-6 text-center text-sm text-sand-500">还没有同步记录</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+        <div className="table-scroll">
+          <table className="min-w-[980px] w-full text-left text-sm">
             <thead className="border-b border-gray-200 text-xs uppercase tracking-wider text-sand-500">
               <tr>
                 <th className="px-3 py-2">时间</th>

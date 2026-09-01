@@ -2,8 +2,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import {
+  ArrowDown,
+  ArrowUp,
   Check,
   Globe,
+  GripVertical,
   Loader2,
   Pencil,
   Plus,
@@ -107,7 +110,7 @@ function AccountDialog({
               disabled={!!existing}
             />
           </label>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="block text-sm">
               <span className="mb-1 block font-semibold text-ink-600">用户名</span>
               <input className={inputCls} value={username} onChange={(e) => setUsername(e.target.value)} />
@@ -301,6 +304,89 @@ export function EmbyMountPage() {
   const [accountDialog, setAccountDialog] = useState<StrmAccount | null | 'new'>(null)
   const [mountDialogFor, setMountDialogFor] = useState<StrmAccount | null>(null)
   const [testingID, setTestingID] = useState<string | null>(null)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
+  const [reordering, setReordering] = useState(false)
+
+  const applyReorder = async (nextMounts: EmbyMount[]) => {
+    const prevMounts = mounts
+    setMounts(nextMounts)
+    setReordering(true)
+    try {
+      await embyAPI.reorderMounts(nextMounts.map((m) => m.id))
+      toast.success('媒体库顺序已更新')
+    } catch (err) {
+      setMounts(prevMounts)
+      toast.error(apiErrorMessage(err))
+    } finally {
+      setReordering(false)
+    }
+  }
+
+  const moveMount = (m: EmbyMount, direction: 'up' | 'down') => {
+    const acctMounts = mounts.filter((item) => item.account_id === m.account_id)
+    const idx = acctMounts.findIndex((item) => item.id === m.id)
+    if (idx < 0) return
+    if (direction === 'up' && idx === 0) return
+    if (direction === 'down' && idx === acctMounts.length - 1) return
+
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1
+    const newAcctMounts = [...acctMounts]
+    const [moved] = newAcctMounts.splice(idx, 1)
+    newAcctMounts.splice(targetIdx, 0, moved)
+
+    let acctPointer = 0
+    const nextMounts = mounts.map((item) => {
+      if (item.account_id === m.account_id) {
+        return newAcctMounts[acctPointer++]
+      }
+      return item
+    })
+    applyReorder(nextMounts)
+  }
+
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    e.dataTransfer.effectAllowed = 'move'
+    setDraggingId(id)
+  }
+
+  const handleDragOver = (e: React.DragEvent, overId: string) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (dragOverId !== overId) {
+      setDragOverId(overId)
+    }
+  }
+
+  const handleDrop = (overId: string, accountId: string) => {
+    if (!draggingId || draggingId === overId) {
+      setDraggingId(null)
+      setDragOverId(null)
+      return
+    }
+    const acctMounts = mounts.filter((item) => item.account_id === accountId)
+    const fromIdx = acctMounts.findIndex((item) => item.id === draggingId)
+    const toIdx = acctMounts.findIndex((item) => item.id === overId)
+    if (fromIdx < 0 || toIdx < 0) {
+      setDraggingId(null)
+      setDragOverId(null)
+      return
+    }
+    const newAcctMounts = [...acctMounts]
+    const [moved] = newAcctMounts.splice(fromIdx, 1)
+    newAcctMounts.splice(toIdx, 0, moved)
+
+    let acctPointer = 0
+    const nextMounts = mounts.map((item) => {
+      if (item.account_id === accountId) {
+        return newAcctMounts[acctPointer++]
+      }
+      return item
+    })
+    setDraggingId(null)
+    setDragOverId(null)
+    applyReorder(nextMounts)
+  }
 
   const load = useCallback(async () => {
     const [accts, mts] = await Promise.all([
@@ -454,8 +540,33 @@ export function EmbyMountPage() {
                   </p>
                 ) : (
                   <div className="space-y-2">
-                    {acctMounts.map((m) => (
-                      <div key={m.id} className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${m.enabled ? 'border-sand-200 bg-gray-50/60' : 'border-gray-100 bg-gray-50 opacity-60'}`}>
+                    {acctMounts.map((m, index) => (
+                      <div
+                        key={m.id}
+                        onDragOver={(e) => handleDragOver(e, m.id)}
+                        onDrop={() => handleDrop(m.id, acct.id)}
+                        className={`flex items-center gap-3 rounded-xl border px-3 py-3 transition-colors ${
+                          draggingId === m.id
+                            ? 'border-dashed border-brand-400 bg-brand-50/20 opacity-50'
+                            : dragOverId === m.id
+                              ? 'border-brand-400 bg-brand-50/30'
+                              : m.enabled
+                                ? 'border-sand-200 bg-gray-50/60'
+                                : 'border-gray-100 bg-gray-50 opacity-60'
+                        }`}
+                      >
+                        <div
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, m.id)}
+                          onDragEnd={() => {
+                            setDraggingId(null)
+                            setDragOverId(null)
+                          }}
+                          className="shrink-0 cursor-grab active:cursor-grabbing text-sand-400 hover:text-ink-600 p-0.5"
+                          title="按住拖拽调整顺序"
+                        >
+                          <GripVertical size={16} />
+                        </div>
                         <Tv size={16} className="shrink-0 text-brand-500" />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold text-ink-600">
@@ -465,6 +576,24 @@ export function EmbyMountPage() {
                             {m.collection_type || 'mixed'}
                             {m.proxy_play ? ' · 本机代理播放' : ' · 直连播放'}
                           </p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => moveMount(m, 'up')}
+                            disabled={index === 0 || reordering}
+                            className="rounded-lg border border-gray-200 p-1.5 text-ink-100 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="上移"
+                          >
+                            <ArrowUp size={13} />
+                          </button>
+                          <button
+                            onClick={() => moveMount(m, 'down')}
+                            disabled={index === acctMounts.length - 1 || reordering}
+                            className="rounded-lg border border-gray-200 p-1.5 text-ink-100 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="下移"
+                          >
+                            <ArrowDown size={13} />
+                          </button>
                         </div>
                         <button
                           onClick={() => toggleMountProxy(m, !m.proxy_play)}

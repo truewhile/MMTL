@@ -171,8 +171,8 @@ export function ManualOrganizePanel({
 
 function ManualOrganizePreviewTable({ items }: { items: PreviewItem[] }) {
   return (
-    <div className="max-h-72 overflow-auto rounded-xl border border-gray-200 bg-white/70">
-      <table className="w-full text-left text-xs">
+    <div className="table-scroll max-h-72 overflow-y-auto rounded-xl border border-gray-200 bg-white/70">
+      <table className="min-w-[700px] w-full text-left text-xs">
         <thead className="sticky top-0 bg-white text-sand-500">
           <tr>
             <th className="px-3 py-2">动作</th>

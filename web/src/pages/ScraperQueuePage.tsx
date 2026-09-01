@@ -450,7 +450,7 @@ export function ScraperQueuePage() {
         </div>
 
         {selectedIds.size > 0 && (
-          <div className="flex items-center gap-2 rounded-xl border border-brand-500/30 bg-primary-400/10 px-3 py-1.5 text-xs animate-in fade-in zoom-in-95">
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-brand-500/30 bg-primary-400/10 px-3 py-2 text-xs animate-in fade-in zoom-in-95">
             <span className="font-bold text-brand-500">已选中 {selectedIds.size} 项</span>
             <div className="h-3.5 w-px bg-brand-300/40 mx-1" />
             <button
@@ -507,8 +507,8 @@ export function ScraperQueuePage() {
                 : `「${FILTERS.find((f) => f.key === filter)?.label}」状态下暂无任务`}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+          <div className="table-scroll">
+            <table className="min-w-[960px] w-full text-left text-sm">
               <thead className="border-b border-gray-200/80 bg-gray-50/50 text-[11px] font-bold uppercase tracking-wider text-sand-500">
                 <tr>
                   <th className="w-10 px-3 py-3 text-center">

@@ -26,8 +26,8 @@ export function FileEntriesTable({
   onChoose,
 }: FileEntriesTableProps) {
   return (
-    <div className="glass-panel overflow-x-auto">
-      <table className="w-full text-left text-sm">
+    <div className="glass-panel table-scroll">
+      <table className="min-w-[700px] w-full text-left text-sm">
         <thead className="text-xs uppercase tracking-wider text-sand-500">
           <tr>
             <th className="w-10 py-2">

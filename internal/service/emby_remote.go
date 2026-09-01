@@ -231,6 +231,18 @@ func (r *EmbyRemoteService) DeleteMount(ctx context.Context, id string) error {
 	return err
 }
 
+// ReorderMounts 批量重排挂载媒体库顺序。
+func (r *EmbyRemoteService) ReorderMounts(ctx context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if err := r.repo.EmbyMount.SetSortOrder(ctx, ids); err != nil {
+		return err
+	}
+	r.invalidateRemoteMediaCache(ctx)
+	return nil
+}
+
 // FullMountAccount 把账号的全部远程媒体库（View）挂载进来（幂等，已存在跳过）。
 func (r *EmbyRemoteService) FullMountAccount(ctx context.Context, acct *model.StrmAccount, proxyPlayDefault bool) (int, error) {
 	views, err := r.RemoteViews(ctx, acct)

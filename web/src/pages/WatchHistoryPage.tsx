@@ -97,7 +97,7 @@ export function WatchHistoryPage() {
           return (
             <div
               key={h.id}
-              className="glass-panel flex items-center gap-4 !p-3"
+              className="glass-panel flex flex-col gap-3 !p-3 sm:flex-row sm:items-center sm:gap-4"
             >
               <div className="h-16 w-12 shrink-0 overflow-hidden rounded-lg bg-surface-900">
                 {m.poster_url ? (
@@ -109,14 +109,14 @@ export function WatchHistoryPage() {
                   />
                 ) : null}
               </div>
-              <div className="flex-1 space-y-1">
+              <div className="min-w-0 flex-1 space-y-1">
                 <Link
                   to={`/media/${m.id}`}
-                  className="font-medium text-ink-600 transition hover:text-brand-500"
+                  className="block truncate font-medium text-ink-600 transition hover:text-brand-500"
                 >
                   {m.title}
                 </Link>
-                <div className="flex items-center gap-3 text-xs text-ink-50">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-50">
                   <span>{fmtDuration(h.position_ms)} / {fmtDuration(h.duration_ms)}</span>
                   <span>{new Date(h.watched_at).toLocaleString()}</span>
                   {h.completed && (
@@ -132,7 +132,7 @@ export function WatchHistoryPage() {
                   />
                 </div>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex w-full items-center gap-2 sm:w-auto sm:shrink-0">
                 <Link
                   to={`/play/${m.id}`}
                   className="neon-button !px-3 !py-1 !text-xs"

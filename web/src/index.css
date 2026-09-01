@@ -277,10 +277,11 @@ body {
   .badge-neutral { @apply badge bg-gray-100 text-gray-600 border border-gray-200/50; }
 
   /* ── Page Headings ── */
-  .page-heading  { @apply font-display text-3xl font-extrabold tracking-tight text-gray-900; }
+  .page-heading  { @apply font-display text-2xl font-extrabold tracking-tight text-gray-900 sm:text-3xl; }
   .page-subtitle { @apply mt-1 text-sm text-gray-500; }
 
-  /* ── Data Tables Redesign ── */
+  /* ── Mobile Data Tables ── */
+  .table-scroll { @apply overflow-x-auto overscroll-x-contain; -webkit-overflow-scrolling: touch; }
   .data-table { @apply w-full text-left text-sm border-collapse; }
   .data-table thead { @apply border-b border-gray-200 bg-gray-50/70; }
   .data-table th { @apply px-5 py-4 text-xs font-bold uppercase tracking-wider text-gray-500 whitespace-nowrap; }

@@ -116,6 +116,7 @@ type LoggingConfig struct {
 // CacheConfig 控制磁盘转码/刮削缓存。
 type CacheConfig struct {
 	CacheDir           string `mapstructure:"cache_dir"`
+	ImagesMaxSizeMB    int    `mapstructure:"images_max_size_mb"`
 	MaxDiskUsageMB     int    `mapstructure:"max_disk_usage_mb"`
 	TTLHours           int    `mapstructure:"ttl_hours"`
 	AutoCleanup        bool   `mapstructure:"auto_cleanup"`

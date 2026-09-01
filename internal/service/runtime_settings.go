@@ -106,11 +106,18 @@ func ApplyRuntimeSetting(cfg *config.Config, key, value string) {
 		cfg.App.SSLCert = value
 	case "https.key":
 		cfg.App.SSLKey = value
-	case "https.cert_path":
-		cfg.App.SSLCertPath = strings.TrimSpace(value)
-	case "https.key_path":
-		cfg.App.SSLKeyPath = strings.TrimSpace(value)
-	}
+		case "https.cert_path":
+			cfg.App.SSLCertPath = strings.TrimSpace(value)
+		case "https.key_path":
+			cfg.App.SSLKeyPath = strings.TrimSpace(value)
+		case "cache.images_max_size_mb":
+			if n, err := strconv.Atoi(value); err == nil {
+				if n < 0 {
+					n = 0
+				}
+				cfg.Cache.ImagesMaxSizeMB = n
+			}
+		}
 }
 
 // ParseBoolSetting is the exported variant of parseBoolSetting for handlers

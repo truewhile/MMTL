@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"go.uber.org/zap"
 
 	"github.com/ShukeBta/MMTL/internal/config"
+	"github.com/ShukeBta/MMTL/internal/model"
 	"github.com/ShukeBta/MMTL/internal/repository"
 )
 
@@ -117,6 +119,28 @@ func (b *serviceContainerBuilder) initContentServices() {
 	b.c.FFTools = NewFFmpegToolsService(b.cfg, b.log, b.repos)
 	// 弹幕 hash 识别需要把 strm 指向解析成可拉取的直链/本地路径。
 	b.c.Danmaku.SetStrmResolver(b.c.Strm.ResolvePlay)
+	// 弹幕识别需要把远程 Emby 条目解析为 Media 元数据及可拉取前 16MB 的直链 URL。
+	if b.c.EmbyRemote != nil {
+		b.c.Danmaku.SetRemoteMediaResolver(func(ctx context.Context, encodedID string) (*model.Media, string, error) {
+			mountID, remoteID, ok := DecodeEmbyRemoteID(encodedID)
+			if !ok {
+				return nil, "", errors.New("invalid emby remote id")
+			}
+			mount, acct, err := b.c.EmbyRemote.ResolveMount(ctx, mountID)
+			if err != nil || mount == nil || acct == nil {
+				if err != nil {
+					return nil, "", err
+				}
+				return nil, "", errors.New("emby mount or account not found")
+			}
+			m, err := b.c.EmbyRemote.RemoteMediaDetail(ctx, mount, acct, remoteID)
+			if err != nil || m == nil {
+				return nil, "", err
+			}
+			streamURL, _ := b.c.EmbyRemote.WebStreamURL(ctx, acct, remoteID)
+			return m, streamURL, nil
+		})
+	}
 }
 
 func (b *serviceContainerBuilder) initAccessAndStorageServices() {
@@ -131,6 +155,12 @@ func (b *serviceContainerBuilder) initAccessAndStorageServices() {
 	)
 	b.c.Scheduler.SetTaskTracker(b.c.Tasks)
 	b.c.Scheduler.SetOrganizePipeline(b.c.OrganizePipeline)
+	b.c.Scheduler.SetImagesMaxSizeMBProvider(func() int {
+		if b.cfg == nil {
+			return 0
+		}
+		return b.cfg.Cache.ImagesMaxSizeMB
+	})
 }
 
 func (b *serviceContainerBuilder) initIdentityServices() {

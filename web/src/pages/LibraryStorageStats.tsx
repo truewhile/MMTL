@@ -83,8 +83,8 @@ export function LibraryStorageStats() {
 
       <section className="space-y-3">
         <h3 className="font-display text-lg font-semibold text-ink-600">按媒体库</h3>
-        <div className="glass-panel overflow-x-auto !p-3">
-          <table className="w-full text-left text-sm">
+        <div className="glass-panel table-scroll !p-3">
+          <table className="min-w-[500px] w-full text-left text-sm">
             <thead className="text-xs uppercase tracking-wider text-sand-500">
               <tr>
                 <th className="py-2">名称</th>

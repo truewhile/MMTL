@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import {
   ChevronRight,
@@ -48,7 +48,7 @@ function DialogShell({
         role="dialog"
         aria-modal="true"
         className={
-          'flex max-h-[88vh] w-full flex-col overflow-hidden rounded-3xl border border-white/70 bg-white shadow-2xl ' +
+          'flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-3xl border border-white/70 bg-white shadow-2xl ' +
           (wide ? 'max-w-3xl' : 'max-w-lg')
         }
         onClick={(event) => event.stopPropagation()}
@@ -67,7 +67,7 @@ function DialogShell({
             <X size={20} />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-6">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">{children}</div>
       </div>
     </div>
   )
@@ -192,7 +192,7 @@ export function StrmAccountDialog({
       <form onSubmit={submit} className="space-y-5">
         {/* 提供方选择 */}
         {!existing && (
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {PROVIDER_OPTIONS.map((option) => {
               const Icon =
                 option.provider === 'cloud115'
@@ -435,9 +435,19 @@ function Strm115AuthPanel({
     })()
   }, [])
 
-  const filteredApps = (sources?.built_in ?? []).filter(
-    (s) => !appKeyword || s.app_name.toLowerCase().includes(appKeyword.toLowerCase()) || s.app_id.includes(appKeyword),
+  const filteredApps = useMemo(
+    () =>
+      (sources?.built_in ?? []).filter(
+        (s) => !appKeyword || s.app_name.toLowerCase().includes(appKeyword.toLowerCase()) || s.app_id.includes(appKeyword),
+      ),
+    [appKeyword, sources],
   )
+
+  useEffect(() => {
+    if (filteredApps.length > 0 && !filteredApps.some((source) => source.app_id === appID)) {
+      setAppID(filteredApps[0].app_id)
+    }
+  }, [appID, filteredApps])
 
   const buildStartPayload = () => {
     switch (authSource) {
@@ -453,6 +463,11 @@ function Strm115AuthPanel({
   }
 
   const startAuth = async () => {
+    if (authSource === 'built_in_appid' && filteredApps.length === 0) {
+      toast.error('未找到匹配的官方应用')
+      return
+    }
+
     setStarting(true)
     setAuthStatus('')
     try {
@@ -552,6 +567,7 @@ function Strm115AuthPanel({
                     </option>
                   ))}
                 </select>
+                {filteredApps.length === 0 && <p className="text-xs text-sand-500">未找到匹配的官方应用</p>}
               </Field>
             </div>
           )}
@@ -577,7 +593,12 @@ function Strm115AuthPanel({
             </Field>
           )}
 
-          <button type="button" onClick={startAuth} disabled={starting} className="neon-button disabled:opacity-50">
+          <button
+            type="button"
+            onClick={startAuth}
+            disabled={starting || (authSource === 'built_in_appid' && filteredApps.length === 0)}
+            className="neon-button disabled:opacity-50"
+          >
             {starting ? <Loader2 size={16} className="animate-spin" /> : <QrCode size={16} />}
             {authSource === 'built_in_appid' || authSource === 'custom_appid' ? '获取登录二维码' : '获取授权链接'}
           </button>

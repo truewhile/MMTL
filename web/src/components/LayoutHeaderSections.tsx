@@ -43,7 +43,7 @@ export function LayoutHeader({
   hideSearch,
 }: LayoutHeaderProps) {
   return (
-    <header className="relative flex h-20 shrink-0 items-center justify-between gap-4 border-b border-[var(--app-border)] bg-[var(--app-header-bg)] px-4 backdrop-blur-md z-30 md:px-8">
+    <header className="relative z-30 flex h-16 shrink-0 items-center justify-between gap-2 border-b border-[var(--app-border)] bg-[var(--app-header-bg)] px-3 backdrop-blur-md sm:h-20 sm:gap-4 sm:px-4 md:px-8">
       {/* Left: Mobile Menu button or Brand Logo */}
       <div className="flex items-center gap-3 shrink-0">
         <button
@@ -71,7 +71,7 @@ export function LayoutHeader({
       </div>
 
       {/* Middle: Search Box */}
-      <div className="flex-1 max-w-xl mx-auto">
+      <div className="flex min-w-0 flex-1 max-w-xl mx-auto">
         {!hideSearch && <LayoutHeaderSearch />}
       </div>
 
@@ -155,8 +155,8 @@ function LayoutHeaderSearch() {
     <div ref={containerRef} className="relative w-full">
       <div className="relative flex items-center">
         <Search
-          size={16}
-          className="absolute left-3.5 text-[var(--app-muted)] pointer-events-none transition-colors group-focus-within:text-brand-500"
+          size={15}
+          className="absolute left-3 text-[var(--app-muted)] pointer-events-none transition-colors group-focus-within:text-brand-500 sm:left-3.5 sm:text-[16px]"
         />
         <input
           type="text"
@@ -169,8 +169,8 @@ function LayoutHeaderSearch() {
             if (results.length > 0) setIsOpen(true)
           }}
           onKeyDown={handleKeyDown}
-          placeholder="搜索电影、剧集、演员…"
-          className="w-full h-10 pl-10 pr-9 rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel)] text-sm text-[var(--app-text)] placeholder:text-[var(--app-muted)] shadow-sm outline-none transition-all duration-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:bg-[var(--app-panel-elevated)]"
+          placeholder="搜索媒体…"
+          className="w-full h-9 sm:h-10 pl-8 sm:pl-10 pr-8 sm:pr-9 rounded-xl sm:rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel)] text-xs sm:text-sm text-[var(--app-text)] placeholder:text-[var(--app-muted)] shadow-sm outline-none transition-all duration-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:bg-[var(--app-panel-elevated)]"
         />
         {loading ? (
           <LoaderCircle size={15} className="absolute right-3.5 text-brand-500 animate-spin" />
@@ -288,8 +288,10 @@ function LayoutHeaderActions({
 }: LayoutHeaderActionsProps) {
   return (
     <div className="flex shrink-0 items-center gap-2 sm:gap-3 md:gap-4">
-      <LayoutThemeToggle mode={themeMode} onChange={onThemeChange} />
-      <span className="hidden h-6 w-px bg-[var(--app-border)] sm:block" />
+      <div className="hidden items-center gap-3 sm:flex md:gap-4">
+        <LayoutThemeToggle mode={themeMode} onChange={onThemeChange} />
+        <span className="h-6 w-px bg-[var(--app-border)]" />
+      </div>
       <LayoutUserMenu
         user={user}
         isOpen={isProfileOpen}

@@ -94,6 +94,10 @@ type DanmakuEpisode struct {
 	EpisodeTitle string `json:"episodeTitle"`
 }
 
+// DanmakuRemoteMediaResolver resolves an Emby remote pseudo-ID (e.g. embyremote~mount~id)
+// into a memory model.Media and a direct stream URL.
+type DanmakuRemoteMediaResolver func(ctx context.Context, encodedID string) (*model.Media, string, error)
+
 // DanmakuService fetches danmaku for a media item through the dandanplay
 // protocol: match by 16MB-prefix hash, then search for an episode id by the
 // video's name, then fetch the comment library XML. The React player parses
@@ -107,6 +111,10 @@ type DanmakuService struct {
 	// (local path / redirect URL / proxied link). Wired by the builder to
 	// StrmService.ResolvePlay; nil means strm sources are skipped.
 	strmResolve func(ctx context.Context, provider string, q url.Values) (*StrmPlayResult, error)
+
+	// remoteResolve resolves an Emby remote pseudo-ID into *model.Media and
+	// direct stream URL for range hashing.
+	remoteResolve DanmakuRemoteMediaResolver
 
 	hashCacheMu sync.Mutex
 	hashCache   map[string]string // stamp → 16MB-prefix MD5
@@ -133,6 +141,14 @@ func NewDanmakuService(log *zap.Logger, repo *repository.Container) *DanmakuServ
 func (s *DanmakuService) SetStrmResolver(resolve func(ctx context.Context, provider string, q url.Values) (*StrmPlayResult, error)) {
 	if s != nil {
 		s.strmResolve = resolve
+	}
+}
+
+// SetRemoteMediaResolver wires the resolver used to fetch metadata and direct
+// stream URLs for Emby remote mounted media.
+func (s *DanmakuService) SetRemoteMediaResolver(resolve DanmakuRemoteMediaResolver) {
+	if s != nil {
+		s.remoteResolve = resolve
 	}
 }
 
@@ -220,13 +236,17 @@ func (s *DanmakuService) Fetch(ctx context.Context, mediaID, keyword, episodeID 
 		target := ""
 
 		// 1) hash 识别：始终走官方 /api/v2/match（keyword 手动覆盖时跳过，直接走第 3 层）。
-		if target == "" && !manualKeyword && media != nil && media.Path != "" {
+		if target == "" && !manualKeyword && media != nil && (media.Path != "" || IsEmbyRemoteID(media.ID)) {
 			if hash, ok := s.mediaHash(ctx, media); ok {
 				fileSize := media.SizeBytes
-				if strings.EqualFold(filepath.Ext(media.Path), ".strm") {
+				if media.Path != "" && strings.EqualFold(filepath.Ext(media.Path), ".strm") {
 					fileSize = 0 // strm 行的 SizeBytes 是文本大小，不是视频大小
 				}
-				matches, err := s.matchOfficial(ctx, danmakuMatchFileName(media.Path), hash, fileSize, media.DurationSec)
+				matchName := danmakuMatchFileName(media.Path)
+				if matchName == "" {
+					matchName = term.name
+				}
+				matches, err := s.matchOfficial(ctx, matchName, hash, fileSize, media.DurationSec)
 				if err != nil {
 					s.log.Warn("danmaku hash match failed", zap.String("media_id", mediaID), zap.Error(err))
 				} else if len(matches) > 0 {
@@ -311,6 +331,29 @@ type danmakuSearchTerms struct {
 // (movies / unknown) is left empty so the search does not filter by episode.
 func (s *DanmakuService) searchTerms(ctx context.Context, mediaID string) (danmakuSearchTerms, *model.Media, error) {
 	var term danmakuSearchTerms
+	if IsEmbyRemoteID(mediaID) {
+		if s == nil || s.remoteResolve == nil {
+			return term, nil, errors.New("remote emby resolver unavailable")
+		}
+		m, _, err := s.remoteResolve(ctx, mediaID)
+		if err != nil || m == nil {
+			if err != nil {
+				return term, nil, err
+			}
+			return term, nil, errors.New("media not found")
+		}
+		if name := strings.TrimSpace(m.OriginalName); name != "" {
+			term.name = name
+		} else if name := strings.TrimSpace(m.Title); name != "" {
+			term.name = name
+		} else {
+			term.name = danmakuMatchFileName(m.Path)
+		}
+		if m.EpisodeNum > 0 {
+			term.episode = strconv.Itoa(m.EpisodeNum)
+		}
+		return term, m, nil
+	}
 	if s == nil || s.repo == nil || s.repo.Media == nil {
 		return term, nil, errors.New("media repository unavailable")
 	}
@@ -484,7 +527,14 @@ func (s *DanmakuService) hashCachePut(stamp, hash string) {
 // ("xxx.mkv.strm") — so a second strip removes a real video extension only
 // (filepath.Ext would misread names like "xxx.第01话" as having an extension).
 func danmakuMatchFileName(path string) string {
-	base := filepath.Base(path)
+	if path == "" {
+		return ""
+	}
+	clean := strings.ReplaceAll(path, "\\", "/")
+	if idx := strings.LastIndex(clean, "/"); idx >= 0 {
+		clean = clean[idx+1:]
+	}
+	base := filepath.Base(clean)
 	if ext := filepath.Ext(base); ext != "" {
 		base = strings.TrimSuffix(base, ext)
 	}
@@ -493,14 +543,20 @@ func danmakuMatchFileName(path string) string {
 			base = strings.TrimSuffix(base, filepath.Ext(base))
 		}
 	}
-	return base
+	return strings.TrimSpace(base)
 }
 
 // mediaHash returns the dandanplay match hash (MD5 of the first 16MB of the
-// video). Local videos are hashed straight from disk; .strm indirections are
-// resolved (local path / direct link) and only the 16MB prefix is downloaded.
+// video). Local videos are hashed straight from disk; .strm indirections and
+// remote Emby streams are range-fetched and only the 16MB prefix is downloaded.
 func (s *DanmakuService) mediaHash(ctx context.Context, media *model.Media) (string, bool) {
-	if media == nil || media.Path == "" {
+	if media == nil {
+		return "", false
+	}
+	if IsEmbyRemoteID(media.ID) {
+		return s.hashEmbyRemote(ctx, media)
+	}
+	if media.Path == "" {
 		return "", false
 	}
 	if strings.EqualFold(filepath.Ext(media.Path), ".strm") {
@@ -515,6 +571,43 @@ func (s *DanmakuService) mediaHash(ctx context.Context, media *model.Media) (str
 		return s.hashStrmTarget(ctx, target)
 	}
 	return s.hashLocalFile(media.Path)
+}
+
+// hashEmbyRemote computes the 16MB-prefix MD5 of a remote Emby stream via HTTP Range.
+func (s *DanmakuService) hashEmbyRemote(ctx context.Context, media *model.Media) (string, bool) {
+	if media == nil || media.ID == "" {
+		return "", false
+	}
+	if h, ok := s.hashCacheGet("e|" + media.ID); ok {
+		return h, true
+	}
+	if s.remoteResolve == nil {
+		return "", false
+	}
+	_, streamURL, err := s.remoteResolve(ctx, media.ID)
+	if err != nil || strings.TrimSpace(streamURL) == "" {
+		if err != nil {
+			s.log.Warn("danmaku emby stream url resolve failed, hash layer skipped",
+				zap.String("media_id", media.ID), zap.Error(err))
+		}
+		return "", false
+	}
+	body, err := s.openRangeBody(ctx, streamURL, nil)
+	if err != nil || body == nil {
+		if err != nil {
+			s.log.Warn("danmaku emby range fetch failed, hash layer skipped",
+				zap.String("media_id", media.ID), zap.Error(err))
+		}
+		return "", false
+	}
+	defer body.Close()
+	h := md5.New()
+	if _, err := io.Copy(h, io.LimitReader(body, danmakuHashPrefixBytes)); err != nil {
+		return "", false
+	}
+	hash := hex.EncodeToString(h.Sum(nil))
+	s.hashCachePut("e|"+media.ID, hash)
+	return hash, true
 }
 
 // hashLocalFile computes the MD5 of the first 16MB of a local video, cached

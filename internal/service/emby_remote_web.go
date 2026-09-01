@@ -36,23 +36,28 @@ func (r *EmbyRemoteService) RemoteLibraries(ctx context.Context) ([]RemoteLibrar
 	if err != nil || len(mounts) == 0 {
 		return nil, err
 	}
-	// 按账号分组，每账号拉一次 Views 做匹配。
-	byAccount := map[string][]*model.EmbyMount{}
+	type accountData struct {
+		acct       *model.StrmAccount
+		cfg        *EmbyRemoteConfig
+		viewByName map[string]map[string]any
+	}
+	acctData := map[string]*accountData{}
 	for i := range mounts {
-		m := mounts[i]
+		m := &mounts[i]
 		if !m.Enabled {
 			continue
 		}
-		byAccount[m.AccountID] = append(byAccount[m.AccountID], &mounts[i])
-	}
-	out := make([]RemoteLibraryView, 0, len(mounts))
-	for accountID, accountMounts := range byAccount {
-		acct := r.AccountByID(ctx, accountID)
+		if _, ok := acctData[m.AccountID]; ok {
+			continue
+		}
+		acct := r.AccountByID(ctx, m.AccountID)
 		if acct == nil {
+			acctData[m.AccountID] = nil
 			continue
 		}
 		cfg, cfgErr := r.configOf(acct)
 		if cfgErr != nil {
+			acctData[m.AccountID] = nil
 			continue
 		}
 		views, viewErr := r.RemoteViews(ctx, acct)
@@ -61,30 +66,46 @@ func (r *EmbyRemoteService) RemoteLibraries(ctx context.Context) ([]RemoteLibrar
 				r.log.Warn("web remote emby views failed",
 					zap.String("account", acct.Name), zap.Error(viewErr))
 			}
+			acctData[m.AccountID] = nil
 			continue
 		}
 		viewByName := map[string]map[string]any{}
 		for _, v := range views {
 			viewByName[remoteItemString(v, "Id")] = v
 		}
-		for _, mount := range accountMounts {
-			v, ok := viewByName[mount.RemoteViewID]
-			if !ok {
-				continue // 远程已删除该媒体库
-			}
-			lib := r.mapRemoteMountToLibrary(mount, acct, cfg, v)
-			if lib == nil {
-				continue
-			}
-			out = append(out, RemoteLibraryView{
-				Library:        *lib,
-				MountID:        mount.ID,
-				AccountID:      acct.ID,
-				RemoteID:       mount.RemoteViewID,
-				CollectionType: mount.CollectionType,
-				AccountName:    acct.Name,
-			})
+		acctData[m.AccountID] = &accountData{
+			acct:       acct,
+			cfg:        cfg,
+			viewByName: viewByName,
 		}
+	}
+
+	out := make([]RemoteLibraryView, 0, len(mounts))
+	for i := range mounts {
+		m := &mounts[i]
+		if !m.Enabled {
+			continue
+		}
+		data := acctData[m.AccountID]
+		if data == nil || data.viewByName == nil {
+			continue
+		}
+		v, ok := data.viewByName[m.RemoteViewID]
+		if !ok {
+			continue // 远程已删除该媒体库
+		}
+		lib := r.mapRemoteMountToLibrary(m, data.acct, data.cfg, v)
+		if lib == nil {
+			continue
+		}
+		out = append(out, RemoteLibraryView{
+			Library:        *lib,
+			MountID:        m.ID,
+			AccountID:      data.acct.ID,
+			RemoteID:       m.RemoteViewID,
+			CollectionType: m.CollectionType,
+			AccountName:    data.acct.Name,
+		})
 	}
 	return out, nil
 }
@@ -125,13 +146,13 @@ func (r *EmbyRemoteService) mapRemoteMountToLibrary(mount *model.EmbyMount, acct
 	case "music":
 		libType = "music"
 	}
-	lib := &model.Library{
-		Base:      model.Base{ID: EncodeEmbyRemoteID(mount.ID, mount.RemoteViewID)},
-		Name:      name,
-		Type:      libType,
-		Enabled:   true,
-		SortOrder: 1000, // 远程库排在本地库之后
-	}
+		lib := &model.Library{
+			Base:      model.Base{ID: EncodeEmbyRemoteID(mount.ID, mount.RemoteViewID)},
+			Name:      name,
+			Type:      libType,
+			Enabled:   true,
+			SortOrder: 1000 + mount.SortOrder, // 远程库排在本地库之后，且保持挂载库排序
+		}
 	// 远程媒体库封面只有真实存在图片标签才下发。
 	if remoteItemHasImageTag(item, "Primary") {
 		lib.CoverURL = r.remoteItemImageURL(cfg, mount.RemoteViewID, "Primary")

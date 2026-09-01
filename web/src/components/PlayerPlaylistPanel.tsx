@@ -89,7 +89,7 @@ export function PlayerPlaylistPanel({
   return (
     <div
       onClick={(e) => e.stopPropagation()}
-      className="absolute right-4 top-16 bottom-20 z-30 flex w-80 sm:w-96 flex-col rounded-2xl border border-white/15 bg-black/85 text-white shadow-2xl backdrop-blur-md overflow-hidden"
+      className="absolute inset-x-3 top-12 bottom-3 z-30 flex flex-col overflow-hidden rounded-2xl border border-white/15 bg-black/85 text-white shadow-2xl backdrop-blur-md sm:inset-x-auto sm:right-4 sm:top-16 sm:bottom-20 sm:w-96"
     >
       {/* 头部 */}
       <div className="flex items-center justify-between border-b border-white/10 px-4 py-3 shrink-0">

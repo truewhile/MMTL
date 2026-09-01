@@ -53,7 +53,7 @@ export function Layout() {
   const isPlayPage = location.pathname.startsWith('/play')
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[var(--app-bg)] text-[var(--app-text)] font-body select-none">
+    <div className="flex h-[100dvh] min-h-0 w-full overflow-hidden bg-[var(--app-bg)] text-[var(--app-text)] font-body select-none">
       <LayoutSidebars
         sidebar={sidebar}
         isAdmin={permissions.isAdmin}

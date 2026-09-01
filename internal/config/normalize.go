@@ -44,6 +44,9 @@ func (c *Config) normalize() error {
 	if c.Cache.CacheDir == "" {
 		c.Cache.CacheDir = filepath.Join(c.App.DataDir, "cache")
 	}
+	if c.Cache.ImagesMaxSizeMB < 0 {
+		c.Cache.ImagesMaxSizeMB = 0
+	}
 	if c.Cache.RedisPrefix == "" {
 		c.Cache.RedisPrefix = "mmtl"
 	}

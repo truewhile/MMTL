@@ -196,3 +196,27 @@ func deleteEmbyMountHandler(svc *service.Container) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	}
 }
+
+type reorderEmbyMountsReq struct {
+	IDs []string `json:"ids" binding:"required"`
+}
+
+// reorderEmbyMountsHandler 批量重排挂载媒体库顺序。
+func reorderEmbyMountsHandler(svc *service.Container) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req reorderEmbyMountsReq
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if svc.EmbyRemote == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "emby remote service not available"})
+			return
+		}
+		if err := svc.EmbyRemote.ReorderMounts(c.Request.Context(), req.IDs); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	}
+}

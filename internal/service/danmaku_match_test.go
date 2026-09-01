@@ -344,3 +344,105 @@ func TestDanmakuSameBase(t *testing.T) {
 		require.Equal(t, "手动搜索动画B", resManual.AnimeTitle)
 		require.Contains(t, resManual.Raw, "手动搜索弹幕")
 	}
+
+// Emby 远程挂载条目：通过伪装 ID 解析出流直链，通过 Range 提取 16MB 前缀计算 hash 并匹配弹幕。
+func TestDanmakuFetchEmbyRemoteHashViaDirectLink(t *testing.T) {
+	content := bytes.Repeat([]byte("emby-remote-video-bytes-9876543210"), 300)
+	sum := md5.Sum(content)
+	wantHash := hex.EncodeToString(sum[:])
+
+	var gotRange string
+	var rangeHits int
+	rangeSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rangeHits++
+		gotRange = r.Header.Get("Range")
+		w.Header().Set("Content-Type", "application/octet-stream")
+		_, _ = w.Write(content)
+	}))
+	t.Cleanup(rangeSrv.Close)
+
+	var seen string
+	official := danmakuOfficialServer(t,
+		`{"success":true,"isMatched":true,"matches":[{"episodeId":25484,"animeId":2001,"animeTitle":"芙莉莲","episodeTitle":"第1话"}]}`,
+		`<?xml version="1.0"?><i><d p="1.2,1,16777215,user1">Emby远程弹幕命中</d></i>`,
+		&seen)
+	overrideDanmakuOfficialBase(t, official.URL)
+
+	remoteMediaID := EncodeEmbyRemoteID("mount-123", "remote-item-456")
+	svc := newDanmakuTestService(t)
+	svc.SetRemoteMediaResolver(func(_ context.Context, encodedID string) (*model.Media, string, error) {
+		require.Equal(t, remoteMediaID, encodedID)
+		return &model.Media{
+			Base:         model.Base{ID: remoteMediaID},
+			Title:        "葬送的芙莉莲",
+			EpisodeTitle: "第1话",
+			EpisodeNum:   1,
+			Path:         "/mnt/emby/anime/Frieren/S01E01.mkv",
+			SizeBytes:    int64(len(content)),
+			DurationSec:  1400,
+		}, rangeSrv.URL, nil
+	})
+
+	ctx := context.Background()
+	res, err := svc.Fetch(ctx, remoteMediaID, "", "")
+	require.NoError(t, err)
+	require.True(t, res.Enabled)
+	require.Equal(t, "hash", res.MatchMode)
+	require.Equal(t, int64(25484), res.EpisodeID)
+	require.Equal(t, "芙莉莲", res.AnimeTitle)
+	require.Contains(t, res.Raw, "Emby远程弹幕命中")
+	require.Contains(t, gotRange, "bytes=0-")
+	require.Contains(t, seen, `"fileHash":"`+wantHash+`"`)
+	require.Contains(t, seen, `"fileName":"`+url.QueryEscape("S01E01")+`"`)
+	require.Equal(t, 1, rangeHits)
+
+	// 第二次拉取验证 hashCache 命中，不重复请求 rangeSrv
+	res2, err := svc.Fetch(ctx, remoteMediaID, "", "")
+	require.NoError(t, err)
+	require.Equal(t, "hash", res2.MatchMode)
+	require.Equal(t, 1, rangeHits)
+}
+
+// Emby 远程直链拉取失败时（如网络异常），能平滑降级走番剧原名/标题关键词搜索。
+func TestDanmakuFetchEmbyRemoteStreamFailedFallsBackToSearch(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v2/search/episodes", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// 文件名搜索 ep01 时无结果，模拟文件名未匹配
+		if r.URL.Query().Get("anime") == "ep01" {
+			fmt.Fprint(w, `{"hasMore":false,"animes":[]}`)
+			return
+		}
+		// 降级到番剧名搜索命中
+		fmt.Fprint(w, `{"hasMore":false,"animes":[{"animeId":3001,"animeTitle":"降级搜索番剧","episodes":[{"episodeId":7799,"episodeTitle":"第1话"}]}]}`)
+	})
+	mux.HandleFunc("/api/v2/comment/7799", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		fmt.Fprint(w, `<?xml version="1.0"?><i><d p="0.8,1,16777215,user1">降级搜索弹幕</d></i>`)
+	})
+	official := httptest.NewServer(mux)
+	t.Cleanup(official.Close)
+	overrideDanmakuOfficialBase(t, official.URL)
+
+	remoteMediaID := EncodeEmbyRemoteID("mount-123", "remote-item-789")
+	svc := newDanmakuTestService(t)
+	// 返回一个不存在的流服务地址模拟 Range 拉取失败
+	svc.SetRemoteMediaResolver(func(_ context.Context, encodedID string) (*model.Media, string, error) {
+		return &model.Media{
+			Base:        model.Base{ID: remoteMediaID},
+			Title:       "降级搜索番剧",
+			EpisodeNum:  1,
+			Path:        "/mnt/emby/anime/fallback/ep01.mkv",
+			DurationSec: 1200,
+		}, "http://127.0.0.1:1/invalid-stream", nil
+	})
+
+	ctx := context.Background()
+	res, err := svc.Fetch(ctx, remoteMediaID, "", "")
+	require.NoError(t, err)
+	require.True(t, res.Enabled)
+	require.Equal(t, "search", res.MatchMode)
+	require.Equal(t, int64(7799), res.EpisodeID)
+	require.Equal(t, "降级搜索番剧", res.AnimeTitle)
+	require.Contains(t, res.Raw, "降级搜索弹幕")
+}

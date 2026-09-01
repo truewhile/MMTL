@@ -84,3 +84,13 @@ func (p *ImageProxy) libraryRoots() []string {
 	p.libRootsAt = time.Now()
 	return p.libRootsCache
 }
+
+// Prune removes oldest cached images until disk usage is within the configured limit.
+func (p *ImageProxy) Prune() (PruneImageCacheResult, error) {
+	if p.cfg == nil || p.cfg.Cache.ImagesMaxSizeMB <= 0 {
+		return PruneImageCacheResult{}, nil
+	}
+	maxBytes := int64(p.cfg.Cache.ImagesMaxSizeMB) * 1024 * 1024
+	return PruneImageCache(p.cacheDir, maxBytes)
+}
+
