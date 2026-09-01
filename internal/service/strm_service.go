@@ -273,9 +273,10 @@ func HasStrmAccountCredential(acct *model.StrmAccount) bool {
 	case model.StrmProviderOpenList:
 		return strings.Contains(acct.Config, `"token"`) || strings.Contains(acct.Config, `"password"`)
 	case model.StrmProviderEmbyRemote:
-		// 远程 Emby：已保存接入地址与认证凭据（自动认证得到的 token 或手动 api_key）。
+		// 远程 Emby：接入地址 + (自动认证凭据 或 手动 api_key) 即视为已配置。
 		return strings.Contains(acct.Config, `"url"`) &&
-			(strings.Contains(acct.Config, `"token"`) || strings.Contains(acct.Config, `"api_key"`))
+			(strings.Contains(acct.Config, `"token"`) || strings.Contains(acct.Config, `"api_key"`) ||
+				(strings.Contains(acct.Config, `"username"`) && strings.Contains(acct.Config, `"password"`)))
 	default:
 		return strings.Contains(acct.Config, `"password"`) || strings.Contains(acct.Config, `"token"`)
 	}

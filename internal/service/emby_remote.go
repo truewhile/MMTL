@@ -406,6 +406,9 @@ func (r *EmbyRemoteService) RemotePlaybackInfo(ctx context.Context, acct *model.
 }
 
 // rewritePlayURLs 按代理模式重写载荷内 MediaSources 的播放地址。
+// 远程 Emby 的 PlaybackInfo 通常不返回 DirectStreamUrl（客户端靠它拼
+// /Videos/{Id}/stream），因此这里总是强制构造播放地址，完全由 MMTL 掌控
+// 直连（远程绝对 URL）或代理（本地 /Videos/{encoded}）的最终去向。
 func (r *EmbyRemoteService) rewritePlayURLs(value any, acct *model.StrmAccount, cfg *EmbyRemoteConfig, remoteID string) {
 	encoded := EncodeEmbyRemoteID(acct.ID, remoteID)
 	sources := collectMediaSources(value)
@@ -426,9 +429,8 @@ func (r *EmbyRemoteService) rewritePlayURLs(value any, acct *model.StrmAccount, 
 			}
 			subtitlePlayURL = base + "/Videos/" + url.PathEscape(remoteID)
 		}
-		if _, exists := src["DirectStreamUrl"]; exists {
-			src["DirectStreamUrl"] = streamPath
-		}
+		// 直连/代理地址总是下发（PlaybackInfo 语义：客户端直接请求该 URL）。
+		src["DirectStreamUrl"] = streamPath
 		if _, exists := src["TranscodingUrl"]; exists {
 			src["TranscodingUrl"] = streamPath
 		}
