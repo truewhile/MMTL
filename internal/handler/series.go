@@ -68,13 +68,13 @@ func listLibrarySeriesHandler(svc *service.Container) gin.HandlerFunc {
 		ctx := c.Request.Context()
 		// 远程剧集库：远程 Series 映射为系列卡片。
 		if svc.EmbyRemote != nil && service.IsEmbyRemoteID(libID) {
-			acctID, remoteID, _ := service.DecodeEmbyRemoteID(libID)
-			acct := svc.EmbyRemote.AccountByID(ctx, acctID)
-			if acct == nil {
+			mountID, remoteID, _ := service.DecodeEmbyRemoteID(libID)
+			mount, acct, _ := svc.EmbyRemote.ResolveMount(ctx, mountID)
+			if mount == nil || acct == nil {
 				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 				return
 			}
-			cards, err := svc.EmbyRemote.RemoteSeriesCards(ctx, acct, remoteID)
+			cards, err := svc.EmbyRemote.RemoteSeriesCards(ctx, mount, acct, remoteID)
 			if err != nil {
 				writeInternalOrCanceled(c, err)
 				return
@@ -159,13 +159,13 @@ func listLibrarySeriesEpisodesHandler(svc *service.Container) gin.HandlerFunc {
 		ctx := c.Request.Context()
 		// 远程系列 key（伪装系列 ID）：转发远程该系列全部剧集。
 		if svc.EmbyRemote != nil && service.IsEmbyRemoteID(key) {
-			acctID, remoteSeriesID, _ := service.DecodeEmbyRemoteID(key)
-			acct := svc.EmbyRemote.AccountByID(ctx, acctID)
-			if acct == nil {
+			mountID, remoteSeriesID, _ := service.DecodeEmbyRemoteID(key)
+			mount, acct, _ := svc.EmbyRemote.ResolveMount(ctx, mountID)
+			if mount == nil || acct == nil {
 				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 				return
 			}
-			items, err := svc.EmbyRemote.RemoteEpisodes(ctx, acct, remoteSeriesID)
+			items, err := svc.EmbyRemote.RemoteEpisodes(ctx, mount, acct, remoteSeriesID)
 			if err != nil {
 				writeInternalOrCanceled(c, err)
 				return
@@ -201,13 +201,13 @@ func listMediaEpisodesHandler(svc *service.Container) gin.HandlerFunc {
 		ctx := c.Request.Context()
 		// 远程条目：单集→同系列集列表；系列/季/文件夹→子集；电影→自身单条。
 		if svc.EmbyRemote != nil && service.IsEmbyRemoteID(id) {
-			acctID, remoteID, _ := service.DecodeEmbyRemoteID(id)
-			acct := svc.EmbyRemote.AccountByID(ctx, acctID)
-			if acct == nil {
+			mountID, remoteID, _ := service.DecodeEmbyRemoteID(id)
+			mount, acct, _ := svc.EmbyRemote.ResolveMount(ctx, mountID)
+			if mount == nil || acct == nil {
 				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 				return
 			}
-			items, err := svc.EmbyRemote.RemoteEpisodes(ctx, acct, remoteID)
+			items, err := svc.EmbyRemote.RemoteEpisodes(ctx, mount, acct, remoteID)
 			if err != nil {
 				writeInternalOrCanceled(c, err)
 				return

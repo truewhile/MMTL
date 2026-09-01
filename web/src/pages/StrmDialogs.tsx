@@ -91,7 +91,6 @@ const PROVIDER_OPTIONS: { provider: StrmProvider; label: string; desc: string }[
   { provider: 'cloud115', label: '115 网盘', desc: '开放平台 OAuth 授权（扫码/网页）' },
   { provider: 'clouddrive2', label: 'CloudDrive2', desc: 'WebDAV 桥接多种网盘' },
   { provider: 'openlist', label: 'OpenList', desc: 'OpenList / AList 兼容服务' },
-  { provider: 'emby_remote', label: 'Emby 远程挂载', desc: '聚合远程 Emby 媒体库，不落库实时透传' },
 ]
 
 export function StrmAccountDialog({

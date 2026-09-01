@@ -58,5 +58,6 @@ func AllModels() []interface{} {
 			&StrmUploadTask{},
 			&StrmDirCache{},
 			&ScrapeTask{},
+			&EmbyMount{},
 		}
 }

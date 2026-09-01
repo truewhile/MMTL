@@ -46,6 +46,14 @@ func registerAdminScraperRoutes(admin *gin.RouterGroup, svc *service.Container) 
 }
 
 func registerAdminStrmRoutes(admin *gin.RouterGroup, svc *service.Container) {
+	// Emby 挂载管理：远程 Emby 媒体库挂载（账号复用 strm/accounts）
+	admin.GET("/emby/accounts/:id/views", embyAccountViewsHandler(svc))
+	admin.POST("/emby/accounts/:id/full-mount", fullMountEmbyAccountHandler(svc))
+	admin.GET("/emby/mounts", listEmbyMountsHandler(svc))
+	admin.POST("/emby/mounts", createEmbyMountsHandler(svc))
+	admin.PUT("/emby/mounts/:id", updateEmbyMountHandler(svc))
+	admin.DELETE("/emby/mounts/:id", deleteEmbyMountHandler(svc))
+
 	admin.GET("/strm/accounts", listStrmAccountsHandler(svc))
 	admin.POST("/strm/accounts", createStrmAccountHandler(svc))
 	admin.PUT("/strm/accounts/:id", updateStrmAccountHandler(svc))

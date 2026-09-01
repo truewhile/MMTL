@@ -26,6 +26,7 @@ const ProfileManagementPage = lazy(() =>
   import('./pages/ProfileManagementPage').then((m) => ({ default: m.ProfileManagementPage })),
 )
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
+const EmbyMountPage = lazy(() => import('./pages/EmbyMountPage').then((m) => ({ default: m.EmbyMountPage })))
 const StrmManagePage = lazy(() => import('./pages/StrmManagePage').then((m) => ({ default: m.StrmManagePage })))
 const StrmDownloadQueuePage = lazy(() =>
   import('./pages/StrmQueuePage').then((m) => ({ default: m.StrmDownloadQueuePage })),
@@ -62,6 +63,7 @@ export const appRoutes: AppRoute[] = [
   { path: 'tools', element: <Navigate to="/files" replace /> },
   { path: 'files', element: <FileManagerPage />, adminOnly: true },
   { path: 'settings', element: <SettingsPage />, adminOnly: true },
+  { path: 'emby-mount', element: <EmbyMountPage />, adminOnly: true },
   { path: 'strm', element: <StrmManagePage />, adminOnly: true },
   { path: 'strm/downloads', element: <StrmDownloadQueuePage />, adminOnly: true },
   { path: 'strm/uploads', element: <StrmUploadQueuePage />, adminOnly: true },

@@ -100,11 +100,12 @@ func listLibrariesHandler(svc *service.Container) gin.HandlerFunc {
 					wl := webLibraryPayload{Library: v.Library, IsRemoteEmby: true, RemoteSource: v.AccountName}
 					if withPreview {
 						if acct := svc.EmbyRemote.AccountByID(ctx, v.AccountID); acct != nil {
+							tmpMount := &model.EmbyMount{Base: model.Base{ID: v.MountID}}
 							itemTypes := remoteLibraryItemTypes(v.CollectionType)
-							if _, total, err := svc.EmbyRemote.RemoteLibraryMedia(ctx, acct, v.RemoteID, itemTypes, 0, 1); err == nil {
+							if _, total, err := svc.EmbyRemote.RemoteLibraryMedia(ctx, tmpMount, acct, v.RemoteID, itemTypes, 0, 1); err == nil {
 								wl.Total = total
 							}
-							if cards, err := svc.EmbyRemote.RemoteLatestCards(ctx, acct, v.RemoteID, limit); err == nil {
+							if cards, err := svc.EmbyRemote.RemoteLatestCards(ctx, tmpMount, acct, v.RemoteID, limit); err == nil {
 								wl.Cards = cards
 							}
 						}
@@ -123,8 +124,8 @@ func getLibraryHandler(svc *service.Container) gin.HandlerFunc {
 		id := c.Param("id")
 		// 远程 Emby 挂载库详情。
 		if svc.EmbyRemote != nil && service.IsEmbyRemoteID(id) {
-			acctID, remoteID, _ := service.DecodeEmbyRemoteID(id)
-			view, err := svc.EmbyRemote.RemoteLibraryByID(ctx, acctID, remoteID)
+			mountID, remoteID, _ := service.DecodeEmbyRemoteID(id)
+			view, err := svc.EmbyRemote.RemoteLibraryByID(ctx, mountID, remoteID)
 			if err != nil || view == nil {
 				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 				return
@@ -302,17 +303,17 @@ func listMediaHandler(svc *service.Container) gin.HandlerFunc {
 		size, _ := strconv.Atoi(c.DefaultQuery("page_size", "50"))
 		// 远程 Emby 库：转发远程直属条目并映射为本地 Media 结构（分页由远程承接）。
 		if svc.EmbyRemote != nil && service.IsEmbyRemoteID(id) {
-			acctID, remoteID, _ := service.DecodeEmbyRemoteID(id)
-			acct := svc.EmbyRemote.AccountByID(ctx, acctID)
-			if acct == nil {
+			mountID, remoteID, _ := service.DecodeEmbyRemoteID(id)
+			mount, acct, _ := svc.EmbyRemote.ResolveMount(ctx, mountID)
+			if mount == nil || acct == nil {
 				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 				return
 			}
 			itemTypes := ""
-			if view, err := svc.EmbyRemote.RemoteLibraryByID(ctx, acctID, remoteID); err == nil && view != nil {
+			if view, err := svc.EmbyRemote.RemoteLibraryByID(ctx, mountID, remoteID); err == nil && view != nil {
 				itemTypes = remoteLibraryItemTypes(view.CollectionType)
 			}
-			items, total, err := svc.EmbyRemote.RemoteLibraryMedia(ctx, acct, remoteID, itemTypes, (page-1)*size, size)
+			items, total, err := svc.EmbyRemote.RemoteLibraryMedia(ctx, mount, acct, remoteID, itemTypes, (page-1)*size, size)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
@@ -369,13 +370,13 @@ func getMediaHandler(svc *service.Container) gin.HandlerFunc {
 		id := c.Param("id")
 		// 远程 Emby 条目：拉远程详情并映射为本地 Media 结构。
 		if svc.EmbyRemote != nil && service.IsEmbyRemoteID(id) {
-			acctID, remoteID, _ := service.DecodeEmbyRemoteID(id)
-			acct := svc.EmbyRemote.AccountByID(ctx, acctID)
-			if acct == nil {
+			mountID, remoteID, _ := service.DecodeEmbyRemoteID(id)
+			mount, acct, _ := svc.EmbyRemote.ResolveMount(ctx, mountID)
+			if mount == nil || acct == nil {
 				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 				return
 			}
-			m, err := svc.EmbyRemote.RemoteMediaDetail(ctx, acct, remoteID)
+			m, err := svc.EmbyRemote.RemoteMediaDetail(ctx, mount, acct, remoteID)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
@@ -487,12 +488,20 @@ func streamHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		id := c.Param("id")
-		// 远程 Emby 条目：302 直连远程流（网页播放器 video 标签跟随重定向）。
+		// 远程 Emby 条目：按挂载代理配置分流——代理走 MMTL 反代，否则 302 直连。
 		if svc.EmbyRemote != nil && service.IsEmbyRemoteID(id) {
-			acctID, remoteID, _ := service.DecodeEmbyRemoteID(id)
-			acct := svc.EmbyRemote.AccountByID(ctx, acctID)
-			if acct == nil {
+			mountID, remoteID, _ := service.DecodeEmbyRemoteID(id)
+			mount, acct, _ := svc.EmbyRemote.ResolveMount(ctx, mountID)
+			if mount == nil || acct == nil {
 				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+				return
+			}
+			if mount.ProxyPlay {
+				if err := svc.Emby.ProxyRemoteVideoStream(ctx, c.Writer, c.Request, mountID, remoteID); err != nil {
+					if !c.Writer.Written() {
+						c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+					}
+				}
 				return
 			}
 			target, err := svc.EmbyRemote.WebStreamURL(ctx, acct, remoteID)

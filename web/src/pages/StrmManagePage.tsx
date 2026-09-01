@@ -74,7 +74,7 @@ export function StrmManagePage() {
   const refresh = useCallback(async () => {
     try {
       const [accts, pths, recs] = await Promise.all([
-        strmAPI.listAccounts(),
+        strmAPI.listAccounts().then((rows) => rows.filter((a) => a.provider !== 'emby_remote')),
         strmAPI.listPaths(),
         strmAPI.listRecords(),
       ])

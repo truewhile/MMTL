@@ -148,12 +148,12 @@ func (e *EmbyService) Items(ctx context.Context, p ItemsParams) (map[string]any,
 	if e.remote != nil {
 		// 远程目录浏览：ParentId 带远程前缀 → 完整转发给远程 Emby 承接分页。
 		if IsEmbyRemoteID(p.ParentID) {
-			acctID, _, _ := DecodeEmbyRemoteID(p.ParentID)
-			acct := e.remote.AccountByID(ctx, acctID)
-			if acct == nil {
+			mountID, _, _ := DecodeEmbyRemoteID(p.ParentID)
+			mount, acct, _ := e.remote.ResolveMount(ctx, mountID)
+			if mount == nil || acct == nil {
 				return emptyItemsEnvelope(p.StartIndex), nil
 			}
-			return e.remote.RemoteItems(ctx, acct, p)
+			return e.remote.RemoteItems(ctx, mount, acct, p)
 		}
 		// 全局搜索：无 ParentId 且带搜索词 → 聚合本地 + 全部远程。
 		if p.ParentID == "" && p.SearchTerm != "" {
@@ -250,12 +250,23 @@ func (e *EmbyService) aggregatedSearch(ctx context.Context, p ItemsParams) (map[
 	type remoteResult struct {
 		items []any
 	}
-	accounts, aerr := e.remote.ListAccounts(ctx)
-	results := make([]remoteResult, 0, len(accounts))
+	mounts, aerr := e.remote.ListMounts(ctx)
+	results := make([]remoteResult, 0, len(mounts))
 	if aerr == nil {
-		for i := range accounts {
-			acct := &accounts[i]
-			remote, rerr := e.remote.RemoteItems(ctx, acct, p)
+		for i := range mounts {
+			m := mounts[i]
+			if !m.Enabled {
+				continue
+			}
+			acct := e.remote.AccountByID(ctx, m.AccountID)
+			if acct == nil {
+				continue
+			}
+			// 按挂载逐个搜索：搜索结果归属明确（伪装 ID 正确），也天然只搜已
+			// 挂载的媒体库。
+			searchParams := p
+			searchParams.ParentID = "" // RemoteSearchMount 内部设 ParentId
+			remote, rerr := e.remote.RemoteSearchMount(ctx, &m, acct, p)
 			if rerr != nil {
 				if e.log != nil {
 					e.log.Warn("remote emby search failed",

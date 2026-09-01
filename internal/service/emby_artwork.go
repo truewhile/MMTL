@@ -13,9 +13,9 @@ import (
 func (e *EmbyService) ImageURL(ctx context.Context, id, imageType string) (string, error) {
 	// 远程 Emby 条目：直接返回远程图片绝对地址，由 ImageProxy 拉取透传。
 	if e.remote != nil && IsEmbyRemoteID(id) {
-		acctID, remoteID, _ := DecodeEmbyRemoteID(id)
-		acct := e.remote.AccountByID(ctx, acctID)
-		if acct == nil {
+		mountID, remoteID, _ := DecodeEmbyRemoteID(id)
+		mount, acct, _ := e.remote.ResolveMount(ctx, mountID)
+		if mount == nil || acct == nil {
 			return "", nil
 		}
 		return e.remote.RemoteImageURL(ctx, acct, remoteID, imageType)

@@ -19,24 +19,38 @@ import (
 	"github.com/ShukeBta/MMTL/internal/model"
 )
 
-// RemoteLibraryView 是一个网页端可见的远程媒体库（对应远程 Emby 一个 View）。
+// RemoteLibraryView 是一个网页端可见的远程媒体库（对应一个挂载的远程 View）。
 type RemoteLibraryView struct {
 	Library        model.Library
+	MountID        string
 	AccountID      string
 	RemoteID       string
 	CollectionType string
 	AccountName    string
 }
 
-// RemoteLibraries 把所有启用远程账号的 View 映射为网页媒体库列表。
+// RemoteLibraries 把所有启用挂载的远程媒体库映射为网页媒体库列表
+// （只有显式挂载的库才出现在本项目媒体库中）。
 func (r *EmbyRemoteService) RemoteLibraries(ctx context.Context) ([]RemoteLibraryView, error) {
-	accounts, err := r.ListAccounts(ctx)
-	if err != nil || len(accounts) == 0 {
+	mounts, err := r.ListMounts(ctx)
+	if err != nil || len(mounts) == 0 {
 		return nil, err
 	}
-	out := make([]RemoteLibraryView, 0, len(accounts)*2)
-	for i := range accounts {
-		acct := &accounts[i]
+	// 按账号分组，每账号拉一次 Views 做匹配。
+	byAccount := map[string][]*model.EmbyMount{}
+	for i := range mounts {
+		m := mounts[i]
+		if !m.Enabled {
+			continue
+		}
+		byAccount[m.AccountID] = append(byAccount[m.AccountID], &mounts[i])
+	}
+	out := make([]RemoteLibraryView, 0, len(mounts))
+	for accountID, accountMounts := range byAccount {
+		acct := r.AccountByID(ctx, accountID)
+		if acct == nil {
+			continue
+		}
 		cfg, cfgErr := r.configOf(acct)
 		if cfgErr != nil {
 			continue
@@ -49,16 +63,25 @@ func (r *EmbyRemoteService) RemoteLibraries(ctx context.Context) ([]RemoteLibrar
 			}
 			continue
 		}
+		viewByName := map[string]map[string]any{}
 		for _, v := range views {
-			lib := r.mapRemoteViewToLibrary(acct, cfg, v)
+			viewByName[remoteItemString(v, "Id")] = v
+		}
+		for _, mount := range accountMounts {
+			v, ok := viewByName[mount.RemoteViewID]
+			if !ok {
+				continue // 远程已删除该媒体库
+			}
+			lib := r.mapRemoteMountToLibrary(mount, acct, cfg, v)
 			if lib == nil {
 				continue
 			}
 			out = append(out, RemoteLibraryView{
 				Library:        *lib,
+				MountID:        mount.ID,
 				AccountID:      acct.ID,
-				RemoteID:       remoteItemString(v, "Id"),
-				CollectionType: remoteItemString(v, "CollectionType"),
+				RemoteID:       mount.RemoteViewID,
+				CollectionType: mount.CollectionType,
 				AccountName:    acct.Name,
 			})
 		}
@@ -67,13 +90,13 @@ func (r *EmbyRemoteService) RemoteLibraries(ctx context.Context) ([]RemoteLibrar
 }
 
 // RemoteLibraryByID 按伪装 ID 查远程库视图（详情接口用）。
-func (r *EmbyRemoteService) RemoteLibraryByID(ctx context.Context, accountID, remoteID string) (*RemoteLibraryView, error) {
+func (r *EmbyRemoteService) RemoteLibraryByID(ctx context.Context, mountID, remoteViewID string) (*RemoteLibraryView, error) {
 	views, err := r.RemoteLibraries(ctx)
 	if err != nil {
 		return nil, err
 	}
 	for _, v := range views {
-		if v.AccountID == accountID && v.RemoteID == remoteID {
+		if v.MountID == mountID && v.RemoteID == remoteViewID {
 			cp := v
 			return &cp, nil
 		}
@@ -81,37 +104,49 @@ func (r *EmbyRemoteService) RemoteLibraryByID(ctx context.Context, accountID, re
 	return nil, nil
 }
 
-// mapRemoteViewToLibrary 把远程 View item 映射为网页库结构。
-func (r *EmbyRemoteService) mapRemoteViewToLibrary(acct *model.StrmAccount, cfg *EmbyRemoteConfig, item map[string]any) *model.Library {
-	remoteID := remoteItemString(item, "Id")
-	if remoteID == "" {
+// mapRemoteMountToLibrary 把挂载信息 + 远程 View item 映射为网页库结构。
+func (r *EmbyRemoteService) mapRemoteMountToLibrary(mount *model.EmbyMount, acct *model.StrmAccount, cfg *EmbyRemoteConfig, item map[string]any) *model.Library {
+	if mount == nil {
 		return nil
 	}
-	name := remoteItemString(item, "Name")
+	name := strings.TrimSpace(mount.Name)
+	if name == "" {
+		name = strings.TrimSpace(remoteItemString(item, "Name"))
+	}
 	if name == "" {
 		name = acct.Name
+	} else if !strings.Contains(name, acct.Name) {
+		name = acct.Name + " · " + name
 	}
 	libType := "movie"
-	switch remoteItemString(item, "CollectionType") {
+	switch mount.CollectionType {
 	case "tvshows":
 		libType = "tv"
 	case "music":
 		libType = "music"
 	}
-	return &model.Library{
-		Base:      model.Base{ID: EncodeEmbyRemoteID(acct.ID, remoteID)},
-		Name:      acct.Name + " · " + name,
+	lib := &model.Library{
+		Base:      model.Base{ID: EncodeEmbyRemoteID(mount.ID, mount.RemoteViewID)},
+		Name:      name,
 		Type:      libType,
-		CoverURL:  r.remoteItemImageURL(cfg, remoteID, "Primary"),
 		Enabled:   true,
 		SortOrder: 1000, // 远程库排在本地库之后
 	}
+	// 远程媒体库封面只有真实存在图片标签才下发。
+	if remoteItemHasImageTag(item, "Primary") {
+		lib.CoverURL = r.remoteItemImageURL(cfg, mount.RemoteViewID, "Primary")
+	}
+	return lib
 }
 
 // MapRemoteItemToMedia 把远程 Emby item JSON 映射为本地 Media 结构。
 // poster/backdrop 只有在远程确实存在图片标签时才填 URL（避免对无图条目
 // 发出必失败的图片请求导致前端破图）；剧集回退到系列海报（SeriesPrimaryImage）。
-func (r *EmbyRemoteService) MapRemoteItemToMedia(ctx context.Context, acct *model.StrmAccount, cfg *EmbyRemoteConfig, item map[string]any) model.Media {
+func (r *EmbyRemoteService) MapRemoteItemToMedia(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, cfg *EmbyRemoteConfig, item map[string]any) model.Media {
+	encodeScope := acct.ID
+	if mount != nil {
+		encodeScope = mount.ID
+	}
 	remoteID := remoteItemString(item, "Id")
 	// 条目可能已被 RewriteEmbyRemoteIDs 伪装（图片/嵌套 ID 需要原始远程 ID）。
 	if _, rid, ok := DecodeEmbyRemoteID(remoteID); ok {
@@ -122,7 +157,7 @@ func (r *EmbyRemoteService) MapRemoteItemToMedia(ctx context.Context, acct *mode
 		seriesID = rid
 	}
 	media := model.Media{
-		Base:         model.Base{ID: EncodeEmbyRemoteID(acct.ID, remoteID)},
+		Base:         model.Base{ID: EncodeEmbyRemoteID(encodeScope, remoteID)},
 		Title:        remoteItemString(item, "Name"),
 		OriginalName: remoteItemString(item, "OriginalTitle"),
 		Overview:     remoteItemString(item, "Overview"),
@@ -178,7 +213,7 @@ func (r *EmbyRemoteService) MapRemoteItemToMedia(ctx context.Context, acct *mode
 }
 
 // RemoteLibraryMedia 拉远程库直属条目（电影库=Movie，剧集库=Series），映射分页。
-func (r *EmbyRemoteService) RemoteLibraryMedia(ctx context.Context, acct *model.StrmAccount, remoteViewID string, itemTypes string, offset, limit int) ([]model.Media, int64, error) {
+func (r *EmbyRemoteService) RemoteLibraryMedia(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, remoteViewID string, itemTypes string, offset, limit int) ([]model.Media, int64, error) {
 	cfg, err := r.configOf(acct)
 	if err != nil {
 		return nil, 0, err
@@ -202,14 +237,14 @@ func (r *EmbyRemoteService) RemoteLibraryMedia(ctx context.Context, acct *model.
 	}
 	items := make([]model.Media, 0, len(body.Items))
 	for _, it := range body.Items {
-		RewriteEmbyRemoteIDs(it, acct.ID) // 嵌套/关联 ID 一并伪装
-		items = append(items, r.MapRemoteItemToMedia(ctx, acct, cfg, it))
+		RewriteEmbyRemoteIDs(it, mount.ID) // 嵌套/关联 ID 一并伪装
+		items = append(items, r.MapRemoteItemToMedia(ctx, mount, acct, cfg, it))
 	}
 	return items, body.TotalRecordCount, nil
 }
 
 // RemoteMediaDetail 拉远程单条目映射为 Media（网页详情页）。
-func (r *EmbyRemoteService) RemoteMediaDetail(ctx context.Context, acct *model.StrmAccount, remoteID string) (*model.Media, error) {
+func (r *EmbyRemoteService) RemoteMediaDetail(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, remoteID string) (*model.Media, error) {
 	cfg, err := r.configOf(acct)
 	if err != nil {
 		return nil, err
@@ -220,15 +255,15 @@ func (r *EmbyRemoteService) RemoteMediaDetail(ctx context.Context, acct *model.S
 	if err := r.doGet(ctx, acct, cfg, path, nil, &out); err != nil {
 		return nil, err
 	}
-	RewriteEmbyRemoteIDs(out, acct.ID)
-	m := r.MapRemoteItemToMedia(ctx, acct, cfg, out)
+	RewriteEmbyRemoteIDs(out, mount.ID)
+	m := r.MapRemoteItemToMedia(ctx, mount, acct, cfg, out)
 	return &m, nil
 }
 
 // RemoteEpisodes 拉远程条目下的集列表（Series/Season/Folder→子集；Episode→同系列；
 // Movie→自身单条），按季/集排序，与本地 ListMediaEpisodes 行为一致。
-func (r *EmbyRemoteService) RemoteEpisodes(ctx context.Context, acct *model.StrmAccount, remoteID string) ([]model.Media, error) {
-	detail, err := r.RemoteMediaDetail(ctx, acct, remoteID)
+func (r *EmbyRemoteService) RemoteEpisodes(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, remoteID string) ([]model.Media, error) {
+	detail, err := r.RemoteMediaDetail(ctx, mount, acct, remoteID)
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +284,7 @@ func (r *EmbyRemoteService) RemoteEpisodes(ctx context.Context, acct *model.Strm
 	default: // Movie
 		return []model.Media{*detail}, nil
 	}
-	rows, _, err := r.remoteEpisodesOf(ctx, acct, parentID)
+	rows, _, err := r.remoteEpisodesOf(ctx, mount, acct, parentID)
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +300,7 @@ func (r *EmbyRemoteService) RemoteEpisodes(ctx context.Context, acct *model.Strm
 	return rows, nil
 }
 
-func (r *EmbyRemoteService) remoteEpisodesOf(ctx context.Context, acct *model.StrmAccount, parentID string) ([]model.Media, int64, error) {
+func (r *EmbyRemoteService) remoteEpisodesOf(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, parentID string) ([]model.Media, int64, error) {
 	cfg, err := r.configOf(acct)
 	if err != nil {
 		return nil, 0, err
@@ -286,15 +321,15 @@ func (r *EmbyRemoteService) remoteEpisodesOf(ctx context.Context, acct *model.St
 	}
 	items := make([]model.Media, 0, len(body.Items))
 	for _, it := range body.Items {
-		RewriteEmbyRemoteIDs(it, acct.ID)
-		m := r.MapRemoteItemToMedia(ctx, acct, cfg, it)
+		RewriteEmbyRemoteIDs(it, mount.ID)
+		m := r.MapRemoteItemToMedia(ctx, mount, acct, cfg, it)
 		items = append(items, m)
 	}
 	return items, body.TotalRecordCount, nil
 }
 
 // RemoteSeriesCards 远程剧集库的系列卡片（ChildCount 作为集数）。
-func (r *EmbyRemoteService) RemoteSeriesCards(ctx context.Context, acct *model.StrmAccount, remoteViewID string) ([]SeriesCard, error) {
+func (r *EmbyRemoteService) RemoteSeriesCards(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, remoteViewID string) ([]SeriesCard, error) {
 	cfg, err := r.configOf(acct)
 	if err != nil {
 		return nil, err
@@ -314,8 +349,8 @@ func (r *EmbyRemoteService) RemoteSeriesCards(ctx context.Context, acct *model.S
 	}
 	cards := make([]SeriesCard, 0, len(body.Items))
 	for _, it := range body.Items {
-		RewriteEmbyRemoteIDs(it, acct.ID)
-		m := r.MapRemoteItemToMedia(ctx, acct, cfg, it)
+		RewriteEmbyRemoteIDs(it, mount.ID)
+		m := r.MapRemoteItemToMedia(ctx, mount, acct, cfg, it)
 		// 集数优先用递归条目数（ChildCount 只算直属 Season 文件夹数）。
 		count := remoteItemInt(it, "RecursiveItemCount")
 		if count == 0 {
@@ -330,18 +365,18 @@ func (r *EmbyRemoteService) RemoteSeriesCards(ctx context.Context, acct *model.S
 }
 
 // RemoteLatestCards 远程库最新条目（首页预览卡片），映射 SeriesCard。
-func (r *EmbyRemoteService) RemoteLatestCards(ctx context.Context, acct *model.StrmAccount, remoteViewID string, limit int) ([]SeriesCard, error) {
+func (r *EmbyRemoteService) RemoteLatestCards(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, remoteViewID string, limit int) ([]SeriesCard, error) {
 	cfg, err := r.configOf(acct)
 	if err != nil {
 		return nil, err
 	}
-	items, err := r.RemoteLatest(ctx, acct, remoteViewID, limit)
+	items, err := r.RemoteLatest(ctx, mount, acct, remoteViewID, limit)
 	if err != nil {
 		return nil, err
 	}
 	cards := make([]SeriesCard, 0, len(items))
 	for _, it := range items {
-		m := r.MapRemoteItemToMedia(ctx, acct, cfg, it)
+		m := r.MapRemoteItemToMedia(ctx, mount, acct, cfg, it)
 		cards = append(cards, SeriesCard{Key: m.ID, Rep: m, LinkMedia: m, Count: 0})
 	}
 	return cards, nil
@@ -537,3 +572,16 @@ func remoteItemTypeOf(m *model.Media) string {
 	}
 	return "Movie"
 }
+// ─── 供 handler 层使用的远程 View 条目取值（导出薄封装） ──────────────────────
+
+// RemoteItemIDString 提取远程 View 条目的 Id。
+func RemoteItemIDString(item map[string]any) string { return remoteItemString(item, "Id") }
+
+// RemoteItemNameString 提取远程 View 条目的 Name。
+func RemoteItemNameString(item map[string]any) string { return remoteItemString(item, "Name") }
+
+// RemoteItemCollectionType 提取远程 View 条目的 CollectionType。
+func RemoteItemCollectionType(item map[string]any) string { return remoteItemString(item, "CollectionType") }
+
+// RemoteItemChildCount 提取远程 View 条目的 ChildCount。
+func RemoteItemChildCount(item map[string]any) int { return remoteItemInt(item, "ChildCount") }

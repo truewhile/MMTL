@@ -5,8 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"go.uber.org/zap"
-
 	"github.com/ShukeBta/MMTL/internal/model"
 )
 
@@ -148,62 +146,38 @@ func (e *EmbyService) Views(ctx context.Context, userID string) (map[string]any,
 	return map[string]any{"Items": items, "TotalRecordCount": len(items), "StartIndex": 0}, nil
 }
 
-// remoteViews 拉取全部启用远程 Emby 账号的媒体库视图。单个账号失败只跳过
-// 该账号（日志记录），不影响其他来源。
+// remoteViews 返回全部启用挂载的远程媒体库视图（只有显式挂载的库才出现）。
 func (e *EmbyService) remoteViews(ctx context.Context) []map[string]any {
 	if e == nil || e.remote == nil {
 		return nil
 	}
-	accounts, err := e.remote.ListAccounts(ctx)
-	if err != nil || len(accounts) == 0 {
+	views, err := e.remote.RemoteLibraries(ctx)
+	if err != nil || len(views) == 0 {
 		return nil
 	}
-	out := make([]map[string]any, 0, len(accounts)*2)
-	for i := range accounts {
-		acct := &accounts[i]
-		views, err := e.remote.RemoteViews(ctx, acct)
-		if err != nil {
-			if e.log != nil {
-				e.log.Warn("fetch remote emby views failed",
-					zap.String("account", acct.Name), zap.Error(err))
-			}
-			continue
-		}
-		for _, v := range views {
-			if view := e.remoteLibraryAsView(v, acct); view != nil {
-				out = append(out, view)
-			}
-		}
+	out := make([]map[string]any, 0, len(views))
+	for _, v := range views {
+		out = append(out, remoteLibraryViewPayload(v))
 	}
 	return out
 }
 
-// remoteLibraryAsView 把远程媒体的 CollectionFolder 视图标准化为本地视图
-// 同构的 payload（ID 伪装、名称前缀账号名以便区分多个远程来源）。
-func (e *EmbyService) remoteLibraryAsView(raw map[string]any, acct *model.StrmAccount) map[string]any {
-	if raw == nil {
-		return nil
-	}
-	remoteID, _ := raw["Id"].(string)
-	if remoteID == "" {
-		return nil
-	}
-	name, _ := raw["Name"].(string)
-	if name == "" {
-		name = acct.Name
-	}
-	collectionType, _ := raw["CollectionType"].(string)
+// remoteLibraryViewPayload 把挂载库展示信息标准化为 Emby View payload
+// （ID 用挂载伪装，名称=挂载显示名）。
+func remoteLibraryViewPayload(v RemoteLibraryView) map[string]any {
+	encoded := EncodeEmbyRemoteID(v.MountID, v.RemoteID)
+	collectionType := v.CollectionType
 	if !isSupportedEmbyCollectionType(collectionType) {
 		collectionType = "mixed"
 	}
-	encoded := EncodeEmbyRemoteID(acct.ID, remoteID)
+	name := strings.TrimSpace(v.Library.Name)
 	imageTags := map[string]string{}
-	if primary := embyRemoteImageTagsPrimary(raw); primary != "" {
+	if strings.TrimSpace(v.Library.CoverURL) != "" {
 		imageTags["Primary"] = encoded
 	}
 	return map[string]any{
 		"Id":                       encoded,
-		"Name":                     acct.Name + " · " + name,
+		"Name":                     name,
 		"CollectionType":           collectionType,
 		"ServerId":                 embyServerID,
 		"Type":                     "CollectionFolder",
@@ -235,19 +209,6 @@ func (e *EmbyService) remoteLibraryAsView(raw map[string]any, acct *model.StrmAc
 			"UnplayedItemCount":     0,
 		},
 	}
-}
-
-// embyRemoteImageTagsPrimary 提取远程 View 的 ImageTags.Primary 值。
-func embyRemoteImageTagsPrimary(raw map[string]any) string {
-	switch tags := raw["ImageTags"].(type) {
-	case map[string]any:
-		if s, ok := tags["Primary"].(string); ok {
-			return s
-		}
-	case map[string]string:
-		return tags["Primary"]
-	}
-	return ""
 }
 
 func isSupportedEmbyCollectionType(t string) bool {

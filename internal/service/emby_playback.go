@@ -19,19 +19,19 @@ import (
 // 播放地址指向远程（直连）还是 MMTL 本地代理端点。
 func (e *EmbyService) PlaybackInfo(ctx context.Context, mediaID, userID string) (map[string]any, error) {
 	if e.remote != nil && IsEmbyRemoteID(mediaID) {
-		acctID, remoteID, _ := DecodeEmbyRemoteID(mediaID)
-		acct := e.remote.AccountByID(ctx, acctID)
-		if acct == nil {
+		mountID, remoteID, _ := DecodeEmbyRemoteID(mediaID)
+		mount, acct, err := e.remote.ResolveMount(ctx, mountID)
+		if err != nil {
 			return nil, ErrEmbyRemoteNotFound
 		}
-		out, err := e.remote.RemotePlaybackInfo(ctx, acct, remoteID, userID)
+		out, err := e.remote.RemotePlaybackInfo(ctx, mount, acct, remoteID, userID)
 		if err != nil {
 			return nil, err
 		}
 		if out == nil {
 			return nil, ErrEmbyRemoteNotFound
 		}
-		out["PlaySessionId"] = fmt.Sprintf("remote-%s-%d", acctID, time.Now().Unix())
+		out["PlaySessionId"] = fmt.Sprintf("remote-%s-%d", mountID, time.Now().Unix())
 		return out, nil
 	}
 	m, err := e.playableMedia(ctx, mediaID, userID)
@@ -56,48 +56,48 @@ func (e *EmbyService) RemoteAccountByID(ctx context.Context, accountID string) *
 }
 
 // ProxyRemoteVideoStream 反向代理远程 Emby 视频流（保留 Range）。
-func (e *EmbyService) ProxyRemoteVideoStream(ctx context.Context, w http.ResponseWriter, r *http.Request, accountID, remoteID string) error {
+func (e *EmbyService) ProxyRemoteVideoStream(ctx context.Context, w http.ResponseWriter, r *http.Request, mountID, remoteID string) error {
 	if e == nil || e.remote == nil {
 		return ErrEmbyRemoteNotFound
 	}
-	acct := e.remote.AccountByID(ctx, accountID)
-	if acct == nil {
+	_, acct, err := e.remote.ResolveMount(ctx, mountID)
+	if err != nil {
 		return ErrEmbyRemoteNotFound
 	}
 	return e.remote.ProxyVideoStream(ctx, w, r, acct, remoteID)
 }
 
 // ProxyRemoteSubtitle 反向代理远程 Emby 字幕流。
-func (e *EmbyService) ProxyRemoteSubtitle(ctx context.Context, w http.ResponseWriter, r *http.Request, accountID, remoteID, index string) error {
+func (e *EmbyService) ProxyRemoteSubtitle(ctx context.Context, w http.ResponseWriter, r *http.Request, mountID, remoteID, index string) error {
 	if e == nil || e.remote == nil {
 		return ErrSubtitleNotFound
 	}
-	acct := e.remote.AccountByID(ctx, accountID)
-	if acct == nil {
+	_, acct, err := e.remote.ResolveMount(ctx, mountID)
+	if err != nil {
 		return ErrSubtitleNotFound
 	}
 	return e.remote.ProxySubtitle(ctx, w, r, acct, remoteID, index)
 }
 
 // ProxyRemoteSetPlayed 把已看/未看状态透传到远程 Emby。
-func (e *EmbyService) ProxyRemoteSetPlayed(ctx context.Context, accountID, remoteID string, played bool) error {
+func (e *EmbyService) ProxyRemoteSetPlayed(ctx context.Context, mountID, remoteID string, played bool) error {
 	if e == nil || e.remote == nil {
 		return ErrEmbyRemoteNotFound
 	}
-	acct := e.remote.AccountByID(ctx, accountID)
-	if acct == nil {
+	_, acct, err := e.remote.ResolveMount(ctx, mountID)
+	if err != nil {
 		return ErrEmbyRemoteNotFound
 	}
 	return e.remote.ProxySetPlayed(ctx, acct, remoteID, played)
 }
 
 // ProxyRemoteSetFavorite 把收藏/取消收藏状态透传到远程 Emby。
-func (e *EmbyService) ProxyRemoteSetFavorite(ctx context.Context, accountID, remoteID string, favorite bool) error {
+func (e *EmbyService) ProxyRemoteSetFavorite(ctx context.Context, mountID, remoteID string, favorite bool) error {
 	if e == nil || e.remote == nil {
 		return ErrEmbyRemoteNotFound
 	}
-	acct := e.remote.AccountByID(ctx, accountID)
-	if acct == nil {
+	_, acct, err := e.remote.ResolveMount(ctx, mountID)
+	if err != nil {
 		return ErrEmbyRemoteNotFound
 	}
 	return e.remote.ProxySetFavorite(ctx, acct, remoteID, favorite)

@@ -36,6 +36,22 @@ import (
 // embyRemoteHTTPTimeout 远程 Emby 常规 API 请求超时（流式代理不在此列）。
 const embyRemoteHTTPTimeout = 15 * time.Second
 
+// embyRemoteUA 桌面浏览器 UA：远程 Emby 前方若有 Cloudflare/WAF 会拦截
+// Go-http-client 等非浏览器 UA（403 error code: 1010），必须伪装浏览器。
+const embyRemoteUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+
+// embyRemoteTransport 统一给远程请求注入浏览器 UA。
+type embyRemoteTransport struct {
+	base http.RoundTripper
+}
+
+func (t *embyRemoteTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if strings.TrimSpace(req.Header.Get("User-Agent")) == "" {
+		req.Header.Set("User-Agent", embyRemoteUA)
+	}
+	return t.base.RoundTrip(req)
+}
+
 // EmbyRemoteConfig 是一个远程 Emby 账号的解密配置。
 type EmbyRemoteConfig struct {
 	BaseURL      string // http://host:8096（无需 /emby 后缀）
@@ -63,7 +79,8 @@ func NewEmbyRemoteService(cfg *config.Config, log *zap.Logger, repo *repository.
 		repo:   repo,
 		crypto: crypto,
 		http: &http.Client{
-			Timeout: embyRemoteHTTPTimeout,
+			Timeout:   embyRemoteHTTPTimeout,
+			Transport: &embyRemoteTransport{base: http.DefaultTransport},
 		},
 	}
 }
@@ -96,6 +113,157 @@ func (r *EmbyRemoteService) AccountByID(ctx context.Context, id string) *model.S
 		return nil
 	}
 	return acct
+}
+
+// ─── 媒体库挂载管理 ─────────────────────────────────────────────────────────────
+
+// ListMounts 返回全部挂载。
+func (r *EmbyRemoteService) ListMounts(ctx context.Context) ([]model.EmbyMount, error) {
+	return r.repo.EmbyMount.List(ctx)
+}
+
+// ListMountsByAccount 返回指定账号的挂载。
+func (r *EmbyRemoteService) ListMountsByAccount(ctx context.Context, accountID string) ([]model.EmbyMount, error) {
+	return r.repo.EmbyMount.ListByAccountID(ctx, accountID)
+}
+
+// MountByID 按 ID 查挂载。
+func (r *EmbyRemoteService) MountByID(ctx context.Context, id string) (*model.EmbyMount, error) {
+	return r.repo.EmbyMount.FindByID(ctx, id)
+}
+
+// CreateMount 创建一个挂载（校验账号类型与远程 View 编号）。
+func (r *EmbyRemoteService) CreateMount(ctx context.Context, m *model.EmbyMount) (*model.EmbyMount, error) {
+	if strings.TrimSpace(m.AccountID) == "" || strings.TrimSpace(m.RemoteViewID) == "" {
+		return nil, errors.New("缺少账号或远程媒体库")
+	}
+	if r.AccountByID(ctx, m.AccountID) == nil {
+		return nil, errors.New("远程 Emby 账号不存在或已禁用")
+	}
+	if err := r.repo.EmbyMount.Create(ctx, m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// CreateMounts 批量创建挂载（幂等：已存在的远程库自动跳过）。
+func (r *EmbyRemoteService) CreateMounts(ctx context.Context, mounts []*model.EmbyMount) (int, error) {
+	if len(mounts) == 0 {
+		return 0, nil
+	}
+	existing, err := r.repo.EmbyMount.ListByAccountID(ctx, mounts[0].AccountID)
+	if err != nil {
+		return 0, err
+	}
+	have := make(map[string]bool, len(existing))
+	for _, e := range existing {
+		have[e.RemoteViewID] = true
+	}
+	fresh := make([]*model.EmbyMount, 0, len(mounts))
+	for _, m := range mounts {
+		if m == nil || have[m.RemoteViewID] {
+			continue
+		}
+		fresh = append(fresh, m)
+	}
+	if len(fresh) == 0 {
+		return 0, nil
+	}
+	if err := r.repo.EmbyMount.CreateInBatches(ctx, fresh, 50); err != nil {
+		return 0, err
+	}
+	return len(fresh), nil
+}
+
+// UpdateMount 更新挂载（名称 / 代理 / 启用）。
+func (r *EmbyRemoteService) UpdateMount(ctx context.Context, id string, m *model.EmbyMount) (*model.EmbyMount, error) {
+	existing, err := r.repo.EmbyMount.FindByID(ctx, id)
+	if err != nil || existing == nil {
+		return nil, errNotFoundOr(err, "挂载不存在")
+	}
+	existing.Name = strings.TrimSpace(m.Name)
+	existing.ProxyPlay = m.ProxyPlay
+	existing.Enabled = m.Enabled
+	if err := r.repo.EmbyMount.Update(ctx, existing); err != nil {
+		return nil, err
+	}
+	return existing, nil
+}
+
+// DeleteMount 删除挂载。
+func (r *EmbyRemoteService) DeleteMount(ctx context.Context, id string) error {
+	return r.repo.EmbyMount.Delete(ctx, id)
+}
+
+// FullMountAccount 把账号的全部远程媒体库（View）挂载进来（幂等，已存在跳过）。
+func (r *EmbyRemoteService) FullMountAccount(ctx context.Context, acct *model.StrmAccount, proxyPlayDefault bool) (int, error) {
+	views, err := r.RemoteViews(ctx, acct)
+	if err != nil {
+		return 0, err
+	}
+	mounts := make([]*model.EmbyMount, 0, len(views))
+	for _, v := range views {
+		viewID := remoteItemString(v, "Id")
+		if viewID == "" {
+			continue
+		}
+		mounts = append(mounts, &model.EmbyMount{
+			AccountID:      acct.ID,
+			RemoteViewID:   viewID,
+			RemoteViewName: remoteItemString(v, "Name"),
+			CollectionType: remoteItemString(v, "CollectionType"),
+			ProxyPlay:      proxyPlayDefault,
+			Enabled:        true,
+		})
+	}
+	return r.CreateMounts(ctx, mounts)
+}
+
+// ResolveMount 按伪装 ID 的第一段（挂载 ID）解析挂载与其所属账号。
+// 远程条目/媒体库的伪装 ID 格式：embyremote~{mountID}~{remoteID}。
+func (r *EmbyRemoteService) ResolveMount(ctx context.Context, mountID string) (*model.EmbyMount, *model.StrmAccount, error) {
+	mount, err := r.repo.EmbyMount.FindByID(ctx, mountID)
+	if err != nil || mount == nil || !mount.Enabled {
+		return nil, nil, errors.New("挂载不存在或已禁用")
+	}
+	acct := r.AccountByID(ctx, mount.AccountID)
+	if acct == nil {
+		return nil, nil, errors.New("远程 Emby 账号不存在或已禁用")
+	}
+	return mount, acct, nil
+}
+
+// AutoSeedMounts 兼容迁移：已有 emby_remote 账号但没有任何挂载时，自动把
+// 其全部媒体库挂载进来（代理沿用账号旧配置），保证旧部署升级后媒体库不消失。
+// 幂等：每个账号只在挂载数为 0 时执行一次。
+func (r *EmbyRemoteService) AutoSeedMounts(ctx context.Context) {
+	accounts, err := r.ListAccounts(ctx)
+	if err != nil || len(accounts) == 0 {
+		return
+	}
+	for i := range accounts {
+		acct := &accounts[i]
+		count, err := r.repo.EmbyMount.CountByAccountID(ctx, acct.ID)
+		if err != nil || count > 0 {
+			continue
+		}
+		cfg, cfgErr := r.configOf(acct)
+		if cfgErr != nil {
+			continue
+		}
+		n, seedErr := r.FullMountAccount(ctx, acct, cfg.ProxyPlay)
+		if seedErr != nil {
+			if r.log != nil {
+				r.log.Warn("auto-seed emby mounts failed",
+					zap.String("account", acct.Name), zap.Error(seedErr))
+			}
+		} else if n > 0 {
+			if r.log != nil {
+				r.log.Info("auto-seeded emby mounts",
+					zap.String("account", acct.Name), zap.Int("mounts", n))
+			}
+		}
+	}
 }
 
 // configOf 解密账号配置。
@@ -308,7 +476,7 @@ func (r *EmbyRemoteService) remoteUserID(cfg *EmbyRemoteConfig) string {
 
 // RemoteItems 向远程 Emby 转发 /Items 浏览/搜索请求，返回重写后的响应载荷。
 // p 的分页/排序/过滤参数原样转发，分页语义完全由远程承接。
-func (r *EmbyRemoteService) RemoteItems(ctx context.Context, acct *model.StrmAccount, p ItemsParams) (map[string]any, error) {
+func (r *EmbyRemoteService) RemoteItems(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, p ItemsParams) (map[string]any, error) {
 	cfg, err := r.configOf(acct)
 	if err != nil {
 		return nil, err
@@ -347,12 +515,46 @@ func (r *EmbyRemoteService) RemoteItems(ctx context.Context, acct *model.StrmAcc
 	if out == nil {
 		out = map[string]any{"Items": []any{}, "TotalRecordCount": 0, "StartIndex": p.StartIndex}
 	}
-	RewriteEmbyRemoteIDs(out, acct.ID)
+	RewriteEmbyRemoteIDs(out, mount.ID)
+	return out, nil
+}
+
+// RemoteSearchMount 对单个挂载的媒体库执行全局搜索（ParentId=挂载的远程库，
+// Recursive 返回库内全部命中），结果归属明确可直接伪装。
+func (r *EmbyRemoteService) RemoteSearchMount(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, p ItemsParams) (map[string]any, error) {
+	cfg, err := r.configOf(acct)
+	if err != nil {
+		return nil, err
+	}
+	q := url.Values{}
+	q.Set("ParentId", mount.RemoteViewID)
+	q.Set("Recursive", "true")
+	q.Set("SearchTerm", p.SearchTerm)
+	q.Set("UserId", r.remoteUserID(cfg))
+	q.Set("Limit", strconv.Itoa(p.Limit))
+	q.Set("StartIndex", strconv.Itoa(p.StartIndex))
+	if p.SortBy != "" {
+		q.Set("SortBy", p.SortBy)
+	}
+	if p.SortOrder != "" {
+		q.Set("SortOrder", p.SortOrder)
+	}
+	if len(p.IncludeItemTypes) > 0 {
+		q.Set("IncludeItemTypes", strings.Join(p.IncludeItemTypes, ","))
+	}
+	var out map[string]any
+	if err := r.doGet(ctx, acct, cfg, "/Users/"+url.PathEscape(r.remoteUserID(cfg))+"/Items", q, &out); err != nil {
+		return nil, err
+	}
+	if out == nil {
+		out = map[string]any{"Items": []any{}, "TotalRecordCount": 0}
+	}
+	RewriteEmbyRemoteIDs(out, mount.ID)
 	return out, nil
 }
 
 // RemoteItem 拉取远程单条目详情（含响应的重写）。
-func (r *EmbyRemoteService) RemoteItem(ctx context.Context, acct *model.StrmAccount, remoteID string) (map[string]any, error) {
+func (r *EmbyRemoteService) RemoteItem(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, remoteID string) (map[string]any, error) {
 	cfg, err := r.configOf(acct)
 	if err != nil {
 		return nil, err
@@ -362,12 +564,12 @@ func (r *EmbyRemoteService) RemoteItem(ctx context.Context, acct *model.StrmAcco
 	if err := r.doGet(ctx, acct, cfg, path, nil, &out); err != nil {
 		return nil, err
 	}
-	RewriteEmbyRemoteIDs(out, acct.ID)
+	RewriteEmbyRemoteIDs(out, mount.ID)
 	return out, nil
 }
 
 // RemoteLatest 拉取远程「最近添加」（用于 /Items/Latest 聚合）。
-func (r *EmbyRemoteService) RemoteLatest(ctx context.Context, acct *model.StrmAccount, parentID string, limit int) ([]map[string]any, error) {
+func (r *EmbyRemoteService) RemoteLatest(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, parentID string, limit int) ([]map[string]any, error) {
 	cfg, err := r.configOf(acct)
 	if err != nil {
 		return nil, err
@@ -381,15 +583,14 @@ func (r *EmbyRemoteService) RemoteLatest(ctx context.Context, acct *model.StrmAc
 	if err := r.doGet(ctx, acct, cfg, path, q, &out); err != nil {
 		return nil, err
 	}
-	RewriteEmbyRemoteIDs(out, acct.ID)
+	RewriteEmbyRemoteIDs(out, mount.ID)
 	return out, nil
 }
 
-// RemotePlaybackInfo 拉取远程 PlaybackInfo，并按 proxy_play 配置重写播放 URL：
-//   - 不代理：MediaSource 的 DirectStreamUrl / TranscodingUrl / 字幕 DeliveryUrl
-//     指向远程绝对地址（播放字节不过 MMTL）；
-//   - 代理：指向 MMTL 本地 /Videos/{encodedID} 端点（由 ProxyVideoStream 反代）。
-func (r *EmbyRemoteService) RemotePlaybackInfo(ctx context.Context, acct *model.StrmAccount, remoteID, userID string) (map[string]any, error) {
+// RemotePlaybackInfo 拉取远程 PlaybackInfo，并按挂载的 proxy_play 配置重写
+// 播放 URL：不代理=指向远程绝对地址（播放字节不过 MMTL）；代理=指向 MMTL
+// 本地 /Videos/{encodedID} 端点（由 ProxyVideoStream 反代）。
+func (r *EmbyRemoteService) RemotePlaybackInfo(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, remoteID, userID string) (map[string]any, error) {
 	cfg, err := r.configOf(acct)
 	if err != nil {
 		return nil, err
@@ -400,17 +601,17 @@ func (r *EmbyRemoteService) RemotePlaybackInfo(ctx context.Context, acct *model.
 	if err := r.doGet(ctx, acct, cfg, path, q, &out); err != nil {
 		return nil, err
 	}
-	RewriteEmbyRemoteIDs(out, acct.ID)
-	r.rewritePlayURLs(out, acct, cfg, remoteID)
+	RewriteEmbyRemoteIDs(out, mount.ID)
+	r.rewritePlayURLs(out, mount, cfg, remoteID)
 	return out, nil
 }
 
-// rewritePlayURLs 按代理模式重写载荷内 MediaSources 的播放地址。
+// rewritePlayURLs 按挂载代理模式重写载荷内 MediaSources 的播放地址。
 // 远程 Emby 的 PlaybackInfo 通常不返回 DirectStreamUrl（客户端靠它拼
 // /Videos/{Id}/stream），因此这里总是强制构造播放地址，完全由 MMTL 掌控
 // 直连（远程绝对 URL）或代理（本地 /Videos/{encoded}）的最终去向。
-func (r *EmbyRemoteService) rewritePlayURLs(value any, acct *model.StrmAccount, cfg *EmbyRemoteConfig, remoteID string) {
-	encoded := EncodeEmbyRemoteID(acct.ID, remoteID)
+func (r *EmbyRemoteService) rewritePlayURLs(value any, mount *model.EmbyMount, cfg *EmbyRemoteConfig, remoteID string) {
+	encoded := EncodeEmbyRemoteID(mount.ID, remoteID)
 	sources := collectMediaSources(value)
 	if sources == nil {
 		return
@@ -418,7 +619,7 @@ func (r *EmbyRemoteService) rewritePlayURLs(value any, acct *model.StrmAccount, 
 	for _, src := range sources {
 		mediaSourceID, _ := src["Id"].(string)
 		var streamPath, subtitlePlayURL string
-		if cfg.ProxyPlay {
+		if mount.ProxyPlay {
 			streamPath = "/Videos/" + url.PathEscape(encoded) + "/stream"
 			subtitlePlayURL = "/Videos/" + url.PathEscape(encoded)
 		} else {
@@ -531,9 +732,9 @@ func (r *EmbyRemoteService) ProxyVideoStream(ctx context.Context, w http.Respons
 	if mediaSourceID := strings.TrimSpace(req.URL.Query().Get("MediaSourceId")); mediaSourceID != "" {
 		q.Set("MediaSourceId", mediaSourceID)
 	}
-	if static := strings.TrimSpace(req.URL.Query().Get("Static")); static != "" {
-		q.Set("Static", static)
-	}
+	// 代理是纯 byte 中继：始终要求远程原文件直连（Static=true 阻止远程触发
+	// ffmpeg 转码调度——远程转码可能未配置/故障，导致整个代理 500）。
+	q.Set("Static", "true")
 	q.Set("api_key", cfg.Token)
 	if encoded := q.Encode(); encoded != "" {
 		endpoint += "?" + encoded

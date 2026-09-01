@@ -58,9 +58,21 @@ func newEmby(cfg map[string]any, client *http.Client) Provider {
 		client:    client,
 	}
 	if p.client == nil {
-		p.client = http.DefaultClient
+		p.client = &http.Client{Transport: &embyUATransport{base: http.DefaultTransport}}
 	}
 	return p
+}
+
+// embyUATransport 给远程 Emby 请求注入浏览器 UA（防 Cloudflare 风控拦截）。
+type embyUATransport struct {
+	base http.RoundTripper
+}
+
+func (t *embyUATransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if strings.TrimSpace(req.Header.Get("User-Agent")) == "" {
+		req.Header.Set("User-Agent", defaultUA)
+	}
+	return t.base.RoundTrip(req)
 }
 
 // embyBase normalizes the address so requests go to /emby/... endpoints.
