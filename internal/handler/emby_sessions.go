@@ -41,7 +41,17 @@ func embySessionsHandler(svc *service.Container) gin.HandlerFunc {
 				"SupportsRemoteControl": true,
 			}
 			if itemID != "" && sess.IsPlaying {
-				row["NowPlayingItem"] = gin.H{"Id": itemID}
+				nowPlaying := gin.H{"Id": itemID}
+				if svc.Emby != nil {
+					if item, _ := svc.Emby.Item(c.Request.Context(), itemID, sess.UserID); item != nil {
+						for _, key := range []string{"Name", "Type", "RunTimeTicks", "PrimaryImageItemId", "ImageTags", "SeriesName", "SeasonName", "IndexNumber", "ParentIndexNumber"} {
+							if val, ok := item[key]; ok && val != nil {
+								nowPlaying[key] = val
+							}
+						}
+					}
+				}
+				row["NowPlayingItem"] = nowPlaying
 			}
 			out = append(out, row)
 		}

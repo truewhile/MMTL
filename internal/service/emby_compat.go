@@ -168,6 +168,10 @@ func (e *EmbyService) Items(ctx context.Context, p ItemsParams) (map[string]any,
 		}
 	}
 
+	if containsEmbyFilter(p.Filters, "IsResumable") {
+		return e.resumableItems(ctx, p)
+	}
+
 	if len(p.IDs) > 0 {
 		items := make([]map[string]any, 0, len(p.IDs))
 		for _, id := range p.IDs {

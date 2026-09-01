@@ -138,4 +138,3 @@ func PruneImageCache(imagesDir string, maxSizeBytes int64) (PruneImageCacheResul
 
 	return result, nil
 }
-

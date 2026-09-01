@@ -93,4 +93,3 @@ func (p *ImageProxy) Prune() (PruneImageCacheResult, error) {
 	maxBytes := int64(p.cfg.Cache.ImagesMaxSizeMB) * 1024 * 1024
 	return PruneImageCache(p.cacheDir, maxBytes)
 }
-

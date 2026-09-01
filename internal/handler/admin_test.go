@@ -44,10 +44,10 @@ func TestDeleteUserRefusesRecentRealtimeSession(t *testing.T) {
 	if w.Code != http.StatusConflict {
 		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
 	}
-		if found, _ := repos.User.FindByID(t.Context(), viewer.ID); found == nil {
-			t.Fatal("recent realtime user should not be deleted")
-		}
+	if found, _ := repos.User.FindByID(t.Context(), viewer.ID); found == nil {
+		t.Fatal("recent realtime user should not be deleted")
 	}
+}
 
 func TestUpdateUserLibraries(t *testing.T) {
 	gin.SetMode(gin.TestMode)

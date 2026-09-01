@@ -59,13 +59,13 @@ type Container struct {
 	Device           *DeviceService
 	Cache            *RuntimeCacheService
 	Sessions         *SessionTrackerService
-		RecognitionWords *RecognitionWordsService
-		Danmaku          *DanmakuService
-		Strm             *StrmService
-		Database         *DatabaseAdminService
-		FFTools          *FFmpegToolsService
+	RecognitionWords *RecognitionWordsService
+	Danmaku          *DanmakuService
+	Strm             *StrmService
+	Database         *DatabaseAdminService
+	FFTools          *FFmpegToolsService
 
-		stopCtx    context.Context
+	stopCtx    context.Context
 	stopCancel context.CancelFunc
 
 	// ReloadHTTPServer 由 cmd/server 注入。HTTPS 相关设置保存后，handler
@@ -110,12 +110,12 @@ func (c *Container) Boot() {
 		c.Strm.Start(c.stopCtx)
 	}
 
-		// 启动刮削队列后台消费者
-		if c.Scraper != nil {
-			c.Scraper.Start(c.stopCtx)
-		}
+	// 启动刮削队列后台消费者
+	if c.Scraper != nil {
+		c.Scraper.Start(c.stopCtx)
+	}
 
-		// Mgo 保号规则巡检：默认关闭，由管理员通过 Telegram Bot 命令开启。
+	// Mgo 保号规则巡检：默认关闭，由管理员通过 Telegram Bot 命令开启。
 	// 每天触发一次评估；规则里的窗口可随机，不固定。
 	if c.Device != nil {
 		go c.runInactivitySweeper(c.stopCtx)

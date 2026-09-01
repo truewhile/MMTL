@@ -408,13 +408,13 @@ func TestOpenSQLiteMigrationSourceUsesFallbackSourcePath(t *testing.T) {
 			_ = sqlDB2.Close()
 		}
 	}()
-		_, copied, err := copyModelTables(src2, dst, 2)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if copied != 2 {
-			t.Fatalf("copied rows = %d, want 2", copied)
-		}
+	_, copied, err := copyModelTables(src2, dst, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if copied != 2 {
+		t.Fatalf("copied rows = %d, want 2", copied)
+	}
 	var userCount int64
 	if err := dst.Model(&model.User{}).Where("username = ?", "real-admin").Count(&userCount).Error; err != nil {
 		t.Fatal(err)

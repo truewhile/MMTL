@@ -30,11 +30,11 @@ type Container struct {
 	StrmSyncPath   *StrmSyncPathRepository
 	StrmSyncRecord *StrmSyncRecordRepository
 	StrmDownload   *StrmDownloadTaskRepository
-		StrmUpload     *StrmUploadTaskRepository
-		StrmDirCache   *StrmDirCacheRepository
-		ScrapeTask     *ScrapeTaskRepository
+	StrmUpload     *StrmUploadTaskRepository
+	StrmDirCache   *StrmDirCacheRepository
+	ScrapeTask     *ScrapeTaskRepository
 	EmbyMount      *EmbyMountRepository
-	}
+}
 
 // New 将每个 repository 连接到单个 *gorm.DB。
 func New(db *gorm.DB) *Container {

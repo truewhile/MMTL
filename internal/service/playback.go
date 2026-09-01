@@ -19,13 +19,22 @@ import (
 
 // PlaybackService bundles history / favourite / playlist business logic.
 type PlaybackService struct {
-	log  *zap.Logger
-	repo *repository.Container
+	log    *zap.Logger
+	repo   *repository.Container
+	remote *EmbyRemoteService
 }
 
 // NewPlaybackService is the constructor.
 func NewPlaybackService(log *zap.Logger, repo *repository.Container) *PlaybackService {
 	return &PlaybackService{log: log, repo: repo}
+}
+
+// SetEmbyRemote wires the remote Emby service for hydrating mounted remote items.
+func (p *PlaybackService) SetEmbyRemote(remote *EmbyRemoteService) *PlaybackService {
+	if p != nil {
+		p.remote = remote
+	}
+	return p
 }
 
 // ─── History ────────────────────────────────────────────────────────────────
@@ -84,9 +93,19 @@ func (p *PlaybackService) RecentHistory(ctx context.Context, userID string, limi
 		if m, ok := mediaByID[rows[i].MediaID]; ok {
 			media := m
 			items = append(items, HistoryItem{PlaybackHistory: rows[i], Media: &media})
-		} else {
-			items = append(items, HistoryItem{PlaybackHistory: rows[i]})
+			continue
 		}
+		if p.remote != nil && IsEmbyRemoteID(rows[i].MediaID) {
+			mountID, remoteID, _ := DecodeEmbyRemoteID(rows[i].MediaID)
+			if mount, acct, _ := p.remote.ResolveMount(ctx, mountID); mount != nil && acct != nil {
+				if rm, err := p.remote.RemoteMediaDetail(ctx, mount, acct, remoteID); err == nil && rm != nil {
+					media := *rm
+					items = append(items, HistoryItem{PlaybackHistory: rows[i], Media: &media})
+					continue
+				}
+			}
+		}
+		items = append(items, HistoryItem{PlaybackHistory: rows[i]})
 	}
 	return items, nil
 }

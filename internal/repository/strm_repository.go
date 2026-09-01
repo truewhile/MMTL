@@ -821,5 +821,3 @@ func (r *StrmDirCacheRepository) DeleteBySyncPathID(ctx context.Context, syncPat
 		return r.db.WithContext(ctx).Unscoped().Where("sync_path_id = ?", syncPathID).Delete(&model.StrmDirCache{}).Error
 	})
 }
-
-

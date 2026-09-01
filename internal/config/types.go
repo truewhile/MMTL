@@ -44,11 +44,11 @@ type TranscoderConfig struct {
 
 // AppConfig 保存运行时应用参数。
 type AppConfig struct {
-	Port        int    `mapstructure:"port"`
-	Debug       bool   `mapstructure:"debug"`
-	Env         string `mapstructure:"env"`
-	DataDir     string `mapstructure:"data_dir"`
-	WebDir      string `mapstructure:"web_dir"`
+	Port    int    `mapstructure:"port"`
+	Debug   bool   `mapstructure:"debug"`
+	Env     string `mapstructure:"env"`
+	DataDir string `mapstructure:"data_dir"`
+	WebDir  string `mapstructure:"web_dir"`
 	// HTTPSEnabled 是否仅通过 HTTPS 提供访问。启用时必须同时配置
 	// SSLCert / SSLKey（或 SSLCertPath / SSLKeyPath），保存后服务会热切换到 HTTPS。
 	HTTPSEnabled bool `mapstructure:"https_enabled"`
@@ -59,7 +59,7 @@ type AppConfig struct {
 	// SSLCertPath 是 SSL 证书文件路径；非空时优先于 SSLCert 从文件读取。
 	SSLCertPath string `mapstructure:"ssl_cert_path"`
 	// SSLKeyPath 是 SSL 私钥文件路径；非空时优先于 SSLKey 从文件读取。
-	SSLKeyPath string `mapstructure:"ssl_key_path"`
+	SSLKeyPath  string `mapstructure:"ssl_key_path"`
 	FFmpegPath  string `mapstructure:"ffmpeg_path"`
 	FFprobePath string `mapstructure:"ffprobe_path"`
 	// FFprobeMaxConcurrent limits concurrent ffprobe/ffmpeg metadata probes.

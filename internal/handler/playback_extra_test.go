@@ -401,17 +401,17 @@ func newPlaybackScopeTestRouter(t *testing.T) (*gin.Engine, *service.Container, 
 		t.Fatal(err)
 	}
 
-		router := gin.New()
-		api := router.Group("/api")
-		api.Use(middleware.AuthRequired(cfg.Secrets.JWTSecret))
-		api.GET("/playback/:id/info", playbackInfoHandler(svc))
-		api.GET("/playback/:id/external-url", externalURLHandler(svc))
-		api.GET("/playback/:id/external-players", externalPlayersHandler(svc))
-		api.GET("/stream/:id", streamHandler(svc))
-		api.GET("/hls/:id/index.m3u8", hlsPlaylistHandler(svc))
-		api.GET("/media/:id/subtitles", listSubtitlesHandler(svc))
-		return router, svc, cfg.Secrets.JWTSecret
-	}
+	router := gin.New()
+	api := router.Group("/api")
+	api.Use(middleware.AuthRequired(cfg.Secrets.JWTSecret))
+	api.GET("/playback/:id/info", playbackInfoHandler(svc))
+	api.GET("/playback/:id/external-url", externalURLHandler(svc))
+	api.GET("/playback/:id/external-players", externalPlayersHandler(svc))
+	api.GET("/stream/:id", streamHandler(svc))
+	api.GET("/hls/:id/index.m3u8", hlsPlaylistHandler(svc))
+	api.GET("/media/:id/subtitles", listSubtitlesHandler(svc))
+	return router, svc, cfg.Secrets.JWTSecret
+}
 
 func TestPlaybackInfoForSTRMMediaDisablesHLS(t *testing.T) {
 	router, _, secret := newPlaybackScopeTestRouter(t)
@@ -478,4 +478,3 @@ func TestListSubtitlesForRemoteEmbyMediaReturnsEmptyTracks(t *testing.T) {
 		t.Fatalf("expected empty tracks array, got %v", payload.Tracks)
 	}
 }
-

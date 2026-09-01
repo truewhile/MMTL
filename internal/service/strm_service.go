@@ -91,7 +91,7 @@ type StrmService struct {
 	oauthSessions map[string]*strm115AuthSession
 	wafUntil      time.Time // 115 风控/限流熔断截止时间（由 mu 保护）
 
-	downloadSem chan struct{} // 全局下载并发信号量：限制整个进程同时进行「换直链+下载」的并发数
+	downloadSem     chan struct{} // 全局下载并发信号量：限制整个进程同时进行「换直链+下载」的并发数
 	downloadSemOnce sync.Once
 }
 

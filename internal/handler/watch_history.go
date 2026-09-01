@@ -125,6 +125,18 @@ func historyContinueHandler(svc *service.Container) gin.HandlerFunc {
 		for _, r := range rows {
 			m, ok := mIdx[r.MediaID]
 			if !ok {
+				if svc.EmbyRemote != nil && service.IsEmbyRemoteID(r.MediaID) {
+					mountID, remoteID, _ := service.DecodeEmbyRemoteID(r.MediaID)
+					if mount, acct, _ := svc.EmbyRemote.ResolveMount(c.Request.Context(), mountID); mount != nil && acct != nil {
+						if rm, err := svc.EmbyRemote.RemoteMediaDetail(c.Request.Context(), mount, acct, remoteID); err == nil && rm != nil {
+							out = append(out, gin.H{
+								"history": r,
+								"media":   *rm,
+							})
+							continue
+						}
+					}
+				}
 				continue
 			}
 			out = append(out, gin.H{
@@ -163,7 +175,7 @@ func historyDeleteHandler(svc *service.Container) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "status must be completed or incomplete"})
 			return
 		}
-			res := q.Unscoped().Delete(&model.PlaybackHistory{})
+		res := q.Unscoped().Delete(&model.PlaybackHistory{})
 		if err := res.Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

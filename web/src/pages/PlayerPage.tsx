@@ -64,6 +64,8 @@ export function PlayerPage() {
   const [playerError, setPlayerError] = useState('')
   // 「客户端直连解码」模式：宿主机不转码，播放器强制 direct play、隐藏 HLS 切换。
   const [directOnly, setDirectOnly] = useState(false)
+  const [resumePosition, setResumePosition] = useState(0)
+  const [initialSeekDone, setInitialSeekDone] = useState(false)
 
   // 弹幕控制：状态来自 /api/danmaku/config 初始值，用户在面板里实时调整。
   const [danmakuOpen, setDanmakuOpen] = useState(false)
@@ -254,7 +256,44 @@ export function PlayerPage() {
     return () => teardownHls(media.id, mode === 'hls')
   }, [hlsUnavailable, media, mode, params, setParams, teardownHls])
 
-  // Persist resume position every 10 seconds while playing.
+  // 自动拉取已有的播放进度并恢复播放位置
+  useEffect(() => {
+    if (!id) return
+    setResumePosition(0)
+    setInitialSeekDone(false)
+    playbackAPI
+      .recentHistory()
+      .then((items) => {
+        const found = items.find((h) => h.media_id === id)
+        if (found && found.position_ms > 2000 && !found.completed) {
+          setResumePosition(found.position_ms / 1000)
+        }
+      })
+      .catch(() => undefined)
+  }, [id])
+
+  useEffect(() => {
+    const video = ref.current
+    if (!video || !resumePosition || initialSeekDone) return
+    const applyResume = () => {
+      if (resumePosition > 0 && Math.abs(video.currentTime - resumePosition) > 2) {
+        video.currentTime = resumePosition
+        setInitialSeekDone(true)
+        const m = Math.floor(resumePosition / 60)
+        const s = Math.floor(resumePosition % 60)
+        const timeStr = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+        toast.success(`已恢复上次播放进度至 ${timeStr}`, { duration: 2500 })
+      }
+    }
+    if (video.readyState >= 1) {
+      applyResume()
+    } else {
+      video.addEventListener('loadedmetadata', applyResume, { once: true })
+      return () => video.removeEventListener('loadedmetadata', applyResume)
+    }
+  }, [resumePosition, initialSeekDone])
+
+  // Persist resume position every 10 seconds while playing, and immediately upon pause/unmount.
   useEffect(() => {
     if (!media || !ref.current) return
     const video = ref.current
@@ -273,6 +312,11 @@ export function PlayerPage() {
     return () => {
       video.removeEventListener('timeupdate', handler)
       video.removeEventListener('pause', handler)
+      const positionMs = Math.floor(video.currentTime * 1000)
+      const durationMs = Math.floor((video.duration || 0) * 1000)
+      if (positionMs > 0 && media) {
+        playbackAPI.recordProgress(media.id, positionMs, durationMs).catch(() => undefined)
+      }
     }
   }, [media])
 

@@ -59,8 +59,8 @@ func TestEmbyProviderListViewsAndChildren(t *testing.T) {
 	defer srv.Close()
 
 	p, err := New(TypeEmbyRemote, map[string]any{
-		"url":           srv.URL,
-		"api_key":       "fixed-token",
+		"url":            srv.URL,
+		"api_key":        "fixed-token",
 		"remote_user_id": "user-9",
 	}, srv.Client())
 	if err != nil {
@@ -87,8 +87,8 @@ func TestEmbyProviderResolveDirectURLByDefault(t *testing.T) {
 	defer srv.Close()
 
 	p, err := New(TypeEmbyRemote, map[string]any{
-		"url":           srv.URL,
-		"api_key":       "fixed-token",
+		"url":            srv.URL,
+		"api_key":        "fixed-token",
 		"remote_user_id": "user-9",
 	}, srv.Client())
 	if err != nil {
@@ -115,10 +115,10 @@ func TestEmbyProviderResolveProxyWhenConfigured(t *testing.T) {
 	defer srv.Close()
 
 	p, err := New(TypeEmbyRemote, map[string]any{
-		"url":           srv.URL,
-		"api_key":       "fixed-token",
+		"url":            srv.URL,
+		"api_key":        "fixed-token",
 		"remote_user_id": "user-9",
-		"proxy_play":    "true",
+		"proxy_play":     "true",
 	}, srv.Client())
 	if err != nil {
 		t.Fatal(err)

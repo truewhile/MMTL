@@ -206,94 +206,94 @@ func (s *DanmakuService) Fetch(ctx context.Context, mediaID, keyword, episodeID 
 	configured := strings.TrimRight(strings.TrimSpace(res.Source), "/")
 	official := danmakuOfficialBase
 
-		// 手动指定弹幕库：跳过识别，直接拉取该库（自定义源失败回退官方）。
-		if target := strings.TrimSpace(episodeID); target != "" {
-			raw, st, err := s.fetchCommentWithFallback(ctx, configured, official, target)
-			if err != nil {
-				s.log.Warn("danmaku comment fetch failed", zap.String("media_id", mediaID), zap.String("episode_id", target), zap.Error(err))
-				return res, err
-			}
-			res.Raw, res.SourceType = raw, st
-			if id, parseErr := strconv.ParseInt(target, 10, 64); parseErr == nil {
-				res.EpisodeID = id
-			}
-			res.MatchMode = "manual"
-			return res, nil
-		}
-
-		term, media, err := s.searchTerms(ctx, mediaID)
+	// 手动指定弹幕库：跳过识别，直接拉取该库（自定义源失败回退官方）。
+	if target := strings.TrimSpace(episodeID); target != "" {
+		raw, st, err := s.fetchCommentWithFallback(ctx, configured, official, target)
 		if err != nil {
+			s.log.Warn("danmaku comment fetch failed", zap.String("media_id", mediaID), zap.String("episode_id", target), zap.Error(err))
 			return res, err
 		}
-		manualKeyword := strings.TrimSpace(keyword) != ""
-		if kw := strings.TrimSpace(keyword); kw != "" {
-			term.name = kw
+		res.Raw, res.SourceType = raw, st
+		if id, parseErr := strconv.ParseInt(target, 10, 64); parseErr == nil {
+			res.EpisodeID = id
 		}
-		if strings.TrimSpace(term.name) == "" {
+		res.MatchMode = "manual"
+		return res, nil
+	}
+
+	term, media, err := s.searchTerms(ctx, mediaID)
+	if err != nil {
+		return res, err
+	}
+	manualKeyword := strings.TrimSpace(keyword) != ""
+	if kw := strings.TrimSpace(keyword); kw != "" {
+		term.name = kw
+	}
+	if strings.TrimSpace(term.name) == "" {
+		return res, nil
+	}
+
+	target := ""
+
+	// 1) hash 识别：始终走官方 /api/v2/match（keyword 手动覆盖时跳过，直接走第 3 层）。
+	if target == "" && !manualKeyword && media != nil && (media.Path != "" || IsEmbyRemoteID(media.ID)) {
+		if hash, ok := s.mediaHash(ctx, media); ok {
+			fileSize := media.SizeBytes
+			if media.Path != "" && strings.EqualFold(filepath.Ext(media.Path), ".strm") {
+				fileSize = 0 // strm 行的 SizeBytes 是文本大小，不是视频大小
+			}
+			matchName := danmakuMatchFileName(media.Path)
+			if matchName == "" {
+				matchName = term.name
+			}
+			matches, err := s.matchOfficial(ctx, matchName, hash, fileSize, media.DurationSec)
+			if err != nil {
+				s.log.Warn("danmaku hash match failed", zap.String("media_id", mediaID), zap.Error(err))
+			} else if len(matches) > 0 {
+				target = fmt.Sprintf("%d", matches[0].EpisodeID)
+				res.AnimeTitle = matches[0].AnimeTitle
+				res.EpisodeTitle = matches[0].EpisodeTitle
+				res.EpisodeID = matches[0].EpisodeID
+				res.MatchMode = "hash"
+			}
+		}
+	}
+
+	// 2) 按播放的文件名 + 集数搜索（keyword 手动覆盖时跳过，直接走第 3 层）。
+	if target == "" && !manualKeyword && media != nil && media.Path != "" {
+		if fileName := danmakuMatchFileName(media.Path); fileName != "" && fileName != term.name {
+			if candidates, err := s.searchCandidatesWithFallback(ctx, configured, official, fileName, term.episode); err == nil &&
+				len(candidates) == 1 && len(candidates[0].Episodes) > 0 {
+				target = fmt.Sprintf("%d", candidates[0].Episodes[0].EpisodeID)
+				res.AnimeTitle = candidates[0].AnimeTitle
+				res.EpisodeTitle = candidates[0].Episodes[0].EpisodeTitle
+				res.EpisodeID = candidates[0].Episodes[0].EpisodeID
+				res.MatchMode = "filename"
+			}
+		}
+	}
+
+	// 3) 现有自动识别：标题层级（original_name → title → 文件名）+ 集数，
+	//    多结果返回候选列表交给播放器（歧义处理）。
+	if target == "" {
+		candidates, err := s.searchCandidatesWithFallback(ctx, configured, official, term.name, term.episode)
+		if err != nil {
+			s.log.Warn("danmaku search failed", zap.String("media_id", mediaID), zap.String("name", term.name), zap.String("episode", term.episode), zap.Error(err))
+			return res, err
+		}
+		if len(candidates) != 1 {
+			res.Candidates = candidates
 			return res, nil
 		}
-
-		target := ""
-
-		// 1) hash 识别：始终走官方 /api/v2/match（keyword 手动覆盖时跳过，直接走第 3 层）。
-		if target == "" && !manualKeyword && media != nil && (media.Path != "" || IsEmbyRemoteID(media.ID)) {
-			if hash, ok := s.mediaHash(ctx, media); ok {
-				fileSize := media.SizeBytes
-				if media.Path != "" && strings.EqualFold(filepath.Ext(media.Path), ".strm") {
-					fileSize = 0 // strm 行的 SizeBytes 是文本大小，不是视频大小
-				}
-				matchName := danmakuMatchFileName(media.Path)
-				if matchName == "" {
-					matchName = term.name
-				}
-				matches, err := s.matchOfficial(ctx, matchName, hash, fileSize, media.DurationSec)
-				if err != nil {
-					s.log.Warn("danmaku hash match failed", zap.String("media_id", mediaID), zap.Error(err))
-				} else if len(matches) > 0 {
-					target = fmt.Sprintf("%d", matches[0].EpisodeID)
-					res.AnimeTitle = matches[0].AnimeTitle
-					res.EpisodeTitle = matches[0].EpisodeTitle
-					res.EpisodeID = matches[0].EpisodeID
-					res.MatchMode = "hash"
-				}
-			}
+		if len(candidates[0].Episodes) == 0 {
+			return res, errors.New("no danmaku library found for this video")
 		}
-
-		// 2) 按播放的文件名 + 集数搜索（keyword 手动覆盖时跳过，直接走第 3 层）。
-		if target == "" && !manualKeyword && media != nil && media.Path != "" {
-			if fileName := danmakuMatchFileName(media.Path); fileName != "" && fileName != term.name {
-				if candidates, err := s.searchCandidatesWithFallback(ctx, configured, official, fileName, term.episode); err == nil &&
-					len(candidates) == 1 && len(candidates[0].Episodes) > 0 {
-					target = fmt.Sprintf("%d", candidates[0].Episodes[0].EpisodeID)
-					res.AnimeTitle = candidates[0].AnimeTitle
-					res.EpisodeTitle = candidates[0].Episodes[0].EpisodeTitle
-					res.EpisodeID = candidates[0].Episodes[0].EpisodeID
-					res.MatchMode = "filename"
-				}
-			}
-		}
-
-		// 3) 现有自动识别：标题层级（original_name → title → 文件名）+ 集数，
-		//    多结果返回候选列表交给播放器（歧义处理）。
-		if target == "" {
-			candidates, err := s.searchCandidatesWithFallback(ctx, configured, official, term.name, term.episode)
-			if err != nil {
-				s.log.Warn("danmaku search failed", zap.String("media_id", mediaID), zap.String("name", term.name), zap.String("episode", term.episode), zap.Error(err))
-				return res, err
-			}
-			if len(candidates) != 1 {
-				res.Candidates = candidates
-				return res, nil
-			}
-			if len(candidates[0].Episodes) == 0 {
-				return res, errors.New("no danmaku library found for this video")
-			}
-			target = fmt.Sprintf("%d", candidates[0].Episodes[0].EpisodeID)
-			res.AnimeTitle = candidates[0].AnimeTitle
-			res.EpisodeTitle = candidates[0].Episodes[0].EpisodeTitle
-			res.EpisodeID = candidates[0].Episodes[0].EpisodeID
-			res.MatchMode = "search"
-		}
+		target = fmt.Sprintf("%d", candidates[0].Episodes[0].EpisodeID)
+		res.AnimeTitle = candidates[0].AnimeTitle
+		res.EpisodeTitle = candidates[0].Episodes[0].EpisodeTitle
+		res.EpisodeID = candidates[0].Episodes[0].EpisodeID
+		res.MatchMode = "search"
+	}
 
 	raw, st, err := s.fetchCommentWithFallback(ctx, configured, official, target)
 	if err != nil {
@@ -787,7 +787,7 @@ func (s *DanmakuService) matchOfficial(ctx context.Context, fileName, fileHash s
 		return nil, fmt.Errorf("danmaku match returned HTTP %d", resp.StatusCode)
 	}
 	var out struct {
-		Success bool          `json:"success"`
+		Success bool           `json:"success"`
 		Matches []danmakuMatch `json:"matches"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {

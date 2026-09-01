@@ -575,7 +575,8 @@ export function ContinueWatchingSection({ history }: { history: HistoryItem[] })
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
       >
         {history.slice(0, 12).map((h) => {
-          const media = h.media!
+          const media = h.media
+          if (!media) return null
           const progress = h.duration_ms > 0 ? h.position_ms / h.duration_ms : 0
           return (
             <div key={h.id} className="w-64 sm:w-72 shrink-0">

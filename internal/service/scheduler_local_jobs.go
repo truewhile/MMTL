@@ -231,4 +231,3 @@ func (s *SchedulerService) jobCleanImageCache(ctx context.Context) error {
 	}
 	return nil
 }
-

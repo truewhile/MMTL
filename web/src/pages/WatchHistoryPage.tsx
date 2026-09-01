@@ -6,7 +6,8 @@ import toast from 'react-hot-toast'
 import { historyAPI } from '../api/history'
 import { imageURL } from '../api/client'
 import { confirmAction } from '../components/confirmAction'
-import type { HistoryItem } from '../types'
+import { isRemoteEmbyID } from '../utils/remoteEmby'
+import type { HistoryItem, Media } from '../types'
 
 function fmtDuration(ms: number): string {
   if (!ms || ms <= 0) return '—'
@@ -90,8 +91,12 @@ export function WatchHistoryPage() {
 
       <div className="space-y-3">
         {items.map((h) => {
-          const m = h.media
-          if (!m) return null
+          const m: Media = h.media || ({
+            id: h.media_id,
+            title: isRemoteEmbyID(h.media_id) ? '远程媒体' : h.media_id,
+            poster_url: '',
+            updated_at: h.watched_at,
+          } as Media)
           const progress =
             h.duration_ms > 0 ? h.position_ms / h.duration_ms : 0
           return (

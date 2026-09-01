@@ -49,11 +49,11 @@ func TestRewriteSubtitleDeliveryURLsFallsBackIndexOne(t *testing.T) {
 	}
 	rewriteSubtitleDeliveryURLs(src, "/Videos/embyremote~acct-1~item-1", &EmbyRemoteConfig{})
 	streams := src["MediaStreams"].([]any)
-		want := "/Videos/embyremote~acct-1~item-1/Subtitles/1/Stream"
-		if got := streams[0].(map[string]any)["DeliveryUrl"]; got != want {
-			t.Fatalf("subtitle DeliveryUrl = %v, want %v", got, want)
-		}
+	want := "/Videos/embyremote~acct-1~item-1/Subtitles/1/Stream"
+	if got := streams[0].(map[string]any)["DeliveryUrl"]; got != want {
+		t.Fatalf("subtitle DeliveryUrl = %v, want %v", got, want)
 	}
+}
 
 func TestMapRemoteItemToMediaExtractsCodecsAndContainer(t *testing.T) {
 	r := &EmbyRemoteService{}

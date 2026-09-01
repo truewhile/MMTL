@@ -87,6 +87,23 @@ func (e *EmbyService) RecordProgress(ctx context.Context, userID, mediaID string
 		// runtimeTicks 缺失时回退到 media.DurationSec
 		if m, _ := e.repo.Media.FindByID(ctx, mediaID); m != nil {
 			dur = int64(m.DurationSec) * 1000
+		} else if IsEmbyRemoteID(mediaID) {
+			// 远程挂载条目：尝试从既有历史记录或远程详情补齐时长
+			var oldHist model.PlaybackHistory
+			if err := e.repo.DB.WithContext(ctx).Where("user_id = ? AND media_id = ?", userID, mediaID).First(&oldHist).Error; err == nil && oldHist.DurationMs > 0 {
+				dur = oldHist.DurationMs
+			} else if e.remote != nil {
+				mountID, remoteID, _ := DecodeEmbyRemoteID(mediaID)
+				if mount, acct, _ := e.remote.ResolveMount(ctx, mountID); mount != nil && acct != nil {
+					if item, _ := e.remote.RemoteItem(ctx, mount, acct, remoteID); item != nil {
+						if ticks, ok := item["RunTimeTicks"].(float64); ok && ticks > 0 {
+							dur = int64(ticks) / 10_000
+						} else if ticks, ok := item["RunTimeTicks"].(int64); ok && ticks > 0 {
+							dur = ticks / 10_000
+						}
+					}
+				}
+			}
 		}
 	}
 	completed := dur > 0 && pos >= dur*9/10

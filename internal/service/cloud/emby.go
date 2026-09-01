@@ -184,12 +184,12 @@ func (p *embyProvider) ensureToken(ctx context.Context) (string, error) {
 
 // embyItemSummary 目录浏览所需的最小 Emby 条目字段。
 type embyItemSummary struct {
-	Id          string `json:"Id"`
-	Name        string `json:"Name"`
-	Type        string `json:"Type"`
-	IsFolder    bool   `json:"IsFolder"`
-	ChildCount  int    `json:"ChildCount"`
-	RunTimeTicks int64 `json:"RunTimeTicks"`
+	Id           string `json:"Id"`
+	Name         string `json:"Name"`
+	Type         string `json:"Type"`
+	IsFolder     bool   `json:"IsFolder"`
+	ChildCount   int    `json:"ChildCount"`
+	RunTimeTicks int64  `json:"RunTimeTicks"`
 }
 
 type embyItemListResponse struct {

@@ -79,3 +79,32 @@ func TestRemoteItemMapsFindsEnvelopeItems(t *testing.T) {
 		t.Fatalf("first item ID = %#v, want %q", items[0]["Id"], remoteID)
 	}
 }
+
+func TestRecordProgressFallbacksToExistingHistoryDuration(t *testing.T) {
+	svc := newTestEmbyService(t)
+	remoteID := EncodeEmbyRemoteID("mount-test", "item-999")
+	user := &model.User{Username: "resume_test_user", Role: "user", Tier: "free", IsActive: true}
+	if err := svc.repo.User.Create(t.Context(), user); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	// 先以有 runtimeTicks 写入首次进度
+	if err := svc.RecordProgress(t.Context(), user.ID, remoteID, 10_000_000, 100_000_000); err != nil {
+		t.Fatalf("first record progress: %v", err)
+	}
+	// 再次上报，但某些客户端此时发了 0 runtimeTicks
+	if err := svc.RecordProgress(t.Context(), user.ID, remoteID, 95_000_000, 0); err != nil {
+		t.Fatalf("second record progress: %v", err)
+	}
+
+	var hist model.PlaybackHistory
+	if err := svc.repo.DB.Where("user_id = ? AND media_id = ?", user.ID, remoteID).First(&hist).Error; err != nil {
+		t.Fatalf("find hist: %v", err)
+	}
+	if hist.DurationMs != 10_000 {
+		t.Fatalf("expected duration 10000ms, got %d", hist.DurationMs)
+	}
+	if !hist.Completed {
+		t.Fatalf("expected 95%% progress to be completed")
+	}
+}

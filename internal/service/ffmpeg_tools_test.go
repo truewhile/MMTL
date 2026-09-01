@@ -78,4 +78,3 @@ func TestStartInstallRejectsConcurrent(t *testing.T) {
 	svc.running = false
 	svc.mu.Unlock()
 }
-

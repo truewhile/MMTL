@@ -54,10 +54,10 @@ func AllModels() []interface{} {
 		&StrmAccount{},
 		&StrmSyncPath{},
 		&StrmSyncRecord{},
-			&StrmDownloadTask{},
-			&StrmUploadTask{},
-			&StrmDirCache{},
-			&ScrapeTask{},
-			&EmbyMount{},
-		}
+		&StrmDownloadTask{},
+		&StrmUploadTask{},
+		&StrmDirCache{},
+		&ScrapeTask{},
+		&EmbyMount{},
+	}
 }

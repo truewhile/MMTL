@@ -18,8 +18,8 @@ type ScrapeTask struct {
 	LibraryName    string     `gorm:"size:128" json:"library_name"`
 	MediaTitle     string     `gorm:"size:255;not null" json:"media_title"`
 	MediaPath      string     `gorm:"size:1024;not null" json:"media_path"`
-	MediaType      string     `gorm:"size:16" json:"media_type"`                   // movie / tv / anime / adult
-	Provider       string     `gorm:"size:32" json:"provider"`                     // tmdb / douban / bangumi / thetvdb / metatube
+	MediaType      string     `gorm:"size:16" json:"media_type"` // movie / tv / anime / adult
+	Provider       string     `gorm:"size:32" json:"provider"`   // tmdb / douban / bangumi / thetvdb / metatube
 	MatchedTitle   string     `gorm:"size:255" json:"matched_title"`
 	MatchedYear    int        `json:"matched_year"`
 	PosterURL      string     `gorm:"size:1024" json:"poster_url"`
