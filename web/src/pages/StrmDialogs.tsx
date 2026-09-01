@@ -10,6 +10,7 @@ import {
   QrCode,
   RefreshCw,
   Search,
+  Tv,
   X,
 } from 'lucide-react'
 
@@ -109,6 +110,7 @@ export function StrmAccountDialog({
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [token, setToken] = useState('')
+  const [proxyPlay, setProxyPlay] = useState(existing?.proxy_play ?? false)
   const [saving, setSaving] = useState(false)
 
   const buildConfig = (): Record<string, string> => {
@@ -126,6 +128,14 @@ export function StrmAccountDialog({
           ...(password ? { password } : {}),
           ...(token ? { token } : {}),
         }
+      case 'emby_remote':
+        return {
+          ...(url ? { url } : {}),
+          ...(username ? { username } : {}),
+          ...(password ? { password } : {}),
+          ...(token ? { token } : {}),
+          proxy_play: proxyPlay ? 'true' : 'false',
+        }
       default:
         return {}
     }
@@ -137,6 +147,8 @@ export function StrmAccountDialog({
         return url !== ''
       case 'openlist':
         return server !== '' && (token !== '' || password !== '')
+      case 'emby_remote':
+        return url !== '' && (token !== '' || password !== '')
       default:
         return false
     }
@@ -182,7 +194,14 @@ export function StrmAccountDialog({
         {!existing && (
           <div className="grid grid-cols-3 gap-3">
             {PROVIDER_OPTIONS.map((option) => {
-              const Icon = option.provider === 'cloud115' ? QrCode : option.provider === 'clouddrive2' ? HardDrive : FolderPlus
+              const Icon =
+                option.provider === 'cloud115'
+                  ? QrCode
+                  : option.provider === 'clouddrive2'
+                    ? HardDrive
+                    : option.provider === 'emby_remote'
+                      ? Tv
+                      : FolderPlus
               const active = provider === option.provider
               return (
                 <button
@@ -235,7 +254,13 @@ export function StrmAccountDialog({
           </Field>
         )}
 
-        {provider !== 'cloud115' && (
+        {provider === 'emby_remote' && (
+          <Field label="Emby 服务地址" hint="远程 Emby 服务器地址，如 http://192.168.1.10:8096">
+            <input className={inputCls} value={url} placeholder="http://host:8096" onChange={(e) => setUrl(e.target.value)} />
+          </Field>
+        )}
+
+        {(provider === 'clouddrive2' || provider === 'emby_remote') && (
           <div className="grid grid-cols-2 gap-3">
             <Field label="用户名">
               <input className={inputCls} value={username} onChange={(e) => setUsername(e.target.value)} />
@@ -247,9 +272,43 @@ export function StrmAccountDialog({
         )}
 
         {provider === 'openlist' && (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="用户名">
+              <input className={inputCls} value={username} onChange={(e) => setUsername(e.target.value)} />
+            </Field>
+            <Field label="密码">
+              <input className={inputCls} type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            </Field>
+          </div>
+        )}
+
+        {provider === 'emby_remote' && (
+          <Field label="API Key（可选）" hint="留空则用下方用户名/密码自动认证获取">
+            <input className={inputCls} value={token} placeholder="留空自动认证" onChange={(e) => setToken(e.target.value)} />
+          </Field>
+        )}
+
+        {provider === 'openlist' && (
           <Field label="Token（可选，优先于密码）">
             <input className={inputCls} value={token} onChange={(e) => setToken(e.target.value)} />
           </Field>
+        )}
+
+        {provider === 'emby_remote' && (
+          <label className="flex cursor-pointer items-start gap-2 text-sm text-ink-100">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 accent-primary-400"
+              checked={proxyPlay}
+              onChange={(e) => setProxyPlay(e.target.checked)}
+            />
+            <span>
+              <span className="font-semibold text-ink-600">播放流量经过本服务器代理</span>
+              <span className="block text-xs text-sand-500">
+                关闭（推荐）：播放时客户端直连远程 Emby，本服务器不参与流量中转
+              </span>
+            </span>
+          </label>
         )}
 
         {existing && provider !== 'cloud115' && (

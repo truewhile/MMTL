@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Settings,
   Trash2,
+  Tv,
   Upload,
 } from 'lucide-react'
 
@@ -55,6 +56,8 @@ export function providerIcon(provider: StrmProvider) {
       return FolderPlus
     case 'local':
       return HardDrive
+    case 'emby_remote':
+      return Tv
   }
 }
 
@@ -71,7 +74,7 @@ export function StrmManagePage() {
   const refresh = useCallback(async () => {
     try {
       const [accts, pths, recs] = await Promise.all([
-        strmAPI.listAccounts(),
+        strmAPI.listAccounts().then((rows) => rows.filter((a) => a.provider !== 'emby_remote')),
         strmAPI.listPaths(),
         strmAPI.listRecords(),
       ])

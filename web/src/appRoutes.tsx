@@ -26,6 +26,7 @@ const ProfileManagementPage = lazy(() =>
   import('./pages/ProfileManagementPage').then((m) => ({ default: m.ProfileManagementPage })),
 )
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
+const EmbyMountPage = lazy(() => import('./pages/EmbyMountPage').then((m) => ({ default: m.EmbyMountPage })))
 const StrmManagePage = lazy(() => import('./pages/StrmManagePage').then((m) => ({ default: m.StrmManagePage })))
 const StrmDownloadQueuePage = lazy(() =>
   import('./pages/StrmQueuePage').then((m) => ({ default: m.StrmDownloadQueuePage })),
@@ -33,9 +34,8 @@ const StrmDownloadQueuePage = lazy(() =>
 const StrmUploadQueuePage = lazy(() =>
   import('./pages/StrmQueuePage').then((m) => ({ default: m.StrmUploadQueuePage })),
 )
-const ScraperQueuePage = lazy(() =>
-  import('./pages/ScraperQueuePage').then((m) => ({ default: m.ScraperQueuePage })),
-)
+const ScraperQueuePage = lazy(() => import('./pages/ScraperQueuePage').then((m) => ({ default: m.ScraperQueuePage })))
+const TaskQueuePage = lazy(() => import('./pages/TaskQueuePage').then((m) => ({ default: m.TaskQueuePage })))
 
 export type AppRoute = {
   path?: string
@@ -62,9 +62,11 @@ export const appRoutes: AppRoute[] = [
   { path: 'tools', element: <Navigate to="/files" replace /> },
   { path: 'files', element: <FileManagerPage />, adminOnly: true },
   { path: 'settings', element: <SettingsPage />, adminOnly: true },
+  { path: 'emby-mount', element: <EmbyMountPage />, adminOnly: true },
   { path: 'strm', element: <StrmManagePage />, adminOnly: true },
   { path: 'strm/downloads', element: <StrmDownloadQueuePage />, adminOnly: true },
   { path: 'strm/uploads', element: <StrmUploadQueuePage />, adminOnly: true },
   { path: 'scraper/queue', element: <ScraperQueuePage />, adminOnly: true },
+  { path: 'queue', element: <TaskQueuePage />, adminOnly: true },
   { path: 'admin', element: <AdminPage />, adminOnly: true },
 ]

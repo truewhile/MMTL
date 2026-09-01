@@ -46,6 +46,7 @@ type Container struct {
 	Scheduler        *SchedulerService
 	Storage          *StorageService
 	Emby             *EmbyService
+	EmbyRemote       *EmbyRemoteService
 	Backup           *BackupService
 	PlayProfiles     *PlayProfileService
 	Permissions      *PermissionService
@@ -98,6 +99,11 @@ func (c *Container) Boot() {
 
 	// 启动调度器定时任务
 	c.Scheduler.Start(c.stopCtx)
+
+	// 远程 Emby 挂载兼容迁移：旧账号无挂载时自动全量挂载
+	if c.EmbyRemote != nil {
+		c.EmbyRemote.AutoSeedMounts(c.stopCtx)
+	}
 
 	// STRM 元数据下载/上传队列与定时同步巡检
 	if c.Strm != nil {

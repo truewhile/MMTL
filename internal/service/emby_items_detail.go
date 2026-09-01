@@ -11,6 +11,15 @@ import (
 
 // Item 单条目详情。
 func (e *EmbyService) Item(ctx context.Context, mediaID, userID string) (map[string]any, error) {
+	// 远程 Emby 条目：不查本地库，直接向远程转发（保持远程最新元数据）。
+	if e.remote != nil && IsEmbyRemoteID(mediaID) {
+		mountID, remoteID, _ := DecodeEmbyRemoteID(mediaID)
+		mount, acct, _ := e.remote.ResolveMount(ctx, mountID)
+		if mount == nil || acct == nil {
+			return nil, nil
+		}
+		return e.remote.RemoteItem(ctx, mount, acct, remoteID)
+	}
 	if lib, err := e.repo.Library.FindByID(ctx, mediaID); err != nil {
 		return nil, err
 	} else if lib != nil {
@@ -71,10 +80,18 @@ func (e *EmbyService) Item(ctx context.Context, mediaID, userID string) (map[str
 	return e.itemPayload(ctx, m, fav, pos), nil
 }
 
-// LatestItems 最近添加，全库或指定库。
+// LatestItems 最近添加，全库或指定库。远程媒体库(parentID 带前缀)直接透传远程。
 func (e *EmbyService) LatestItems(ctx context.Context, userID, parentID string, limit int) ([]map[string]any, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 20
+	}
+	if e.remote != nil && IsEmbyRemoteID(parentID) {
+		mountID, remoteParent, _ := DecodeEmbyRemoteID(parentID)
+		mount, acct, _ := e.remote.ResolveMount(ctx, mountID)
+		if mount == nil || acct == nil {
+			return nil, nil
+		}
+		return e.remote.RemoteLatest(ctx, mount, acct, remoteParent, limit)
 	}
 	cacheKey := e.embyLatestCacheKey(userID, parentID, limit)
 	var cached embyLatestCacheValue

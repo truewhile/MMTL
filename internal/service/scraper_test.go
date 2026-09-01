@@ -2,8 +2,8 @@ package service
 
 import (
 	"errors"
+	"io"
 	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -396,15 +396,19 @@ func TestEnrichOneAdultScrapesArtwork(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Mock adult provider
-	adultServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(`<html><h3>IPX-235 测试番号封面</h3><a class="bigImage" href="/pics/cover/ipx235.jpg"></a></html>`))
-	}))
-	defer adultServer.Close()
-
+	// Mock adult provider：RoundTripper 拦截 provider 发出的全部请求（不访问
+	// 外网），任何站点都返回带封面链接的测试 HTML——保证 CI 上不命中真实
+	// javdb/dmm 站点（外网可达时会把真实封面写进断言导致失败）。
+	adultHTML := `<html><h3>IPX-235 测试番号封面</h3><a class="bigImage" href="/pics/cover/ipx235.jpg"></a></html>`
+	mockAdultTransport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/html; charset=utf-8"}},
+			Body:       io.NopCloser(strings.NewReader(adultHTML)),
+		}, nil
+	})
 	scraper.adult = &AdultProvider{
-		client: adultServer.Client(),
+		client: &http.Client{Transport: mockAdultTransport},
 	}
 
 	if err := scraper.EnrichOne(t.Context(), &media); err != nil {
@@ -418,7 +422,13 @@ func TestEnrichOneAdultScrapesArtwork(t *testing.T) {
 	if got.ScrapeStatus != "matched" {
 		t.Fatalf("ScrapeStatus = %q, want 'matched'", got.ScrapeStatus)
 	}
-	if got.PosterURL != "https://pics.dmm.co.jp/digital/video/ipx00235/ipx00235pl.jpg" && got.PosterURL != adultServer.URL+"/pics/cover/ipx235.jpg" {
+	// 封面来自 mock HTML 的 cover 链接（Host 随站点变化，只校验路径后缀）。
+	if got.PosterURL != "https://pics.dmm.co.jp/digital/video/ipx00235/ipx00235pl.jpg" && !strings.HasSuffix(got.PosterURL, "/pics/cover/ipx235.jpg") {
 		t.Fatalf("unexpected PosterURL = %q", got.PosterURL)
 	}
 }
+
+// roundTripFunc 把函数适配为 http.RoundTripper，用于测试中拦截全部外网请求。
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

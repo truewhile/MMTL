@@ -48,6 +48,7 @@ type EmbyService struct {
 	repo     *repository.Container
 	cache    *RuntimeCacheService
 	subtitle *SubtitleService
+	remote   *EmbyRemoteService // 远程 Emby 联邦聚合（可为 nil：未启用）
 
 	virtualMu      sync.RWMutex
 	virtualSeries  map[string]embySeriesCacheEntry
@@ -64,6 +65,14 @@ type EmbyService struct {
 // NewEmbyService is the constructor.
 func NewEmbyService(cfg *config.Config, log *zap.Logger, repo *repository.Container) *EmbyService {
 	return &EmbyService{cfg: cfg, log: log, repo: repo}
+}
+
+// SetEmbyRemote 注入远程 Emby 联邦聚合服务（nil 表示未启用）。
+func (e *EmbyService) SetEmbyRemote(remote *EmbyRemoteService) *EmbyService {
+	if e != nil {
+		e.remote = remote
+	}
+	return e
 }
 
 func (e *EmbyService) SetRuntimeCache(cache *RuntimeCacheService) *EmbyService {
@@ -123,7 +132,8 @@ type embyVisibilityCacheEntry struct {
 
 // Items paginates media in Emby's hierarchy. Episodic libraries are exposed as
 // Series -> Season -> Episode so Infuse/Vidhub/SenPlayer stop treating every
-// episode as a separate movie card.
+// episode as a separate movie card. 带 embyremote~ 前缀的 ParentID / 搜索自动
+// 路由到远程 Emby（联邦聚合，远程数据不落库）。
 func (e *EmbyService) Items(ctx context.Context, p ItemsParams) (map[string]any, error) {
 	if p.Limit <= 0 || p.Limit > 500 {
 		p.Limit = 50
@@ -133,6 +143,22 @@ func (e *EmbyService) Items(ctx context.Context, p ItemsParams) (map[string]any,
 	}
 	if len(p.IncludeItemTypes) > 0 && !containsSupportedEmbyItemType(p.IncludeItemTypes) {
 		return emptyItemsEnvelope(p.StartIndex), nil
+	}
+
+	if e.remote != nil {
+		// 远程目录浏览：ParentId 带远程前缀 → 完整转发给远程 Emby 承接分页。
+		if IsEmbyRemoteID(p.ParentID) {
+			mountID, _, _ := DecodeEmbyRemoteID(p.ParentID)
+			mount, acct, _ := e.remote.ResolveMount(ctx, mountID)
+			if mount == nil || acct == nil {
+				return emptyItemsEnvelope(p.StartIndex), nil
+			}
+			return e.remote.RemoteItems(ctx, mount, acct, p)
+		}
+		// 全局搜索：无 ParentId 且带搜索词 → 聚合本地 + 全部远程。
+		if p.ParentID == "" && p.SearchTerm != "" {
+			return e.aggregatedSearch(ctx, p)
+		}
 	}
 
 	if len(p.IDs) > 0 {
@@ -211,4 +237,86 @@ func (e *EmbyService) Items(ctx context.Context, p ItemsParams) (map[string]any,
 		}
 	}
 	return e.mediaItems(ctx, p)
+}
+
+// aggregatedSearch 把本地媒体库与全部启用的远程 Emby 的搜索结果合并为一个
+// 分页载荷。本地结果保持原有分页语义，远程各自取一页（Limit 同款）后按
+// SortBy 做稳定排序切片。
+func (e *EmbyService) aggregatedSearch(ctx context.Context, p ItemsParams) (map[string]any, error) {
+	local, err := e.mediaItems(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	type remoteResult struct {
+		items []any
+	}
+	mounts, aerr := e.remote.ListMounts(ctx)
+	results := make([]remoteResult, 0, len(mounts))
+	if aerr == nil {
+		for i := range mounts {
+			m := mounts[i]
+			if !m.Enabled {
+				continue
+			}
+			acct := e.remote.AccountByID(ctx, m.AccountID)
+			if acct == nil {
+				continue
+			}
+			// 按挂载逐个搜索：搜索结果归属明确（伪装 ID 正确），也天然只搜已
+			// 挂载的媒体库。
+			searchParams := p
+			searchParams.ParentID = "" // RemoteSearchMount 内部设 ParentId
+			remote, rerr := e.remote.RemoteSearchMount(ctx, &m, acct, p)
+			if rerr != nil {
+				if e.log != nil {
+					e.log.Warn("remote emby search failed",
+						zap.String("account", acct.Name), zap.Error(rerr))
+				}
+				continue
+			}
+			if raw, ok := remote["Items"].([]any); ok {
+				results = append(results, remoteResult{items: raw})
+			} else if rawMap, ok := remote["Items"].([]map[string]any); ok {
+				converted := make([]any, 0, len(rawMap))
+				for _, m := range rawMap {
+					converted = append(converted, any(m))
+				}
+				results = append(results, remoteResult{items: converted})
+			}
+		}
+	}
+	items := make([]any, 0, len(localItemsAsAny(local))+len(results)*p.Limit)
+	items = append(items, localItemsAsAny(local)...)
+	for _, res := range results {
+		items = append(items, res.items...)
+	}
+	return sliceSearchItems(items, p), nil
+}
+
+func localItemsAsAny(envelope map[string]any) []any {
+	if envelope == nil {
+		return nil
+	}
+	if raw, ok := envelope["Items"].([]any); ok {
+		return raw
+	}
+	if raw, ok := envelope["Items"].([]map[string]any); ok {
+		converted := make([]any, 0, len(raw))
+		for _, m := range raw {
+			converted = append(converted, any(m))
+		}
+		return converted
+	}
+	return nil
+}
+
+// sliceSearchItems 对合并结果按请求排序做简单归类后分页。远程返回已按远程
+// 排序规则排好，这里保持稳定顺序，只做首/尾切片，避免过度重排造成分页跳动。
+func sliceSearchItems(items []any, p ItemsParams) map[string]any {
+	total := len(items)
+	if p.StartIndex >= total {
+		return map[string]any{"Items": []any{}, "TotalRecordCount": total, "StartIndex": p.StartIndex}
+	}
+	end := minInt(p.StartIndex+p.Limit, total)
+	return map[string]any{"Items": items[p.StartIndex:end], "TotalRecordCount": total, "StartIndex": p.StartIndex}
 }

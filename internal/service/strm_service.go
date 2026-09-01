@@ -73,7 +73,7 @@ var StrmSettingDefs = map[string]struct {
 }
 
 // StrmAccountSecretKeys 是账号配置中需要加密存储的字段。
-var StrmAccountSecretKeys = []string{"cookie", "password", "token", "access_token", "refresh_token"}
+var StrmAccountSecretKeys = []string{"cookie", "password", "token", "access_token", "refresh_token", "api_key"}
 
 // StrmService 提供 STRM 管理的能力。
 type StrmService struct {
@@ -237,6 +237,33 @@ func (s *StrmService) strmAccountConfig(acct *model.StrmAccount) (map[string]str
 	return cfg, nil
 }
 
+// mergeEmbyRemoteConfig 对远程 Emby 账号配置做合并式更新：config 中出现的键
+// 覆盖写入（敏感键按明文加密），未出现的键保留原密文；显式空字符串=清除。
+func (s *StrmService) mergeEmbyRemoteConfig(existing string, config map[string]string) (string, error) {
+	out := map[string]string{}
+	if strings.TrimSpace(existing) != "" {
+		if err := json.Unmarshal([]byte(existing), &out); err != nil {
+			return "", fmt.Errorf("decode account config: %w", err)
+		}
+	}
+	for k, v := range config {
+		if v == "" {
+			delete(out, k)
+			continue
+		}
+		if strmContains(StrmAccountSecretKeys, k) {
+			out[k] = s.crypto.Encrypt(v)
+		} else {
+			out[k] = v
+		}
+	}
+	data, err := json.Marshal(out)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
 // HasStrmAccountCredential 报告账号是否已配置核心凭据（用于前端展示）。
 func HasStrmAccountCredential(acct *model.StrmAccount) bool {
 	switch acct.Provider {
@@ -245,6 +272,11 @@ func HasStrmAccountCredential(acct *model.StrmAccount) bool {
 		return strings.Contains(acct.Config, `"access_token"`)
 	case model.StrmProviderOpenList:
 		return strings.Contains(acct.Config, `"token"`) || strings.Contains(acct.Config, `"password"`)
+	case model.StrmProviderEmbyRemote:
+		// 远程 Emby：接入地址 + (自动认证凭据 或 手动 api_key) 即视为已配置。
+		return strings.Contains(acct.Config, `"url"`) &&
+			(strings.Contains(acct.Config, `"token"`) || strings.Contains(acct.Config, `"api_key"`) ||
+				(strings.Contains(acct.Config, `"username"`) && strings.Contains(acct.Config, `"password"`)))
 	default:
 		return strings.Contains(acct.Config, `"password"`) || strings.Contains(acct.Config, `"token"`)
 	}
@@ -288,7 +320,16 @@ func (s *StrmService) UpdateStrmAccount(ctx context.Context, id, name string, en
 		acct.Enabled = *enabled
 	}
 	if len(config) > 0 {
-		enc, err := s.strmAccountConfigJSON(config, true)
+		var enc string
+		var err error
+		if acct.Provider == model.StrmProviderEmbyRemote {
+			// 远程 Emby 账号：合并式更新。config 中出现的键覆盖（敏感键按明文
+			// 加密写入），未出现的键保留原密文——避免编辑「代理开关」时把已
+			// 保存的地址与凭据清空。
+			enc, err = s.mergeEmbyRemoteConfig(acct.Config, config)
+		} else {
+			enc, err = s.strmAccountConfigJSON(config, true)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -649,6 +690,8 @@ func providerLabel(provider string) string {
 		return "OpenList"
 	case model.StrmProviderLocal:
 		return "本地目录"
+	case model.StrmProviderEmbyRemote:
+		return "Emby 远程挂载"
 	default:
 		return provider
 	}
@@ -660,6 +703,7 @@ var StrmProviderLabels = map[string]string{
 	model.StrmProviderCloudDrive: "CloudDrive2",
 	model.StrmProviderOpenList:   "OpenList",
 	model.StrmProviderLocal:      "本地目录",
+	model.StrmProviderEmbyRemote: "Emby 远程挂载",
 }
 
 const defaultStrmUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 MMTL-Strm/1.0"

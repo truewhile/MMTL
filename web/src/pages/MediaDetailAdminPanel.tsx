@@ -2,6 +2,7 @@ import { Database, FileText, FolderInput, Pencil, Search, Sparkles, Trash2 } fro
 
 import { EpisodeArtworkToggle } from '../components/EpisodeArtworkToggle'
 import type { Media } from '../types'
+import { isRemoteEmbyID } from '../utils/remoteEmby'
 
 type MediaDetailAdminPanelProps = {
   media: Media
@@ -28,6 +29,10 @@ export function MediaDetailAdminPanel({
   onExportNFO,
   onSoftDelete,
 }: MediaDetailAdminPanelProps) {
+  if (isRemoteEmbyID(media.id)) {
+    return null
+  }
+
   return (
     <div className="rounded-2xl border border-gray-200 bg-gray-50/50 p-5 space-y-3">
       <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#c9954a]">系统后台高级控制面板</p>

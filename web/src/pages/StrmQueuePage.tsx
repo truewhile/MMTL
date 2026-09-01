@@ -55,7 +55,7 @@ function getFileIcon(filename: string): ReactNode {
   return <File size={15} className="text-gray-400 shrink-0" />
 }
 
-function StrmQueuePanel({ kind }: { kind: 'download' | 'upload' }) {
+export function StrmQueuePanel({ kind }: { kind: 'download' | 'upload' }) {
   const [snapshot, setSnapshot] = useState<StrmQueueSnapshot | null>(null)
   const [filter, setFilter] = useState<'all' | StrmTaskStatus>('all')
   const [search, setSearch] = useState('')

@@ -30,6 +30,7 @@ const (
 	Type115         = "cloud115"    // 115 网盘
 	TypeCloudDrive2 = "clouddrive2" // CloudDrive2 桥接网盘
 	TypeOpenList    = "openlist"    // OpenList / AList-compatible bridge
+	TypeEmbyRemote  = "emby_remote" // 远程 Emby 服务器（API 网关挂载）
 )
 
 // ErrUnsupported is returned for an unknown provider type.
@@ -101,6 +102,8 @@ func New(typ string, cfg map[string]any, client *http.Client) (Provider, error) 
 		return newCloudDrive2(cfg, client), nil
 	case TypeOpenList:
 		return newOpenList(cfg, client), nil
+	case TypeEmbyRemote:
+		return newEmby(cfg, client), nil
 	default:
 		return nil, ErrUnsupported
 	}
@@ -108,7 +111,7 @@ func New(typ string, cfg map[string]any, client *http.Client) (Provider, error) 
 
 // IsCloudType reports whether typ is a cloud-disk provider.
 func IsCloudType(typ string) bool {
-	return typ == Type115 || typ == TypeCloudDrive2 || typ == TypeOpenList
+	return typ == Type115 || typ == TypeCloudDrive2 || typ == TypeOpenList || typ == TypeEmbyRemote
 }
 
 // str coerces a config value to a trimmed string.

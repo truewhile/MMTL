@@ -1,6 +1,7 @@
 import { Database, FileText, Search, Sparkles, Trash2 } from 'lucide-react'
 
 import type { Media } from '../types'
+import { isRemoteEmbyID } from '../utils/remoteEmby'
 
 type LibraryMovieActionsProps = {
   media: Media
@@ -22,6 +23,11 @@ export function LibraryMovieActions({
   onSoftDelete,
 }: LibraryMovieActionsProps) {
   const buttonClass = 'flex h-8 w-8 items-center justify-center rounded-lg border border-white/70 bg-white/90 text-gray-700 shadow-sm backdrop-blur transition hover:bg-brand-50 hover:text-brand-600 disabled:opacity-50'
+
+  // 远程 Emby 条目为只读视图：刮削/探测/NFO/回收站不适用。
+  if (isRemoteEmbyID(media.id)) {
+    return null
+  }
 
   return (
     <>

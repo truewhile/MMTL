@@ -21,6 +21,9 @@ export interface Library {
   roots?: LibraryRoot[]
   created_at: string
   updated_at: string
+  /** 远程 Emby 挂载库（只读，不支持扫描/刮削/编辑） */
+  is_remote_emby?: boolean
+  remote_source?: string
 }
 
 export interface ScanResult {

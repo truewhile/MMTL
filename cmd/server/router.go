@@ -173,6 +173,11 @@ func isFrontendLibraryRoute(path string) bool {
 	if strings.Contains(id, "/") {
 		return false
 	}
+	// 远程 Emby 挂载库的伪装 ID（embyremote~account~remote）也是前端库路由，
+	// 需要交给 SPA 而非当作 Emby API 路径 404。
+	if strings.HasPrefix(id, "embyremote~") {
+		return true
+	}
 	if len(id) != 36 {
 		return false
 	}

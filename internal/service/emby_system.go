@@ -124,7 +124,8 @@ func (e *EmbyService) userPayload(u *model.User) map[string]any {
 	}
 }
 
-// Views 返回 Emby 中"虚拟根目录"——每个 library 一个条目。
+// Views 返回 Emby 中"虚拟根目录"——每个 library 一个条目，外加所有启用的
+// 远程 Emby 挂载的媒体库（联邦聚合）。
 func (e *EmbyService) Views(ctx context.Context, userID string) (map[string]any, error) {
 	libs, err := e.repo.Library.List(ctx)
 	if err != nil {
@@ -132,14 +133,90 @@ func (e *EmbyService) Views(ctx context.Context, userID string) (map[string]any,
 	}
 	libs = FilterDisplayCloudLibraries(ctx, e.repo, libs)
 	visibility := e.mediaVisibility(ctx, userID)
-	items := make([]map[string]any, 0, len(libs))
+	items := make([]map[string]any, 0, len(libs)+4)
 	for _, l := range libs {
 		if !e.libraryVisibleFromCachedVisibility(l, visibility) {
 			continue
 		}
 		items = append(items, e.libraryAsView(ctx, &l))
 	}
+	for _, remote := range e.remoteViews(ctx) {
+		items = append(items, remote)
+	}
 	return map[string]any{"Items": items, "TotalRecordCount": len(items), "StartIndex": 0}, nil
+}
+
+// remoteViews 返回全部启用挂载的远程媒体库视图（只有显式挂载的库才出现）。
+func (e *EmbyService) remoteViews(ctx context.Context) []map[string]any {
+	if e == nil || e.remote == nil {
+		return nil
+	}
+	views, err := e.remote.RemoteLibraries(ctx)
+	if err != nil || len(views) == 0 {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(views))
+	for _, v := range views {
+		out = append(out, remoteLibraryViewPayload(v))
+	}
+	return out
+}
+
+// remoteLibraryViewPayload 把挂载库展示信息标准化为 Emby View payload
+// （ID 用挂载伪装，名称=挂载显示名）。
+func remoteLibraryViewPayload(v RemoteLibraryView) map[string]any {
+	encoded := EncodeEmbyRemoteID(v.MountID, v.RemoteID)
+	collectionType := v.CollectionType
+	if !isSupportedEmbyCollectionType(collectionType) {
+		collectionType = "mixed"
+	}
+	name := strings.TrimSpace(v.Library.Name)
+	imageTags := map[string]string{}
+	if strings.TrimSpace(v.Library.CoverURL) != "" {
+		imageTags["Primary"] = encoded
+	}
+	return map[string]any{
+		"Id":                       encoded,
+		"Name":                     name,
+		"CollectionType":           collectionType,
+		"ServerId":                 embyServerID,
+		"Type":                     "CollectionFolder",
+		"IsFolder":                 true,
+		"Path":                     "",
+		"SortName":                 strings.ToLower(name),
+		"DateCreated":              time.Now().UTC().Format(time.RFC3339),
+		"CanDelete":                false,
+		"CanDownload":              false,
+		"DisplayPreferencesId":     encoded,
+		"PrimaryImageItemId":       encoded,
+		"PrimaryImageAspectRatio":  1.7777777777777777,
+		"RecursiveItemCount":       0,
+		"ChildCount":               0,
+		"SpecialFeatureCount":      0,
+		"EnableMediaSourceDisplay": true,
+		"PlayAccess":               "Full",
+		"ExternalUrls":             []any{},
+		"ProviderIds":              map[string]string{},
+		"Genres":                   []string{},
+		"Tags":                     []string{},
+		"ImageTags":                imageTags,
+		"BackdropImageTags":        []string{},
+		"UserData": map[string]any{
+			"PlaybackPositionTicks": 0,
+			"PlayCount":             0,
+			"IsFavorite":            false,
+			"Played":                false,
+			"UnplayedItemCount":     0,
+		},
+	}
+}
+
+func isSupportedEmbyCollectionType(t string) bool {
+	switch t {
+	case "movies", "tvshows", "music", "mixed", "homevideos", "boxsets":
+		return true
+	}
+	return false
 }
 
 func (e *EmbyService) libraryAsView(ctx context.Context, l *model.Library) map[string]any {

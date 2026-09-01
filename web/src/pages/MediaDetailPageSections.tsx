@@ -1,3 +1,4 @@
+import { isRemoteEmbyID } from '../utils/remoteEmby'
 import { ArrowLeft, Heart, Play, RefreshCw } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
@@ -95,14 +96,16 @@ export function MediaDetailPlaybackActions({
         <span>立即播放</span>
       </Link>
 
-      <Link
+      {!isRemoteEmbyID(media.id) && (
+        <Link
         to={`/play/${media.id}?mode=hls`}
         state={{ from: `/media/${media.id}` }}
         className="btn-outline border-brand-500/30 hover:border-brand-500 text-[#c9954a] hover:bg-brand-50 px-5"
       >
-        <RefreshCw size={14} className="animate-spin-slow" />
-        <span>HLS 兼容转码播放</span>
-      </Link>
+          <RefreshCw size={14} className="animate-spin-slow" />
+          <span>HLS 兼容转码播放</span>
+        </Link>
+      )}
 
       <ExternalPlayerButton mediaId={media.id} />
 

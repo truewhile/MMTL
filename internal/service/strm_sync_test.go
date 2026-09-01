@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -291,8 +292,15 @@ func TestSanitizePathWithSpecialChars(t *testing.T) {
 	}
 
 	// Test sanitizeLocalPath - Windows Drive
+	// sanitizeLocalPath 的盘符处理是平台相关的：Windows 保留 `D:\` 前缀，
+	// Linux 把反斜杠统一当作分隔符（结果等价于 D:/test/...）。
 	localWin := `D:\test\动漫\数码宝贝:拯救者\poster.jpg`
-	wantLocalWin := filepath.Join(`D:\`, "test", "动漫", "数码宝贝 拯救者", "poster.jpg")
+	var wantLocalWin string
+	if runtime.GOOS == "windows" {
+		wantLocalWin = filepath.Join(`D:\`, "test", "动漫", "数码宝贝 拯救者", "poster.jpg")
+	} else {
+		wantLocalWin = filepath.Join("D", "test", "动漫", "数码宝贝 拯救者", "poster.jpg")
+	}
 	if got := sanitizeLocalPath(localWin); got != wantLocalWin {
 		t.Errorf("sanitizeLocalPath(%q) = %q, want %q", localWin, got, wantLocalWin)
 	}

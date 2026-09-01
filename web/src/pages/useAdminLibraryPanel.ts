@@ -18,7 +18,10 @@ export function useAdminLibraryPanel() {
 
 function useAdminLibraryList() {
   const [libs, setLibs] = useState<Library[]>([])
-  const refresh = () => libraryAPI.list({ includeHidden: true }).then(setLibs)
+  const refresh = () =>
+    libraryAPI
+      .list({ includeHidden: true })
+      .then((libs) => setLibs(libs.filter((l) => !l.is_remote_emby)))  // 远程挂载库只读，不在后台管理列表内
 
   useEffect(() => {
     refresh().catch(() => undefined)
