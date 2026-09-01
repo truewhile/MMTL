@@ -1,3 +1,4 @@
+import { isRemoteEmbyID } from '../utils/remoteEmby'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, Database, FileText, Film, FolderInput, Pencil, Play, Search, Sparkles, Trash2 } from 'lucide-react'
 
@@ -84,7 +85,7 @@ export function LibrarySeriesDetailHeader({
             </div>
           )}
 
-          {isAdmin && allEpisodes.length > 0 && (
+          {isAdmin && allEpisodes.length > 0 && !isRemoteEmbyID(series.rep.id) && (
             <div className="rounded-2xl border border-sand-200 bg-white/80 p-4 shadow-sm">
               <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-[#c9954a]">系统后台高级控制面板</p>
               <div className="flex flex-wrap gap-2">

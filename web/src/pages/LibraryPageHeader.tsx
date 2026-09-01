@@ -63,7 +63,7 @@ export function LibraryPageHeader({
           onChange={onSortChange}
           onReshuffle={onReshuffle}
         />
-        {isAdmin && (
+        {isAdmin && !library?.is_remote_emby && (
           <>
             <EpisodeArtworkToggle
               checked={scrapeEpisodeArtwork}

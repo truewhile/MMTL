@@ -25,9 +25,32 @@ type createLibraryReq struct {
 	CreatePerSubfolder bool                      `json:"create_per_subfolder"`
 }
 
+// webLibraryPayload 是 /api/libraries 返回的库条目：本地库与远程 Emby 挂载库
+// 统一结构（远程库附加 is_remote_emby / remote_source 只读标记）。
+type webLibraryPayload struct {
+	model.Library
+	IsRemoteEmby bool                `json:"is_remote_emby,omitempty"`
+	RemoteSource string              `json:"remote_source,omitempty"`
+	Total        int64               `json:"total,omitempty"`
+	Cards        []service.SeriesCard `json:"cards,omitempty"`
+}
+
+// remoteLibraryItemTypes 远程库内容拉取时按 CollectionType 过滤直属条目，
+// 避免电影库里的合集文件夹(Folder) 漏出为电影卡片。
+func remoteLibraryItemTypes(collectionType string) string {
+	switch collectionType {
+	case "movies":
+		return "Movie"
+	case "tvshows":
+		return "Series"
+	}
+	return ""
+}
+
 func listLibrariesHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		libs, err := svc.Media.ListLibraries(c.Request.Context())
+		ctx := c.Request.Context()
+		libs, err := svc.Media.ListLibraries(ctx)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -35,39 +58,81 @@ func listLibrariesHandler(svc *service.Container) gin.HandlerFunc {
 		role, _ := c.Get(middleware.CtxUserRole)
 		includeHidden := role == "admin" && (c.Query("include_hidden") == "1" || c.Query("include_hidden") == "true" || c.Query("all") == "1")
 		if !includeHidden {
-			libs = service.FilterDisplayCloudLibraries(c.Request.Context(), svc.Repo, libs)
+			libs = service.FilterDisplayCloudLibraries(ctx, svc.Repo, libs)
 			visibility := mediaVisibilityForRequest(c, svc)
 			filtered := libs[:0]
 			for _, lib := range libs {
-				if service.LibraryVisibleForUser(c.Request.Context(), svc.Repo, lib, visibility) {
+				if service.LibraryVisibleForUser(ctx, svc.Repo, lib, visibility) {
 					filtered = append(filtered, lib)
 				}
 			}
 			libs = filtered
 		}
 		withPreview := c.Query("with_preview") == "1" || c.Query("with_preview") == "true"
+		limit := 10
 		if withPreview {
-			limit, _ := strconv.Atoi(c.DefaultQuery("preview_limit", c.DefaultQuery("limit", "10")))
+			limit, _ = strconv.Atoi(c.DefaultQuery("preview_limit", c.DefaultQuery("limit", "10")))
 			if limit <= 0 {
 				limit = 10
 			} else if limit > 100 {
 				limit = 100
 			}
-			previews, err := svc.Media.ListLibrariesWithPreview(c.Request.Context(), libs, mediaVisibilityForRequest(c, svc), limit)
+		}
+		out := make([]webLibraryPayload, 0, len(libs)+8)
+		if withPreview {
+			previews, err := svc.Media.ListLibrariesWithPreview(ctx, libs, mediaVisibilityForRequest(c, svc), limit)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
 			}
-			c.JSON(http.StatusOK, previews)
-			return
+			for _, p := range previews {
+				out = append(out, webLibraryPayload{Library: p.Library, Total: p.Total, Cards: p.Cards})
+			}
+		} else {
+			for _, l := range libs {
+				out = append(out, webLibraryPayload{Library: l})
+			}
 		}
-		c.JSON(http.StatusOK, libs)
+		// 远程 Emby 挂载库追加在本地库之后。
+		if svc.EmbyRemote != nil {
+			if views, err := svc.EmbyRemote.RemoteLibraries(ctx); err == nil {
+				for _, v := range views {
+					wl := webLibraryPayload{Library: v.Library, IsRemoteEmby: true, RemoteSource: v.AccountName}
+					if withPreview {
+						if acct := svc.EmbyRemote.AccountByID(ctx, v.AccountID); acct != nil {
+							itemTypes := remoteLibraryItemTypes(v.CollectionType)
+							if _, total, err := svc.EmbyRemote.RemoteLibraryMedia(ctx, acct, v.RemoteID, itemTypes, 0, 1); err == nil {
+								wl.Total = total
+							}
+							if cards, err := svc.EmbyRemote.RemoteLatestCards(ctx, acct, v.RemoteID, limit); err == nil {
+								wl.Cards = cards
+							}
+						}
+					}
+					out = append(out, wl)
+				}
+			}
+		}
+		c.JSON(http.StatusOK, out)
 	}
 }
 
 func getLibraryHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		lib, err := svc.Repo.Library.FindByID(c.Request.Context(), c.Param("id"))
+		ctx := c.Request.Context()
+		id := c.Param("id")
+		// 远程 Emby 挂载库详情。
+		if svc.EmbyRemote != nil && service.IsEmbyRemoteID(id) {
+			acctID, remoteID, _ := service.DecodeEmbyRemoteID(id)
+			view, err := svc.EmbyRemote.RemoteLibraryByID(ctx, acctID, remoteID)
+			if err != nil || view == nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+				return
+			}
+			c.JSON(http.StatusOK, webLibraryPayload{Library: view.Library, IsRemoteEmby: true, RemoteSource: view.AccountName})
+			return
+		}
+		lib, err := svc.Repo.Library.FindByID(ctx, id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -79,14 +144,14 @@ func getLibraryHandler(svc *service.Container) gin.HandlerFunc {
 		role, _ := c.Get(middleware.CtxUserRole)
 		includeHidden := role == "admin" && (c.Query("include_hidden") == "1" || c.Query("include_hidden") == "true" || c.Query("all") == "1")
 		if !includeHidden {
-			libs := service.FilterDisplayCloudLibraries(c.Request.Context(), svc.Repo, []model.Library{*lib})
-			if len(libs) == 0 || !service.LibraryVisibleForUser(c.Request.Context(), svc.Repo, libs[0], mediaVisibilityForRequest(c, svc)) {
+			libs := service.FilterDisplayCloudLibraries(ctx, svc.Repo, []model.Library{*lib})
+			if len(libs) == 0 || !service.LibraryVisibleForUser(ctx, svc.Repo, libs[0], mediaVisibilityForRequest(c, svc)) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 				return
 			}
-			c.JSON(http.StatusOK, libs[0])
+			c.JSON(http.StatusOK, webLibraryPayload{Library: libs[0]})
 		} else {
-			c.JSON(http.StatusOK, lib)
+			c.JSON(http.StatusOK, webLibraryPayload{Library: *lib})
 		}
 	}
 }
@@ -232,8 +297,37 @@ func deleteLibraryHandler(svc *service.Container) gin.HandlerFunc {
 func listMediaHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.Param("id")
+		ctx := c.Request.Context()
 		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 		size, _ := strconv.Atoi(c.DefaultQuery("page_size", "50"))
+		// 远程 Emby 库：转发远程直属条目并映射为本地 Media 结构（分页由远程承接）。
+		if svc.EmbyRemote != nil && service.IsEmbyRemoteID(id) {
+			acctID, remoteID, _ := service.DecodeEmbyRemoteID(id)
+			acct := svc.EmbyRemote.AccountByID(ctx, acctID)
+			if acct == nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+				return
+			}
+			itemTypes := ""
+			if view, err := svc.EmbyRemote.RemoteLibraryByID(ctx, acctID, remoteID); err == nil && view != nil {
+				itemTypes = remoteLibraryItemTypes(view.CollectionType)
+			}
+			items, total, err := svc.EmbyRemote.RemoteLibraryMedia(ctx, acct, remoteID, itemTypes, (page-1)*size, size)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			if items == nil {
+				items = []model.Media{}
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"items":     items,
+				"total":     total,
+				"page":      page,
+				"page_size": size,
+			})
+			return
+		}
 		groupVersions := c.DefaultQuery("group_versions", "1") != "0"
 		if !groupVersions {
 			items, total, err := svc.Media.ListMediaVisible(c.Request.Context(), id, page, size, mediaVisibilityForRequest(c, svc))
@@ -271,7 +365,33 @@ func listMediaHandler(svc *service.Container) gin.HandlerFunc {
 
 func getMediaHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		m, err := svc.Media.GetMedia(c.Request.Context(), c.Param("id"))
+		ctx := c.Request.Context()
+		id := c.Param("id")
+		// 远程 Emby 条目：拉远程详情并映射为本地 Media 结构。
+		if svc.EmbyRemote != nil && service.IsEmbyRemoteID(id) {
+			acctID, remoteID, _ := service.DecodeEmbyRemoteID(id)
+			acct := svc.EmbyRemote.AccountByID(ctx, acctID)
+			if acct == nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+				return
+			}
+			m, err := svc.EmbyRemote.RemoteMediaDetail(ctx, acct, remoteID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			if m == nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+				return
+			}
+			if !mediaVisibleForRequest(c, svc, m) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+				return
+			}
+			c.JSON(http.StatusOK, m)
+			return
+		}
+		m, err := svc.Media.GetMedia(ctx, id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -365,7 +485,25 @@ func searchMediaHandler(svc *service.Container) gin.HandlerFunc {
 
 func streamHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		m, err := svc.Media.GetMedia(c.Request.Context(), c.Param("id"))
+		ctx := c.Request.Context()
+		id := c.Param("id")
+		// 远程 Emby 条目：302 直连远程流（网页播放器 video 标签跟随重定向）。
+		if svc.EmbyRemote != nil && service.IsEmbyRemoteID(id) {
+			acctID, remoteID, _ := service.DecodeEmbyRemoteID(id)
+			acct := svc.EmbyRemote.AccountByID(ctx, acctID)
+			if acct == nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+				return
+			}
+			target, err := svc.EmbyRemote.WebStreamURL(ctx, acct, remoteID)
+			if err != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+				return
+			}
+			c.Redirect(http.StatusFound, target)
+			return
+		}
+		m, err := svc.Media.GetMedia(ctx, id)
 		if err != nil || m == nil || !mediaVisibleForRequest(c, svc, m) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 			return

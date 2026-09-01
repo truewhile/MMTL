@@ -65,7 +65,49 @@ func listSeasonsHandler(svc *service.Container) gin.HandlerFunc {
 func listLibrarySeriesHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		libID := c.Param("id")
-		if lib, err := svc.Repo.Library.FindByID(c.Request.Context(), libID); err == nil && lib != nil {
+		ctx := c.Request.Context()
+		// 远程剧集库：远程 Series 映射为系列卡片。
+		if svc.EmbyRemote != nil && service.IsEmbyRemoteID(libID) {
+			acctID, remoteID, _ := service.DecodeEmbyRemoteID(libID)
+			acct := svc.EmbyRemote.AccountByID(ctx, acctID)
+			if acct == nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+				return
+			}
+			cards, err := svc.EmbyRemote.RemoteSeriesCards(ctx, acct, remoteID)
+			if err != nil {
+				writeInternalOrCanceled(c, err)
+				return
+			}
+			page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+			size, _ := strconv.Atoi(c.DefaultQuery("page_size", "500"))
+			if page < 1 {
+				page = 1
+			}
+			if size <= 0 || size > 1000 {
+				size = 500
+			}
+			start := (page - 1) * size
+			if start > len(cards) {
+				start = len(cards)
+			}
+			end := start + size
+			if end > len(cards) {
+				end = len(cards)
+			}
+			pageItems := cards[start:end]
+			if pageItems == nil {
+				pageItems = []service.SeriesCard{}
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"items":     pageItems,
+				"total":     len(cards),
+				"page":      page,
+				"page_size": size,
+			})
+			return
+		}
+		if lib, err := svc.Repo.Library.FindByID(ctx, libID); err == nil && lib != nil {
 			if !service.LibraryVisibleForUser(c.Request.Context(), svc.Repo, *lib, mediaVisibilityForRequest(c, svc)) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 				return
@@ -114,7 +156,27 @@ func listLibrarySeriesEpisodesHandler(svc *service.Container) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "key is required"})
 			return
 		}
-		if lib, err := svc.Repo.Library.FindByID(c.Request.Context(), libID); err == nil && lib != nil {
+		ctx := c.Request.Context()
+		// 远程系列 key（伪装系列 ID）：转发远程该系列全部剧集。
+		if svc.EmbyRemote != nil && service.IsEmbyRemoteID(key) {
+			acctID, remoteSeriesID, _ := service.DecodeEmbyRemoteID(key)
+			acct := svc.EmbyRemote.AccountByID(ctx, acctID)
+			if acct == nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+				return
+			}
+			items, err := svc.EmbyRemote.RemoteEpisodes(ctx, acct, remoteSeriesID)
+			if err != nil {
+				writeInternalOrCanceled(c, err)
+				return
+			}
+			if items == nil {
+				items = []model.Media{}
+			}
+			c.JSON(http.StatusOK, gin.H{"items": items, "total": len(items)})
+			return
+		}
+		if lib, err := svc.Repo.Library.FindByID(ctx, libID); err == nil && lib != nil {
 			if !service.LibraryVisibleForUser(c.Request.Context(), svc.Repo, *lib, mediaVisibilityForRequest(c, svc)) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 				return
@@ -136,7 +198,27 @@ func listMediaEpisodesHandler(svc *service.Container) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "id is required"})
 			return
 		}
-		items, err := svc.Media.ListMediaEpisodes(c.Request.Context(), id, mediaVisibilityForRequest(c, svc))
+		ctx := c.Request.Context()
+		// 远程条目：单集→同系列集列表；系列/季/文件夹→子集；电影→自身单条。
+		if svc.EmbyRemote != nil && service.IsEmbyRemoteID(id) {
+			acctID, remoteID, _ := service.DecodeEmbyRemoteID(id)
+			acct := svc.EmbyRemote.AccountByID(ctx, acctID)
+			if acct == nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+				return
+			}
+			items, err := svc.EmbyRemote.RemoteEpisodes(ctx, acct, remoteID)
+			if err != nil {
+				writeInternalOrCanceled(c, err)
+				return
+			}
+			if items == nil {
+				items = []model.Media{}
+			}
+			c.JSON(http.StatusOK, gin.H{"items": items, "total": len(items)})
+			return
+		}
+		items, err := svc.Media.ListMediaEpisodes(ctx, id, mediaVisibilityForRequest(c, svc))
 		if err != nil {
 			writeInternalOrCanceled(c, err)
 			return
