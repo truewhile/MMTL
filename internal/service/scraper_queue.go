@@ -345,6 +345,10 @@ func (s *ScraperService) ClearCanceledScrapeTasks(ctx context.Context) (int64, e
 	return s.repo.ScrapeTask.ClearCanceled(ctx)
 }
 
+func (s *ScraperService) ClearFailedScrapeTasks(ctx context.Context) (int64, error) {
+	return s.repo.ScrapeTask.ClearFailed(ctx)
+}
+
 func (s *ScraperService) RetryAllFailedScrapeTasks(ctx context.Context) (int64, error) {
 	return s.repo.ScrapeTask.RetryAllFailed(ctx)
 }

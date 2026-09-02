@@ -163,8 +163,8 @@ function useEditableLibraryRootActions(refresh: () => Promise<void>, drafts: Edi
 function useLibraryActions(refresh: () => Promise<void>) {
   const scanLibrary = async (library: Library) => {
     const result = await libraryAPI.scan(library.id)
-    if (result.queued) toast.success('云盘扫描已加入后台队列，会自动入库')
-    else toast.success(`扫描完成，新增 ${result.added}，更新 ${result.updated ?? 0}`)
+    if (result.queued) toast.success(result.message || '媒体库扫描已加入后台队列，会自动入库')
+    else toast.success(`扫描完成，新增 ${result.added ?? 0}，更新 ${result.updated ?? 0}`)
   }
 
   const toggleCarouselLibrary = async (library: Library) => {

@@ -224,8 +224,13 @@ export function StrmQueuePanel({
   }, [tasks, filter, search])
 
   const counts = snapshot?.counts
-  const activeTaskCount = (counts?.pending ?? 0) + (counts?.running ?? 0)
+  const pendingCount = counts?.pending ?? 0
+  const runningCount = counts?.running ?? 0
+  const activeTaskCount = pendingCount + runningCount
+  const doneCount = counts?.done ?? 0
   const failedCount = counts?.failed ?? 0
+  const canceledCount = counts?.canceled ?? 0
+  const finishedCount = doneCount + failedCount + canceledCount
   const allCurrentChecked =
     filteredTasks.length > 0 && filteredTasks.every((t) => selectedIds.has(t.id))
 
@@ -475,8 +480,8 @@ export function StrmQueuePanel({
           )}
         </div>
 
-        {/* Selected Batch Toolbar */}
-        {selectedIds.size > 0 && (
+        {/* Batch Actions Toolbar */}
+        {selectedIds.size > 0 ? (
           <div className="flex flex-wrap items-center gap-2 rounded-xl border border-brand-500/30 bg-primary-400/10 px-3 py-2 text-xs animate-in fade-in zoom-in-95">
             <span className="font-bold text-brand-500">已选中 {selectedIds.size} 项</span>
             <div className="h-3.5 w-px bg-brand-300/40 mx-1" />
@@ -515,6 +520,251 @@ export function StrmQueuePanel({
             >
               <X size={13} />
             </button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            {/* 当前状态专属快捷批量按钮 */}
+            {filter === 'all' && (
+              <>
+                {failedCount > 0 && (
+                  <button
+                    type="button"
+                    disabled={batchBusy}
+                    onClick={() =>
+                      runGlobalBatch(
+                        () => (isDownload ? strmAPI.retryFailedDownloads() : strmAPI.retryFailedUploads()),
+                        '确定重新入队所有失败任务？',
+                      )
+                    }
+                    className="inline-flex items-center gap-1 rounded-xl border border-brand-500/40 bg-white px-3 py-1.5 text-xs font-semibold text-brand-500 hover:bg-brand-50 disabled:opacity-50"
+                  >
+                    <RefreshCw size={12} />
+                    全部重试 ({failedCount})
+                  </button>
+                )}
+                {activeTaskCount > 0 && (
+                  <button
+                    type="button"
+                    disabled={batchBusy}
+                    onClick={() =>
+                      runGlobalBatch(
+                        () => (isDownload ? strmAPI.cancelPendingDownloads() : strmAPI.cancelPendingUploads()),
+                        '确定取消所有排队及进行中的任务？',
+                      )
+                    }
+                    className="inline-flex items-center gap-1 rounded-xl border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-600 hover:bg-amber-50 disabled:opacity-50"
+                  >
+                    <Ban size={12} />
+                    全部取消 ({activeTaskCount})
+                  </button>
+                )}
+                {finishedCount > 0 && (
+                  <button
+                    type="button"
+                    disabled={batchBusy}
+                    onClick={() =>
+                      runGlobalBatch(
+                        () => (isDownload ? strmAPI.clearFinishedDownloads() : strmAPI.clearFinishedUploads()),
+                        '确定清空所有已完成、失败及取消的历史记录？',
+                      )
+                    }
+                    className="inline-flex items-center gap-1 rounded-xl border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                  >
+                    <Trash2 size={12} />
+                    全部删除 ({finishedCount})
+                  </button>
+                )}
+              </>
+            )}
+
+            {(filter === 'pending' || filter === 'running') && (
+              <button
+                type="button"
+                disabled={batchBusy || activeTaskCount === 0}
+                onClick={() =>
+                  runGlobalBatch(
+                    () => (isDownload ? strmAPI.cancelPendingDownloads() : strmAPI.cancelPendingUploads()),
+                    '确定取消所有排队及进行中的任务？',
+                  )
+                }
+                className="inline-flex items-center gap-1 rounded-xl border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-600 hover:bg-amber-50 disabled:opacity-50"
+              >
+                <Ban size={12} />
+                全部取消{activeTaskCount > 0 ? ` (${activeTaskCount})` : ''}
+              </button>
+            )}
+
+            {filter === 'done' && (
+              <button
+                type="button"
+                disabled={batchBusy || doneCount === 0}
+                onClick={() =>
+                  runGlobalBatch(
+                    () => (isDownload ? strmAPI.clearDoneDownloads() : strmAPI.clearDoneUploads()),
+                    '确定清空所有已完成记录？',
+                  )
+                }
+                className="inline-flex items-center gap-1 rounded-xl border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+              >
+                <Trash2 size={12} />
+                全部删除{doneCount > 0 ? ` (${doneCount})` : ''}
+              </button>
+            )}
+
+            {filter === 'failed' && (
+              <>
+                <button
+                  type="button"
+                  disabled={batchBusy || failedCount === 0}
+                  onClick={() =>
+                    runGlobalBatch(
+                      () => (isDownload ? strmAPI.retryFailedDownloads() : strmAPI.retryFailedUploads()),
+                      '确定重新入队所有失败任务？',
+                    )
+                  }
+                  className="inline-flex items-center gap-1 rounded-xl border border-brand-500/40 bg-white px-3 py-1.5 text-xs font-semibold text-brand-500 hover:bg-brand-50 disabled:opacity-50"
+                >
+                  <RefreshCw size={12} />
+                  全部重试{failedCount > 0 ? ` (${failedCount})` : ''}
+                </button>
+                <button
+                  type="button"
+                  disabled={batchBusy || failedCount === 0}
+                  onClick={() =>
+                    runGlobalBatch(
+                      () => (isDownload ? strmAPI.clearFailedDownloads() : strmAPI.clearFailedUploads()),
+                      '确定清空所有失败记录？',
+                    )
+                  }
+                  className="inline-flex items-center gap-1 rounded-xl border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                >
+                  <Trash2 size={12} />
+                  全部删除{failedCount > 0 ? ` (${failedCount})` : ''}
+                </button>
+              </>
+            )}
+
+            {filter === 'canceled' && (
+              <button
+                type="button"
+                disabled={batchBusy || canceledCount === 0}
+                onClick={() =>
+                  runGlobalBatch(
+                    () => (isDownload ? strmAPI.clearCanceledDownloads() : strmAPI.clearCanceledUploads()),
+                    '确定清空所有已取消的任务记录？',
+                  )
+                }
+                className="inline-flex items-center gap-1 rounded-xl border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+              >
+                <Trash2 size={12} />
+                全部删除{canceledCount > 0 ? ` (${canceledCount})` : ''}
+              </button>
+            )}
+
+            {/* 下拉批量操作菜单：随时可做任意全局操作 */}
+            <details className="relative inline-block">
+              <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-ink-100 shadow-sm transition hover:border-gray-300 hover:bg-gray-50 [&::-webkit-details-marker]:hidden">
+                <Trash2 size={12} className="text-sand-500" />
+                <span>批量清理</span>
+              </summary>
+              <div className="absolute right-0 top-9 z-30 min-w-44 rounded-xl border border-gray-200 bg-white p-1.5 shadow-xl backdrop-blur">
+                {failedCount > 0 && (
+                  <button
+                    type="button"
+                    disabled={batchBusy}
+                    onClick={(e) => {
+                      e.currentTarget.closest('details')?.removeAttribute('open')
+                      runGlobalBatch(
+                        () => (isDownload ? strmAPI.retryFailedDownloads() : strmAPI.retryFailedUploads()),
+                        '确定重新入队所有失败任务？',
+                      )
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-brand-500 hover:bg-brand-50"
+                  >
+                    <RefreshCw size={13} />
+                    <span>重试所有失败 ({failedCount})</span>
+                  </button>
+                )}
+                {activeTaskCount > 0 && (
+                  <button
+                    type="button"
+                    disabled={batchBusy}
+                    onClick={(e) => {
+                      e.currentTarget.closest('details')?.removeAttribute('open')
+                      runGlobalBatch(
+                        () => (isDownload ? strmAPI.cancelPendingDownloads() : strmAPI.cancelPendingUploads()),
+                        '确定取消所有排队及进行中的任务？',
+                      )
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-amber-600 hover:bg-amber-50"
+                  >
+                    <Ban size={13} />
+                    <span>取消所有进行中 ({activeTaskCount})</span>
+                  </button>
+                )}
+                <div className="my-1 border-t border-gray-100" />
+                <button
+                  type="button"
+                  disabled={batchBusy}
+                  onClick={(e) => {
+                    e.currentTarget.closest('details')?.removeAttribute('open')
+                    runGlobalBatch(
+                      () => (isDownload ? strmAPI.clearDoneDownloads() : strmAPI.clearDoneUploads()),
+                      '确定清空所有已完成记录？',
+                    )
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-ink-100 hover:bg-gray-50"
+                >
+                  <CheckCircle2 size={13} className="text-emerald-500" />
+                  <span>清空已完成记录 ({doneCount})</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={batchBusy}
+                  onClick={(e) => {
+                    e.currentTarget.closest('details')?.removeAttribute('open')
+                    runGlobalBatch(
+                      () => (isDownload ? strmAPI.clearFailedDownloads() : strmAPI.clearFailedUploads()),
+                      '确定清空所有失败记录？',
+                    )
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-rose-500 hover:bg-rose-50"
+                >
+                  <AlertCircle size={13} />
+                  <span>清空失败记录 ({failedCount})</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={batchBusy}
+                  onClick={(e) => {
+                    e.currentTarget.closest('details')?.removeAttribute('open')
+                    runGlobalBatch(
+                      () => (isDownload ? strmAPI.clearCanceledDownloads() : strmAPI.clearCanceledUploads()),
+                      '确定清空所有已取消的任务记录？',
+                    )
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-ink-100 hover:bg-gray-50"
+                >
+                  <Ban size={13} className="text-amber-500" />
+                  <span>清空已取消记录 ({canceledCount})</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={batchBusy}
+                  onClick={(e) => {
+                    e.currentTarget.closest('details')?.removeAttribute('open')
+                    runGlobalBatch(
+                      () => (isDownload ? strmAPI.clearFinishedDownloads() : strmAPI.clearFinishedUploads()),
+                      '确定清空所有已完成、失败及取消的历史记录？',
+                    )
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-rose-500 hover:bg-rose-50"
+                >
+                  <Trash2 size={13} />
+                  <span>清空全部历史记录 ({finishedCount})</span>
+                </button>
+              </div>
+            </details>
           </div>
         )}
       </div>

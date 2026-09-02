@@ -159,6 +159,9 @@ export const strmAPI = {
   clearCanceledDownloads: () =>
     api.post<{ deleted: number }>('/admin/strm/downloads/clear-canceled').then((r) => r.data),
 
+  clearFailedDownloads: () =>
+    api.post<{ deleted: number }>('/admin/strm/downloads/clear-failed').then((r) => r.data),
+
   retryFailedDownloads: () =>
     api.post<{ retried: number }>('/admin/strm/downloads/retry-failed').then((r) => r.data),
 
@@ -195,6 +198,9 @@ export const strmAPI = {
 
   clearCanceledUploads: () =>
     api.post<{ deleted: number }>('/admin/strm/uploads/clear-canceled').then((r) => r.data),
+
+  clearFailedUploads: () =>
+    api.post<{ deleted: number }>('/admin/strm/uploads/clear-failed').then((r) => r.data),
 
   retryFailedUploads: () =>
     api.post<{ retried: number }>('/admin/strm/uploads/retry-failed').then((r) => r.data),

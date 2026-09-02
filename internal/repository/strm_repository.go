@@ -402,6 +402,17 @@ func (r *StrmDownloadTaskRepository) ClearCanceled(ctx context.Context) (int64, 
 	return count, err
 }
 
+// ClearFailed 清空全部已失败下载任务。
+func (r *StrmDownloadTaskRepository) ClearFailed(ctx context.Context) (int64, error) {
+	var count int64
+	err := withSQLiteBusyRetry(ctx, func() error {
+		res := r.db.WithContext(ctx).Unscoped().Where("status = ?", model.StrmTaskFailed).Delete(&model.StrmDownloadTask{})
+		count = res.RowsAffected
+		return res.Error
+	})
+	return count, err
+}
+
 // RetryAllFailed 把所有失败任务重置回待处理，清空错误与重试计数。
 func (r *StrmDownloadTaskRepository) RetryAllFailed(ctx context.Context) (int64, error) {
 	var count int64
@@ -703,6 +714,17 @@ func (r *StrmUploadTaskRepository) ClearCanceled(ctx context.Context) (int64, er
 	var count int64
 	err := withSQLiteBusyRetry(ctx, func() error {
 		res := r.db.WithContext(ctx).Unscoped().Where("status = ?", model.StrmTaskCanceled).Delete(&model.StrmUploadTask{})
+		count = res.RowsAffected
+		return res.Error
+	})
+	return count, err
+}
+
+// ClearFailed 清空全部已失败上传任务。
+func (r *StrmUploadTaskRepository) ClearFailed(ctx context.Context) (int64, error) {
+	var count int64
+	err := withSQLiteBusyRetry(ctx, func() error {
+		res := r.db.WithContext(ctx).Unscoped().Where("status = ?", model.StrmTaskFailed).Delete(&model.StrmUploadTask{})
 		count = res.RowsAffected
 		return res.Error
 	})

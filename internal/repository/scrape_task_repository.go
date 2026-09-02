@@ -236,6 +236,16 @@ func (r *ScrapeTaskRepository) ClearCanceled(ctx context.Context) (int64, error)
 	return count, err
 }
 
+func (r *ScrapeTaskRepository) ClearFailed(ctx context.Context) (int64, error) {
+	var count int64
+	err := withSQLiteBusyRetry(ctx, func() error {
+		res := r.db.WithContext(ctx).Unscoped().Where("status = ?", model.ScrapeTaskFailed).Delete(&model.ScrapeTask{})
+		count = res.RowsAffected
+		return res.Error
+	})
+	return count, err
+}
+
 func (r *ScrapeTaskRepository) RetryAllFailed(ctx context.Context) (int64, error) {
 	var count int64
 	err := withSQLiteBusyRetry(ctx, func() error {

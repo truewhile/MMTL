@@ -26,7 +26,7 @@ export function GlobalEvents() {
         return
       }
       if (p.queued) {
-        toast.loading(String(p.message ?? '云盘扫描已加入后台队列，会自动入库'), { id })
+        toast.loading(String(p.message ?? '媒体库扫描已加入后台队列，会自动入库'), { id })
         return
       }
       if (p.cloud && p.stage) {
