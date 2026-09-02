@@ -17,7 +17,6 @@ type UseManualOrganizeOptions = {
   selectedPath?: string
   selectedPaths: string[]
   scrapeAfter: boolean
-  keepSeeding: boolean
   onScrapeAfterChange: (value: boolean) => void
   onClearSelected: () => void
   refresh: () => void
@@ -29,7 +28,6 @@ export function useManualOrganize({
   selectedPath,
   selectedPaths,
   scrapeAfter,
-  keepSeeding,
   onScrapeAfterChange,
   onClearSelected,
   refresh,
@@ -59,7 +57,6 @@ export function useManualOrganize({
   )
   const organizeSource = organizeSources.length === 1 ? organizeSources[0] : `${organizeSources.length} 个已选项目`
   const organizeReady = organizeSources.length > 0 && Boolean(organizeDestPath.trim())
-  const manualMoveKeepsSeeding = organizeTransferMode === 'move' && keepSeeding
 
   const runManualOrganize = async (dryRun: boolean) => {
     if (!organizeReady) {
@@ -124,7 +121,6 @@ export function useManualOrganize({
     previewItems,
     organizeSource,
     organizeReady,
-    manualMoveKeepsSeeding,
     setOrganizeLibraryID,
     setOrganizeDestPath,
     setOrganizeTransferMode,

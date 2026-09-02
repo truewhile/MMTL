@@ -18,7 +18,6 @@ type AutoOrganizeSettingsPanelProps = {
   loading: boolean
   saving: boolean
   running: boolean
-  moveKeepsSeeding: boolean
   onRefresh: () => void
   onSave: () => void
   onRunNow: () => void
@@ -40,7 +39,6 @@ export function AutoOrganizeSettingsPanel({
   loading,
   saving,
   running,
-  moveKeepsSeeding,
   onRefresh,
   onSave,
   onRunNow,
@@ -108,7 +106,6 @@ export function AutoOrganizeSettingsPanel({
         <AutoOrganizeBasicTab
           config={config}
           currentDir={currentDir}
-          moveKeepsSeeding={moveKeepsSeeding}
           onConfigChange={onConfigChange}
         />
       )}
