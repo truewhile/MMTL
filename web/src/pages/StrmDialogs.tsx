@@ -33,6 +33,7 @@ import {
   normalizeEmbyRemoteLines,
   type EmbyRemoteLine,
 } from '../utils/embyRemoteLines'
+import { lastPathSegment, syncLocalPathWithRemote } from '../utils/strmPaths'
 
 // ─── 弹框外壳 ────────────────────────────────────────────────────────────────
 
@@ -913,9 +914,26 @@ export function StrmSyncPathDialog({
   const [saving, setSaving] = useState(false)
   const [browsing, setBrowsing] = useState(false)
   const [browsingLocal, setBrowsingLocal] = useState<null | 'remote_path' | 'local_path'>(null)
+  const prevRemoteTailRef = useRef(existing ? lastPathSegment(existing.remote_path) : '')
 
   const set = <K extends keyof StrmSyncPathInput>(key: K, value: StrmSyncPathInput[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
+
+  const updateRemotePath = (remotePath: string) => {
+    setForm((f) => {
+      const synced = syncLocalPathWithRemote(f.local_path, remotePath, prevRemoteTailRef.current)
+      prevRemoteTailRef.current = synced.remoteTail
+      return { ...f, remote_path: remotePath, local_path: synced.localPath }
+    })
+  }
+
+  const commitLocalPath = (localPath: string) => {
+    setForm((f) => {
+      const synced = syncLocalPathWithRemote(localPath, f.remote_path, prevRemoteTailRef.current)
+      prevRemoteTailRef.current = synced.remoteTail
+      return { ...f, local_path: synced.localPath }
+    })
+  }
 
   const isLocal = form.provider === 'local'
   const availableAccounts = accounts.filter((a) => a.provider === form.provider && a.has_credential)
@@ -1000,7 +1018,15 @@ export function StrmSyncPathDialog({
                       : '远端路径（可通过浏览选择）'
                 }
               >
-                <input className={inputCls} value={form.remote_path} placeholder={isLocal ? 'D:\\movies' : '/'} onChange={(e) => set('remote_path', e.target.value)} />
+                <input
+                  className={inputCls}
+                  value={form.remote_path}
+                  placeholder={isLocal ? 'D:\\movies' : '/'}
+                  onChange={(e) => set('remote_path', e.target.value)}
+                  onBlur={(e) => {
+                    if (!isLocal) updateRemotePath(e.target.value)
+                  }}
+                />
               </Field>
             </div>
             {isLocal && (
@@ -1023,8 +1049,23 @@ export function StrmSyncPathDialog({
         <div className="space-y-1">
           <div className="flex items-end gap-2">
             <div className="flex-1">
-              <Field label="本地输出目录" hint="生成的 .strm 与下载的元数据写到这里的对应目录结构下">
-                <input className={inputCls} value={form.local_path} placeholder="D:\\strm\\movies" onChange={(e) => set('local_path', e.target.value)} />
+              <Field
+                label="本地输出目录"
+                hint={
+                  !isLocal && lastPathSegment(form.remote_path)
+                    ? `将自动拼接远端末级目录「${lastPathSegment(form.remote_path)}」`
+                    : '生成的 .strm 与下载的元数据写到这里的对应目录结构下'
+                }
+              >
+                <input
+                  className={inputCls}
+                  value={form.local_path}
+                  placeholder="D:\\strm\\movies"
+                  onChange={(e) => set('local_path', e.target.value)}
+                  onBlur={(e) => {
+                    if (!isLocal) commitLocalPath(e.target.value)
+                  }}
+                />
               </Field>
             </div>
             <button
@@ -1109,7 +1150,7 @@ export function StrmSyncPathDialog({
           accountId={form.account_id}
           initialDir={form.remote_path || undefined}
           onSelect={(id) => {
-            set('remote_path', id)
+            updateRemotePath(id)
             setBrowsing(false)
           }}
           onClose={() => setBrowsing(false)}
@@ -1120,7 +1161,11 @@ export function StrmSyncPathDialog({
         <LocalDirBrowserDialog
           initialDir={form[browsingLocal] || undefined}
           onSelect={(path) => {
-            set(browsingLocal, path)
+            if (browsingLocal === 'local_path') {
+              commitLocalPath(path)
+            } else {
+              set(browsingLocal, path)
+            }
             setBrowsingLocal(null)
           }}
           onClose={() => setBrowsingLocal(null)}
