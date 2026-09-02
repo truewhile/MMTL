@@ -9,6 +9,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sort"
 	"time"
 
 	"go.uber.org/zap"
@@ -126,14 +127,47 @@ func (p *PlaybackService) ListFavourites(ctx context.Context, userID string) ([]
 	if len(favs) == 0 {
 		return nil, nil
 	}
-	ids := make([]string, len(favs))
-	for i, f := range favs {
-		ids[i] = f.MediaID
+	sort.Slice(favs, func(i, j int) bool {
+		return favs[i].CreatedAt.After(favs[j].CreatedAt)
+	})
+
+	localIDs := make([]string, 0, len(favs))
+	for _, fav := range favs {
+		if !IsEmbyRemoteID(fav.MediaID) {
+			localIDs = append(localIDs, fav.MediaID)
+		}
 	}
-	var out []model.Media
-	err = p.repo.DB.Where("id IN ?", ids).
-		Order("created_at desc").Find(&out).Error
-	return out, err
+	mediaByID := map[string]model.Media{}
+	if len(localIDs) > 0 {
+		var mediaRows []model.Media
+		if err := p.repo.DB.WithContext(ctx).Where("id IN ?", localIDs).Find(&mediaRows).Error; err != nil {
+			return nil, err
+		}
+		for _, media := range mediaRows {
+			mediaByID[media.ID] = media
+		}
+	}
+
+	out := make([]model.Media, 0, len(favs))
+	for _, fav := range favs {
+		if media, ok := mediaByID[fav.MediaID]; ok {
+			out = append(out, media)
+			continue
+		}
+		if p.remote != nil && IsEmbyRemoteID(fav.MediaID) {
+			mountID, remoteID, _ := DecodeEmbyRemoteID(fav.MediaID)
+			mount, acct, _ := p.remote.ResolveMount(ctx, mountID)
+			if mount == nil || acct == nil {
+				continue
+			}
+			remoteMedia, err := p.remote.RemoteMediaDetail(ctx, mount, acct, remoteID)
+			if err != nil || remoteMedia == nil {
+				continue
+			}
+			out = append(out, *remoteMedia)
+		}
+	}
+	return out, nil
 }
 
 // ─── Playlists ──────────────────────────────────────────────────────────────
