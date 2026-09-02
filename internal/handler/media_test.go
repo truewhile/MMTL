@@ -436,8 +436,180 @@ func TestEmptyLibraryListsReturnEmptyArraysNotNull(t *testing.T) {
 		if strings.Contains(body, `"items":null`) {
 			t.Fatalf("%s: empty library returned items:null (crashes frontend): %s", tc.name, body)
 		}
-		if !strings.Contains(body, `"items":[]`) {
-			t.Fatalf("%s: expected items:[] for empty library, got %s", tc.name, body)
+			if !strings.Contains(body, `"items":[]`) {
+				t.Fatalf("%s: expected items:[] for empty library, got %s", tc.name, body)
+			}
+		}
+	}
+
+func TestSearchMediaHandlerIncludesEmbyRemote(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if q.Get("SearchTerm") == "碧蓝之海" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"TotalRecordCount": 1,
+				"Items": []map[string]any{
+					{
+						"Id":             "156030",
+						"Name":           "碧蓝之海",
+						"Type":           "Series",
+						"ProductionYear": 2018,
+					},
+				},
+			})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"TotalRecordCount": 0,
+			"Items":            []map[string]any{},
+		})
+	}))
+	defer server.Close()
+
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.Library{}, &model.Media{}, &model.StrmAccount{}, &model.EmbyMount{}, &model.Setting{}, &model.User{}, &model.PlayProfile{}); err != nil {
+		t.Fatal(err)
+	}
+	repos := repository.New(db)
+	adminUser := model.User{
+		Base:     model.Base{ID: "user-1"},
+		Username: "admin",
+		Role:     "admin",
+	}
+	_ = repos.DB.Create(&adminUser).Error
+
+	localLib := model.Library{Name: "本地电影", Path: "/media/movies", Type: "movie", Enabled: true}
+	if err := repos.Library.Create(t.Context(), &localLib); err != nil {
+		t.Fatal(err)
+	}
+	localMedia := model.Media{
+		Base:      model.Base{ID: "local-1"},
+		LibraryID: localLib.ID,
+		Title:     "流浪地球",
+		Year:      2019,
+	}
+	if err := repos.DB.Create(&localMedia).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	rawCfg, _ := json.Marshal(map[string]string{"url": server.URL, "token": "fake-token"})
+	acct := model.StrmAccount{
+		Base:     model.Base{ID: "acct-1"},
+		Name:     "远程Emby",
+		Provider: model.StrmProviderEmbyRemote,
+		Config:   string(rawCfg),
+		Enabled:  true,
+	}
+	if err := repos.StrmAccount.Create(t.Context(), &acct); err != nil {
+		t.Fatal(err)
+	}
+	mount := model.EmbyMount{
+		Base:           model.Base{ID: "mount-1"},
+		AccountID:      acct.ID,
+		RemoteViewID:   "view-1",
+		RemoteViewName: "动漫",
+		CollectionType: "tvshows",
+		Enabled:        true,
+	}
+	if err := repos.EmbyMount.Create(t.Context(), &mount); err != nil {
+		t.Fatal(err)
+	}
+
+	crypto := service.NewCryptoService("", zap.NewNop())
+	remoteSvc := service.NewEmbyRemoteService(&config.Config{}, zap.NewNop(), repos, crypto)
+	mediaSvc := service.NewMediaService(&config.Config{}, zap.NewNop(), repos)
+
+	svc := &service.Container{
+		Repo:       repos,
+		Media:      mediaSvc,
+		EmbyRemote: remoteSvc,
+	}
+
+	// 1. 搜索远程挂载媒体（碧蓝之海）
+	{
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Set(middleware.CtxUserID, "user-1")
+		c.Set(middleware.CtxUserRole, "admin")
+		c.Request = httptest.NewRequest(http.MethodGet, "/api/media?q=碧蓝之海&limit=8", nil)
+		searchMediaHandler(svc)(c)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("search status=%d, body=%s", w.Code, w.Body.String())
+		}
+		var res struct {
+			Items []service.MediaItem `json:"items"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+			t.Fatal(err)
+		}
+		if len(res.Items) != 1 {
+			t.Fatalf("expected 1 item, got %d", len(res.Items))
+		}
+		if res.Items[0].Title != "碧蓝之海" {
+			t.Fatalf("expected Title '碧蓝之海', got %q", res.Items[0].Title)
+		}
+		expectedID := service.EncodeEmbyRemoteID("mount-1", "156030")
+		if res.Items[0].ID != expectedID {
+			t.Fatalf("expected ID %q, got %q", expectedID, res.Items[0].ID)
+		}
+	}
+
+	// 2. 搜索本地媒体（流浪地球）
+	{
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Set(middleware.CtxUserID, "user-1")
+		c.Set(middleware.CtxUserRole, "admin")
+		c.Request = httptest.NewRequest(http.MethodGet, "/api/media?q=流浪地球&limit=8", nil)
+		searchMediaHandler(svc)(c)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("search status=%d, body=%s", w.Code, w.Body.String())
+		}
+		var res struct {
+			Items []service.MediaItem `json:"items"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+			t.Fatal(err)
+		}
+		if len(res.Items) != 1 {
+			t.Fatalf("expected 1 item, got %d", len(res.Items))
+		}
+		if res.Items[0].Title != "流浪地球" {
+			t.Fatalf("expected Title '流浪地球', got %q", res.Items[0].Title)
+		}
+	}
+
+	// 3. 搜索不存在的媒体
+	{
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Set(middleware.CtxUserID, "user-1")
+		c.Set(middleware.CtxUserRole, "admin")
+		c.Request = httptest.NewRequest(http.MethodGet, "/api/media?q=不存在的影片&limit=8", nil)
+		searchMediaHandler(svc)(c)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("search status=%d, body=%s", w.Code, w.Body.String())
+		}
+		var res struct {
+			Items []service.MediaItem `json:"items"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+			t.Fatal(err)
+		}
+		if len(res.Items) != 0 {
+			t.Fatalf("expected 0 items, got %d", len(res.Items))
+		}
+		if strings.Contains(w.Body.String(), `"items":null`) {
+			t.Fatalf("expected items:[], got null: %s", w.Body.String())
 		}
 	}
 }

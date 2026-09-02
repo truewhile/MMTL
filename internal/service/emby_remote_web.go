@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -502,10 +503,136 @@ func (r *EmbyRemoteService) RemoteLatestCards(ctx context.Context, mount *model.
 		m := r.MapRemoteItemToMedia(ctx, mount, acct, cfg, it)
 		cards = append(cards, SeriesCard{Key: m.ID, Rep: m, LinkMedia: m, Count: 0})
 	}
-	if r.cache != nil {
-		r.cache.SetJSON(ctx, cacheKey, cards, r.remoteMediaCacheTTL())
+		if r.cache != nil {
+			r.cache.SetJSON(ctx, cacheKey, cards, r.remoteMediaCacheTTL())
+		}
+		return cards, nil
 	}
-	return cards, nil
+
+// RemoteSearchMedia 在全部启用的挂载库中并发搜索影视条目（Movie,Series），
+// 并将远程结果映射为 model.Media。遵循当前用户的 MediaVisibility 权限规则。
+func (r *EmbyRemoteService) RemoteSearchMedia(ctx context.Context, query string, limit int, visibility MediaVisibility) ([]model.Media, error) {
+	if r == nil {
+		return nil, nil
+	}
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 50
+	} else if limit > maxMediaSearchLimit {
+		limit = maxMediaSearchLimit
+	}
+
+	mounts, err := r.ListMounts(ctx)
+	if err != nil || len(mounts) == 0 {
+		return nil, err
+	}
+
+	type mountTarget struct {
+		mount model.EmbyMount
+		acct  *model.StrmAccount
+		cfg   *EmbyRemoteConfig
+	}
+	var targets []mountTarget
+	for _, m := range mounts {
+		if !m.Enabled {
+			continue
+		}
+		libID := EncodeEmbyRemoteID(m.ID, m.RemoteViewID)
+		hidden := false
+		for _, hid := range visibility.HiddenLibraryIDs {
+			if hid == libID {
+				hidden = true
+				break
+			}
+		}
+		if hidden {
+			continue
+		}
+		if len(visibility.AllowedLibraryIDs) > 0 {
+			allowed := false
+			for _, aid := range visibility.AllowedLibraryIDs {
+				if aid == libID {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				continue
+			}
+		}
+
+		acct := r.AccountByID(ctx, m.AccountID)
+		if acct == nil {
+			continue
+		}
+		cfg, cfgErr := r.configOf(acct)
+		if cfgErr != nil {
+			continue
+		}
+		targets = append(targets, mountTarget{mount: m, acct: acct, cfg: cfg})
+	}
+	if len(targets) == 0 {
+		return nil, nil
+	}
+
+	searchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	sem := make(chan struct{}, 6)
+	var wg sync.WaitGroup
+	type searchResult struct {
+		items []model.Media
+	}
+	results := make([]searchResult, len(targets))
+	for i, t := range targets {
+		wg.Add(1)
+		go func(idx int, target mountTarget) {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-searchCtx.Done():
+				return
+			}
+
+			q := url.Values{}
+			q.Set("ParentId", target.mount.RemoteViewID)
+			q.Set("Recursive", "true")
+			q.Set("SearchTerm", query)
+			q.Set("IncludeItemTypes", "Movie,Series")
+			q.Set("Fields", "Overview,Genres,ProviderIds,Path,SeriesPrimaryImage,MediaStreams,MediaSources,DateCreated,PremiereDate,ProductionYear,CommunityRating,CriticRating")
+			q.Set("Limit", strconv.Itoa(limit))
+			q.Set("StartIndex", "0")
+
+			var body struct {
+				Items []map[string]any `json:"Items"`
+			}
+			if err := r.doGet(searchCtx, target.acct, target.cfg, "/Users/"+url.PathEscape(r.remoteUserID(target.cfg))+"/Items", q, &body); err != nil {
+				if r.log != nil {
+					r.log.Warn("remote search failed",
+						zap.String("mount", target.mount.RemoteViewName), zap.Error(err))
+				}
+				return
+			}
+			medias := make([]model.Media, 0, len(body.Items))
+			for _, it := range body.Items {
+				RewriteEmbyRemoteIDs(it, target.mount.ID)
+				m := r.MapRemoteItemToMedia(searchCtx, &target.mount, target.acct, target.cfg, it)
+				medias = append(medias, m)
+			}
+			results[idx] = searchResult{items: medias}
+		}(i, t)
+	}
+	wg.Wait()
+
+	var out []model.Media
+	for _, res := range results {
+		out = append(out, res.items...)
+	}
+	return out, nil
 }
 
 // WebStreamURL 远程条目的网页播放地址（302 直连远程 Emby 流端点）。

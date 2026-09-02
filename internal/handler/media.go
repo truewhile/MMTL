@@ -452,54 +452,113 @@ func updateMediaMetadataHandler(svc *service.Container) gin.HandlerFunc {
 	}
 }
 
+func paginateSlice[T any](items []T, page, size int) []T {
+	if page < 1 {
+		page = 1
+	}
+	if size <= 0 {
+		size = 50
+	}
+	if len(items) == 0 {
+		return []T{}
+	}
+	start := (page - 1) * size
+	if start >= len(items) {
+		return []T{}
+	}
+	end := start + size
+	if end > len(items) {
+		end = len(items)
+	}
+	return items[start:end]
+}
+
 func searchMediaHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		q := c.Query("q")
+		visibility := mediaVisibilityForRequest(c, svc)
 		groupVersions := c.DefaultQuery("group_versions", "1") != "0"
+
+		fetchRemote := func(limit int) []model.Media {
+			if svc.EmbyRemote == nil || strings.TrimSpace(q) == "" {
+				return nil
+			}
+			remoteItems, _ := svc.EmbyRemote.RemoteSearchMedia(ctx, q, limit, visibility)
+			return remoteItems
+		}
+
 		if c.Query("page") != "" || c.Query("page_size") != "" {
 			page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 			size, _ := strconv.Atoi(c.DefaultQuery("page_size", "50"))
 			if !groupVersions {
-				items, total, err := svc.Media.SearchMediaVisiblePage(c.Request.Context(), q, page, size, mediaVisibilityForRequest(c, svc))
+				localItems, _, err := svc.Media.SearchMediaVisiblePage(ctx, q, 1, 50000, visibility)
 				if err != nil {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 					return
 				}
+				remoteItems := fetchRemote(size * 2)
+				all := append(localItems, remoteItems...)
+				paged := paginateSlice(all, page, size)
 				c.JSON(http.StatusOK, gin.H{
-					"items":     items,
-					"total":     total,
+					"items":     paged,
+					"total":     len(all),
 					"page":      page,
 					"page_size": size,
 				})
 				return
 			}
-			items, total, err := svc.Media.SearchMediaVisiblePageGrouped(c.Request.Context(), q, page, size, mediaVisibilityForRequest(c, svc))
+			localItems, err := svc.Media.SearchMediaVisible(ctx, q, 50000, visibility)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
 			}
+			remoteItems := fetchRemote(size * 2)
+			all := append(localItems, remoteItems...)
+			grouped := service.GroupMediaVersions(all)
+			paged := service.PaginateMediaItems(grouped, page, size)
 			c.JSON(http.StatusOK, gin.H{
-				"items":     items,
-				"total":     total,
+				"items":     paged,
+				"total":     len(grouped),
 				"page":      page,
 				"page_size": size,
 			})
 			return
 		}
+
 		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+		if limit <= 0 {
+			limit = 50
+		}
 		if !groupVersions {
-			items, err := svc.Media.SearchMediaVisible(c.Request.Context(), q, limit, mediaVisibilityForRequest(c, svc))
+			localItems, err := svc.Media.SearchMediaVisible(ctx, q, limit, visibility)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
 			}
-			c.JSON(http.StatusOK, gin.H{"items": items})
+			remoteItems := fetchRemote(limit)
+			all := append(localItems, remoteItems...)
+			if len(all) > limit {
+				all = all[:limit]
+			}
+			if all == nil {
+				all = []model.Media{}
+			}
+			c.JSON(http.StatusOK, gin.H{"items": all})
 			return
 		}
-		items, err := svc.Media.SearchMediaVisibleGrouped(c.Request.Context(), q, limit, mediaVisibilityForRequest(c, svc))
+
+		localItems, err := svc.Media.SearchMediaVisible(ctx, q, 50000, visibility)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
+		}
+		remoteItems := fetchRemote(limit)
+		all := append(localItems, remoteItems...)
+		grouped := service.GroupMediaVersions(all)
+		items := service.FirstMediaItems(grouped, limit)
+		if items == nil {
+			items = []service.MediaItem{}
 		}
 		c.JSON(http.StatusOK, gin.H{"items": items})
 	}

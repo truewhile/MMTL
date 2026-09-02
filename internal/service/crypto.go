@@ -77,7 +77,7 @@ func (c *CryptoService) Encrypt(plain string) string {
 // Decrypt returns the plaintext for an encrypted value. Plaintext rows
 // (no prefix) are returned unchanged.
 func (c *CryptoService) Decrypt(value string) string {
-	if value == "" || c.aead == nil {
+	if c == nil || value == "" || c.aead == nil {
 		return value
 	}
 	if !strings.HasPrefix(value, encPrefix) {

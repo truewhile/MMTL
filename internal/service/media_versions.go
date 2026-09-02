@@ -44,6 +44,11 @@ func paginateMediaItems(items []MediaItem, page, pageSize int) []MediaItem {
 	return items[start:end]
 }
 
+// PaginateMediaItems 导出分页辅助函数。
+func PaginateMediaItems(items []MediaItem, page, pageSize int) []MediaItem {
+	return paginateMediaItems(items, page, pageSize)
+}
+
 func firstMediaItems(items []MediaItem, limit int) []MediaItem {
 	if len(items) == 0 {
 		return nil
@@ -58,6 +63,11 @@ func firstMediaItems(items []MediaItem, limit int) []MediaItem {
 		limit = len(items)
 	}
 	return items[:limit]
+}
+
+// FirstMediaItems 导出截取前 N 项辅助函数。
+func FirstMediaItems(items []MediaItem, limit int) []MediaItem {
+	return firstMediaItems(items, limit)
 }
 
 func groupMediaVersions(items []model.Media) []MediaItem {
@@ -102,6 +112,11 @@ func groupMediaVersions(items []model.Media) []MediaItem {
 		return out[i].CreatedAt.After(out[j].CreatedAt)
 	})
 	return out
+}
+
+// GroupMediaVersions 导出多版本分组函数。
+func GroupMediaVersions(items []model.Media) []MediaItem {
+	return groupMediaVersions(items)
 }
 
 func mediaVersionGroupKey(m model.Media) string {
