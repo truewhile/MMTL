@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -30,6 +31,9 @@ type strmAccountView struct {
 	ProviderLabel string `json:"provider_label"`
 	// ProxyPlay 仅远程 Emby 挂载账号返回：播放流量是否经过 MMTL 代理（编辑回显用）。
 	ProxyPlay *bool `json:"proxy_play,omitempty"`
+	// EmbyLines 仅远程 Emby 挂载账号返回：多线路配置（不含凭据）。
+	EmbyLines      []service.EmbyRemoteLine `json:"emby_lines,omitempty"`
+	EmbyActiveLine int                      `json:"emby_active_line,omitempty"`
 }
 
 func strmAccountViews(svc *service.Container, accounts []model.StrmAccount) []strmAccountView {
@@ -44,6 +48,10 @@ func strmAccountViews(svc *service.Container, accounts []model.StrmAccount) []st
 		if a.Provider == model.StrmProviderEmbyRemote && svc != nil && svc.EmbyRemote != nil {
 			if proxyPlay, err := svc.EmbyRemote.ProxyPlayOf(&a); err == nil {
 				view.ProxyPlay = &proxyPlay
+			}
+			if lines, activeLine, err := svc.EmbyRemote.LinesOf(&a); err == nil {
+				view.EmbyLines = lines
+				view.EmbyActiveLine = activeLine
 			}
 		}
 		out = append(out, view)
@@ -117,13 +125,33 @@ func deleteStrmAccountHandler(svc *service.Container) gin.HandlerFunc {
 
 func testStrmAccountHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		acct := svc.Strm.TestStrmAccount(c.Request.Context(), c.Param("id"))
-		if acct == nil {
+		id := c.Param("id")
+		acct, err := svc.Repo.StrmAccount.FindByID(c.Request.Context(), id)
+		if err != nil || acct == nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "网盘账号不存在"})
 			return
 		}
-		views := strmAccountViews(svc, []model.StrmAccount{*acct})
-		c.JSON(http.StatusOK, views[0])
+		now := time.Now()
+		acct.LastTestAt = &now
+		if acct.Provider == model.StrmProviderEmbyRemote && svc.EmbyRemote != nil {
+			if err := svc.EmbyRemote.TestConnection(c.Request.Context(), acct); err != nil {
+				acct.LastTestResult = err.Error()
+				acct.LastTestOK = false
+			} else {
+				acct.LastTestResult = "ok"
+				acct.LastTestOK = true
+			}
+		} else {
+			acct = svc.Strm.TestStrmAccount(c.Request.Context(), id)
+			if acct == nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "网盘账号不存在"})
+				return
+			}
+			c.JSON(http.StatusOK, strmAccountViews(svc, []model.StrmAccount{*acct})[0])
+			return
+		}
+		_ = svc.Repo.StrmAccount.Update(c.Request.Context(), acct)
+		c.JSON(http.StatusOK, strmAccountViews(svc, []model.StrmAccount{*acct})[0])
 	}
 }
 

@@ -1,15 +1,19 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import {
+  ArrowDown,
+  ArrowUp,
   ChevronRight,
   Cloud,
   ExternalLink,
   FolderPlus,
   HardDrive,
   Loader2,
+  Plus,
   QrCode,
   RefreshCw,
   Search,
+  Trash2,
   Tv,
   X,
 } from 'lucide-react'
@@ -23,6 +27,12 @@ import type { StrmAccount, StrmSyncPath, StrmSyncPathInput, StrmProvider } from 
 import { STRM_PROVIDER_LABELS } from '../types/strm'
 import { apiErrorMessage } from './StrmManagePage'
 import { LocalDirBrowserDialog } from '../components/LocalDirBrowserDialog'
+import {
+  defaultEmbyRemoteLines,
+  encodeEmbyRemoteConfigLines,
+  normalizeEmbyRemoteLines,
+  type EmbyRemoteLine,
+} from '../utils/embyRemoteLines'
 
 // ─── 弹框外壳 ────────────────────────────────────────────────────────────────
 
@@ -106,6 +116,9 @@ export function StrmAccountDialog({
   const [name, setName] = useState(existing?.name ?? '')
   const [enabled, setEnabled] = useState(existing?.enabled ?? true)
   const [url, setUrl] = useState('')
+  const [embyLines, setEmbyLines] = useState<EmbyRemoteLine[]>(() =>
+    defaultEmbyRemoteLines(existing?.provider === 'emby_remote' ? existing?.emby_lines : undefined),
+  )
   const [server, setServer] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -128,14 +141,16 @@ export function StrmAccountDialog({
           ...(password ? { password } : {}),
           ...(token ? { token } : {}),
         }
-      case 'emby_remote':
+      case 'emby_remote': {
+        const lineConfig = encodeEmbyRemoteConfigLines(embyLines)
         return {
-          ...(url ? { url } : {}),
+          ...lineConfig,
           ...(username ? { username } : {}),
           ...(password ? { password } : {}),
           ...(token ? { token } : {}),
           proxy_play: proxyPlay ? 'true' : 'false',
         }
+      }
       default:
         return {}
     }
@@ -148,7 +163,7 @@ export function StrmAccountDialog({
       case 'openlist':
         return server !== '' && (token !== '' || password !== '')
       case 'emby_remote':
-        return url !== '' && (token !== '' || password !== '')
+        return normalizeEmbyRemoteLines(embyLines).length > 0 && (token !== '' || password !== '')
       default:
         return false
     }
@@ -255,9 +270,92 @@ export function StrmAccountDialog({
         )}
 
         {provider === 'emby_remote' && (
-          <Field label="Emby 服务地址" hint="远程 Emby 服务器地址，如 http://192.168.1.10:8096">
-            <input className={inputCls} value={url} placeholder="http://host:8096" onChange={(e) => setUrl(e.target.value)} />
-          </Field>
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-sm font-medium text-ink-100">接入线路</p>
+                <p className="text-xs text-sand-500">可配置内网、外网等多条线路，连接失败时按顺序自动切换</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEmbyLines((prev) => [...prev, { name: `线路 ${prev.length + 1}`, url: '' }])}
+                className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-semibold text-ink-100 hover:bg-gray-50"
+              >
+                <Plus size={12} />
+                添加线路
+              </button>
+            </div>
+            {embyLines.map((line, index) => (
+              <div key={`emby-line-${index}`} className="space-y-2 rounded-2xl border border-sand-200 bg-gray-50/70 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wide text-sand-500">
+                    线路 {index + 1}
+                    {existing?.emby_active_line === index ? ' · 当前优先' : index === 0 ? ' · 默认优先' : ''}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmbyLines((prev) => {
+                          const target = index - 1
+                          if (target < 0) return prev
+                          const next = [...prev]
+                          const [moved] = next.splice(index, 1)
+                          next.splice(target, 0, moved)
+                          return next
+                        })
+                      }}
+                      disabled={index === 0}
+                      className="rounded-lg border border-gray-200 p-1 text-ink-100 hover:bg-white disabled:opacity-30"
+                    >
+                      <ArrowUp size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmbyLines((prev) => {
+                          const target = index + 1
+                          if (target >= prev.length) return prev
+                          const next = [...prev]
+                          const [moved] = next.splice(index, 1)
+                          next.splice(target, 0, moved)
+                          return next
+                        })
+                      }}
+                      disabled={index === embyLines.length - 1}
+                      className="rounded-lg border border-gray-200 p-1 text-ink-100 hover:bg-white disabled:opacity-30"
+                    >
+                      <ArrowDown size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEmbyLines((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)))}
+                      disabled={embyLines.length <= 1}
+                      className="rounded-lg border border-gray-200 p-1 text-red-500 hover:bg-red-50 disabled:opacity-30"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </div>
+                <input
+                  className={inputCls}
+                  value={line.name}
+                  placeholder="线路名称，如：内网 / 外网 / IPv6"
+                  onChange={(e) =>
+                    setEmbyLines((prev) => prev.map((item, i) => (i === index ? { ...item, name: e.target.value } : item)))
+                  }
+                />
+                <input
+                  className={inputCls}
+                  value={line.url}
+                  placeholder="http://192.168.1.10:8096 或 https://emby.example.com"
+                  onChange={(e) =>
+                    setEmbyLines((prev) => prev.map((item, i) => (i === index ? { ...item, url: e.target.value } : item)))
+                  }
+                />
+              </div>
+            ))}
+          </div>
         )}
 
         {(provider === 'clouddrive2' || provider === 'emby_remote') && (

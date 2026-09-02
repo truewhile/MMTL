@@ -56,7 +56,9 @@ func (t *embyRemoteTransport) RoundTrip(req *http.Request) (*http.Response, erro
 
 // EmbyRemoteConfig 是一个远程 Emby 账号的解密配置。
 type EmbyRemoteConfig struct {
-	BaseURL      string // http://host:8096（无需 /emby 后缀）
+	BaseURL      string           // 当前生效线路地址（http://host:8096，无需 /emby 后缀）
+	Lines        []EmbyRemoteLine // 全部线路，按优先级排列
+	ActiveLine   int              // 当前生效线路下标
 	Username     string
 	Password     string
 	Token        string // api_key（手动填写或自动认证获得）
@@ -322,8 +324,14 @@ func (r *EmbyRemoteService) configOf(acct *model.StrmAccount) (*EmbyRemoteConfig
 			return nil, fmt.Errorf("decode emby account config: %w", err)
 		}
 	}
+	lines, activeLine, err := ParseEmbyRemoteLines(raw)
+	if err != nil {
+		return nil, err
+	}
 	cfg := &EmbyRemoteConfig{
-		BaseURL:      strings.TrimRight(strings.TrimSpace(raw["url"]), "/"),
+		BaseURL:      lines[activeLine].URL,
+		Lines:        lines,
+		ActiveLine:   activeLine,
 		Username:     strings.TrimSpace(raw["username"]),
 		Password:     r.crypto.Decrypt(raw["password"]),
 		Token:        firstNonEmptyStr(r.crypto.Decrypt(raw["api_key"]), r.crypto.Decrypt(raw["token"])),
@@ -332,9 +340,6 @@ func (r *EmbyRemoteService) configOf(acct *model.StrmAccount) (*EmbyRemoteConfig
 	}
 	if cfg.BaseURL == "" {
 		return nil, errors.New("缺少 Emby 地址")
-	}
-	if !strings.HasPrefix(cfg.BaseURL, "http://") && !strings.HasPrefix(cfg.BaseURL, "https://") {
-		return nil, errors.New("Emby 地址必须以 http:// 或 https:// 开头")
 	}
 	return cfg, nil
 }
@@ -366,6 +371,29 @@ func (r *EmbyRemoteService) ensureToken(ctx context.Context, acct *model.StrmAcc
 	if strings.TrimSpace(cfg.Username) == "" || strings.TrimSpace(cfg.Password) == "" {
 		return errors.New("缺少 Emby 凭据：请填写 api_key 或 用户名/密码")
 	}
+	var lastErr error
+	for _, lineIdx := range r.lineOrder(cfg) {
+		lineCfg := r.withLine(cfg, lineIdx)
+		err := r.ensureTokenOnLine(ctx, acct, lineCfg)
+		if err == nil {
+			cfg.Token = lineCfg.Token
+			cfg.RemoteUserID = lineCfg.RemoteUserID
+			cfg.BaseURL = lineCfg.BaseURL
+			r.adoptWorkingLine(ctx, acct, cfg, lineIdx)
+			return r.persistToken(ctx, acct, cfg)
+		}
+		lastErr = err
+		if !isEmbyLineFailoverError(err) {
+			return err
+		}
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return errors.New("Emby 线路认证失败")
+}
+
+func (r *EmbyRemoteService) ensureTokenOnLine(ctx context.Context, acct *model.StrmAccount, cfg *EmbyRemoteConfig) error {
 	body, _ := json.Marshal(map[string]string{"Username": cfg.Username, "Pw": cfg.Password})
 	endpoint := r.embyBase(cfg) + "/Users/AuthenticateByName"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(body)))
@@ -399,7 +427,7 @@ func (r *EmbyRemoteService) ensureToken(ctx context.Context, acct *model.StrmAcc
 	if login.User.Id != "" {
 		cfg.RemoteUserID = login.User.Id
 	}
-	return r.persistToken(ctx, acct, cfg)
+	return nil
 }
 
 // persistToken 把认证得到的 token / user id 加密写回账号配置（下次请求免登录）。
@@ -425,11 +453,35 @@ func (r *EmbyRemoteService) persistToken(ctx context.Context, acct *model.StrmAc
 }
 
 // doGet 向远程 Emby 发起带 api_key 的 GET，把响应 JSON 解码到 out。
-// 401 时自动重认证一次再重试（凭据过期场景）。
+// 401 时自动重认证一次再重试（凭据过期场景）。连接失败时按线路优先级自动切换。
 func (r *EmbyRemoteService) doGet(ctx context.Context, acct *model.StrmAccount, cfg *EmbyRemoteConfig, path string, q url.Values, out any) error {
-	for attempt := 0; attempt < 2; attempt++ {
-		if err := r.ensureToken(ctx, acct, cfg); err != nil {
+	var lastErr error
+	for _, lineIdx := range r.lineOrder(cfg) {
+		lineCfg := r.withLine(cfg, lineIdx)
+		err := r.doGetOnLine(ctx, acct, cfg, lineCfg, path, q, out)
+		if err == nil {
+			r.adoptWorkingLine(ctx, acct, cfg, lineIdx)
+			return nil
+		}
+		lastErr = err
+		if !isEmbyLineFailoverError(err) {
 			return err
+		}
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return errors.New("远程 Emby 请求失败")
+}
+
+func (r *EmbyRemoteService) doGetOnLine(ctx context.Context, acct *model.StrmAccount, master *EmbyRemoteConfig, cfg *EmbyRemoteConfig, path string, q url.Values, out any) error {
+	for attempt := 0; attempt < 2; attempt++ {
+		if strings.TrimSpace(cfg.Token) == "" {
+			if err := r.ensureTokenOnLine(ctx, acct, cfg); err != nil {
+				return err
+			}
+			master.Token = cfg.Token
+			master.RemoteUserID = cfg.RemoteUserID
 		}
 		endpoint := r.embyBase(cfg) + path
 		if q != nil {
@@ -452,8 +504,8 @@ func (r *EmbyRemoteService) doGet(ctx context.Context, acct *model.StrmAccount, 
 			return readErr
 		}
 		if resp.StatusCode == http.StatusUnauthorized && attempt == 0 {
-			// token 失效：清空后重认证重试一次。
 			cfg.Token = ""
+			master.Token = ""
 			if acct != nil {
 				raw := map[string]string{}
 				_ = json.Unmarshal([]byte(acct.Config), &raw)
@@ -783,9 +835,39 @@ func (r *EmbyRemoteService) ProxyVideoStream(ctx context.Context, w http.Respons
 	if err != nil {
 		return err
 	}
-	if err := r.ensureToken(ctx, acct, cfg); err != nil {
-		return err
+	var lastErr error
+	for _, lineIdx := range r.lineOrder(cfg) {
+		lineCfg := r.withLine(cfg, lineIdx)
+		lineCfg.Token = cfg.Token
+		lineCfg.RemoteUserID = cfg.RemoteUserID
+		if strings.TrimSpace(lineCfg.Token) == "" {
+			if err := r.ensureToken(ctx, acct, lineCfg); err != nil {
+				lastErr = err
+				if isEmbyLineFailoverError(err) {
+					continue
+				}
+				return err
+			}
+			cfg.Token = lineCfg.Token
+			cfg.RemoteUserID = lineCfg.RemoteUserID
+		}
+		err := r.proxyVideoStreamOnLine(ctx, w, req, lineCfg, remoteID)
+		if err == nil {
+			r.adoptWorkingLine(ctx, acct, cfg, lineIdx)
+			return nil
+		}
+		lastErr = err
+		if !isEmbyLineFailoverError(err) {
+			return err
+		}
 	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return errors.New("远程 Emby 视频流请求失败")
+}
+
+func (r *EmbyRemoteService) proxyVideoStreamOnLine(ctx context.Context, w http.ResponseWriter, req *http.Request, cfg *EmbyRemoteConfig, remoteID string) error {
 	endpoint := r.embyBase(cfg) + "/Videos/" + url.PathEscape(remoteID) + "/stream"
 	q := url.Values{}
 	if mediaSourceID := strings.TrimSpace(req.URL.Query().Get("MediaSourceId")); mediaSourceID != "" {
@@ -837,9 +919,39 @@ func (r *EmbyRemoteService) ProxySubtitle(ctx context.Context, w http.ResponseWr
 	if err != nil {
 		return err
 	}
-	if err := r.ensureToken(ctx, acct, cfg); err != nil {
-		return err
+	var lastErr error
+	for _, lineIdx := range r.lineOrder(cfg) {
+		lineCfg := r.withLine(cfg, lineIdx)
+		lineCfg.Token = cfg.Token
+		lineCfg.RemoteUserID = cfg.RemoteUserID
+		if strings.TrimSpace(lineCfg.Token) == "" {
+			if err := r.ensureToken(ctx, acct, lineCfg); err != nil {
+				lastErr = err
+				if isEmbyLineFailoverError(err) {
+					continue
+				}
+				return err
+			}
+			cfg.Token = lineCfg.Token
+			cfg.RemoteUserID = lineCfg.RemoteUserID
+		}
+		err := r.proxySubtitleOnLine(ctx, w, lineCfg, remoteID, index)
+		if err == nil {
+			r.adoptWorkingLine(ctx, acct, cfg, lineIdx)
+			return nil
+		}
+		lastErr = err
+		if !isEmbyLineFailoverError(err) {
+			return err
+		}
 	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return errors.New("远程 Emby 字幕流请求失败")
+}
+
+func (r *EmbyRemoteService) proxySubtitleOnLine(ctx context.Context, w http.ResponseWriter, cfg *EmbyRemoteConfig, remoteID, index string) error {
 	endpoint := r.embyBase(cfg) + "/Videos/" + url.PathEscape(remoteID) + "/Subtitles/" + url.PathEscape(index) + "/Stream"
 	endpoint += "?api_key=" + url.QueryEscape(cfg.Token)
 	upstream, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
@@ -902,6 +1014,39 @@ func (r *EmbyRemoteService) ProxySetFavorite(ctx context.Context, acct *model.St
 }
 
 func (r *EmbyRemoteService) doMutate(ctx context.Context, acct *model.StrmAccount, cfg *EmbyRemoteConfig, method, path string) error {
+	var lastErr error
+	for _, lineIdx := range r.lineOrder(cfg) {
+		lineCfg := r.withLine(cfg, lineIdx)
+		lineCfg.Token = cfg.Token
+		lineCfg.RemoteUserID = cfg.RemoteUserID
+		if strings.TrimSpace(lineCfg.Token) == "" {
+			if err := r.ensureToken(ctx, acct, lineCfg); err != nil {
+				lastErr = err
+				if isEmbyLineFailoverError(err) {
+					continue
+				}
+				return err
+			}
+			cfg.Token = lineCfg.Token
+			cfg.RemoteUserID = lineCfg.RemoteUserID
+		}
+		err := r.doMutateOnLine(ctx, lineCfg, method, path)
+		if err == nil {
+			r.adoptWorkingLine(ctx, acct, cfg, lineIdx)
+			return nil
+		}
+		lastErr = err
+		if !isEmbyLineFailoverError(err) {
+			return err
+		}
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return errors.New("远程 Emby 状态同步失败")
+}
+
+func (r *EmbyRemoteService) doMutateOnLine(ctx context.Context, cfg *EmbyRemoteConfig, method, path string) error {
 	endpoint := r.embyBase(cfg) + path + "?api_key=" + url.QueryEscape(cfg.Token)
 	req, err := http.NewRequestWithContext(ctx, method, endpoint, nil)
 	if err != nil {
