@@ -84,7 +84,7 @@ export function MediaSortDropdown({
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 z-50 mt-1.5 w-52 origin-top-right rounded-2xl border border-sand-200/80 bg-white/95 p-1.5 shadow-xl backdrop-blur-md transition-all animate-in fade-in-0 zoom-in-95">
+        <div className="absolute left-0 z-50 mt-1.5 w-52 max-w-[calc(100vw-2rem)] origin-top-left rounded-2xl border border-sand-200/80 bg-white/95 p-1.5 shadow-xl backdrop-blur-md transition-all animate-in fade-in-0 zoom-in-95 sm:left-auto sm:right-0 sm:origin-top-right">
           <div className="px-2.5 py-1.5 text-[11px] font-bold text-sand-500 border-b border-sand-100">
             排序方式
           </div>
