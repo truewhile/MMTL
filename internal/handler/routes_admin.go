@@ -102,6 +102,8 @@ func registerAdminStrmRoutes(admin *gin.RouterGroup, svc *service.Container) {
 }
 
 func registerAdminUserRoutes(admin *gin.RouterGroup, svc *service.Container) {
+	admin.GET("/users/limit", getUserLimitHandler(svc))
+	admin.PUT("/users/limit", updateUserLimitHandler(svc))
 	admin.GET("/users", listUsersHandler(svc))
 	admin.POST("/users", createUserHandler(svc))
 	admin.PATCH("/users/:id", updateUserHandler(svc))

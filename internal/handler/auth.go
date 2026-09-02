@@ -68,6 +68,15 @@ func registerHandler(svc *service.Container) gin.HandlerFunc {
 				c.JSON(http.StatusConflict, gin.H{"error": "username taken"})
 				return
 			}
+			if errors.Is(err, service.ErrUserLimitReached) {
+				maxUsers, loadErr := service.LoadMaxUsers(c.Request.Context(), svc.Repo)
+				if loadErr != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": loadErr.Error()})
+					return
+				}
+				c.JSON(http.StatusBadRequest, gin.H{"error": "user limit reached", "max_users": maxUsers})
+				return
+			}
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
