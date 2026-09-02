@@ -27,12 +27,13 @@ func newServiceContainer(cfg *config.Config, log *zap.Logger, repos *repository.
 		cfg:     cfg,
 		log:     log,
 		repos:   repos,
-		version: normalizeSystemUpdateVersion(version),
-		c: &Container{
-			Cfg:  cfg,
-			Log:  log,
-			Repo: repos,
-		},
+			version: normalizeSystemUpdateVersion(version),
+			c: &Container{
+				Version: normalizeSystemUpdateVersion(version),
+				Cfg:     cfg,
+				Log:     log,
+				Repo:    repos,
+			},
 	}
 	builder.startRealtimeServices()
 	builder.initProviderServices()

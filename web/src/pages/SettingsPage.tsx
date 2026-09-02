@@ -8,6 +8,7 @@ import { libraryAPI } from '../api/library'
 import type { Library, Setting } from '../types'
 import { APIConfigsPanel } from '../components/APIConfigsPanel'
 import { FFToolsPanel } from '../components/FFToolsPanel'
+import { AboutSettingsPanel } from './AboutSettingsPanel'
 import { AdultSettingsPanel } from './AdultSettingsPanel'
 import { DatabaseSettingsPanel } from './DatabaseSettingsPanel'
 import { RecognitionWordsPanel } from './RecognitionWordsPanel'
@@ -174,6 +175,7 @@ export function SettingsPage() {
           {group.key === 'recognition-words' && <RecognitionWordsPanel />}
           {group.key === 'adult' && <AdultSettingsPanel />}
           {group.key === 'general' && <FFToolsPanel onInstalled={() => refresh().catch(() => undefined)} />}
+          {group.key === 'about' && <AboutSettingsPanel />}
           {group.key !== 'adult' && group.key !== 'library' && group.items.length > 0 && (
             <form onSubmit={onSave} className="glass-panel space-y-4">
               {group.description && <p className="text-xs text-sand-500">{group.description}</p>}

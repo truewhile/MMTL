@@ -14,6 +14,13 @@ export const databaseSettingsGroup: SettingGroup = {
   items: [],
 }
 
+export const aboutSettingsGroup: SettingGroup = {
+  key: 'about',
+  label: '关于',
+  description: '项目信息、版本信息与使用指南',
+  items: [],
+}
+
 export const GROUPS: SettingGroup[] = [
   generalSettingsGroup,
   databaseSettingsGroup,
@@ -21,6 +28,7 @@ export const GROUPS: SettingGroup[] = [
   recognitionWordsSettingsGroup,
   danmakuSettingsGroup,
   adultSettingsGroup,
+  aboutSettingsGroup,
 ]
 
 export const ALL_KEYS = new Set(GROUPS.flatMap((group) => group.items.map((item) => item.key)))

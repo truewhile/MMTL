@@ -43,9 +43,9 @@ export const LAYOUT_NAV_ITEMS: LayoutNavItem[] = [
   { to: '/queue', label: '任务队列', icon: ListChecks, adminOnly: true },
   { to: '/admin', label: '用户管理', icon: Users, adminOnly: true },
   { to: '/files', label: '文件管理', icon: FolderOpen, adminOnly: true },
-  { to: '/settings', label: '系统设置', icon: Settings, adminOnly: true },
   { to: '/emby-mount', label: 'Emby 挂载', icon: Tv, adminOnly: true },
   { to: '/strm', label: 'STRM 管理', icon: FileOutput, adminOnly: true },
+  { to: '/settings', label: '系统设置', icon: Settings, adminOnly: true },
 ]
 
 /** Media browsing links for the mobile drawer when browsing libraries. */
