@@ -13,11 +13,9 @@ type AutoOrganizeTabProps = {
 export function AutoOrganizeBasicTab({
   config,
   currentDir,
-  moveKeepsSeeding,
   onConfigChange,
 }: AutoOrganizeTabProps & {
   currentDir: string
-  moveKeepsSeeding: boolean
 }) {
   return (
     <>
@@ -68,7 +66,7 @@ export function AutoOrganizeBasicTab({
             onChange={(event) => onConfigChange('transferMode', event.target.value)}
           >
             <option value="hardlink">硬链接</option>
-            <option value="move">移动（关闭保种才会移动）</option>
+            <option value="move">移动</option>
             <option value="copy">复制</option>
             <option value="symlink">软链接</option>
           </select>
@@ -85,20 +83,10 @@ export function AutoOrganizeBasicTab({
         </label>
       </div>
 
-      {moveKeepsSeeding && (
-        <div className="rounded-xl border border-orange-300 bg-orange-50 px-3 py-2 text-xs text-orange-700">
-          当前同时选择了“移动”和“保种”。为避免 qB 做种源文件被删除，后端会实际使用硬链接；Docker / NAS
-          多挂载或不同子卷下可能报 invalid cross-device link。需要真正移动时请关闭“保种”，需要保种但硬链接失败时请选择“复制”。
-        </div>
-      )}
-
       <div className="flex flex-wrap items-center gap-3">
         <BooleanSetting config={config} settingKey="enabled" label="整理源目录定时自动整理" onConfigChange={onConfigChange} />
-        <BooleanSetting config={config} settingKey="afterDownload" label="qB 下载完成后自动整理" onConfigChange={onConfigChange} />
-        <BooleanSetting config={config} settingKey="downloadSmartClassify" label="下载器智能分类" onConfigChange={onConfigChange} />
         <BooleanSetting config={config} settingKey="smartClassify" label="智能分类到子库" onConfigChange={onConfigChange} />
         <BooleanSetting config={config} settingKey="autoAddLibrary" label="自动注册目的地媒体库" onConfigChange={onConfigChange} />
-        <BooleanSetting config={config} settingKey="keepSeeding" label="保种" onConfigChange={onConfigChange} />
       </div>
     </>
   )

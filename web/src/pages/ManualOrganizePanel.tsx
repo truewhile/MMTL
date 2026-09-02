@@ -15,7 +15,6 @@ type ManualOrganizePanelProps = {
   organizeDestPath: string
   organizeMediaType: string
   organizeTransferMode: string
-  manualMoveKeepsSeeding: boolean
   scanAfter: boolean
   scrapeAfter: boolean
   organizeReady: boolean
@@ -40,7 +39,6 @@ export function ManualOrganizePanel({
   organizeDestPath,
   organizeMediaType,
   organizeTransferMode,
-  manualMoveKeepsSeeding,
   scanAfter,
   scrapeAfter,
   organizeReady,
@@ -119,18 +117,12 @@ export function ManualOrganizePanel({
           <span className="text-xs text-ink-50">整理方式</span>
           <select className="input-base w-full" value={organizeTransferMode} onChange={(event) => onTransferModeChange(event.target.value)}>
             <option value="hardlink">硬链接</option>
-            <option value="move">移动（关闭保种才会移动）</option>
+            <option value="move">移动</option>
             <option value="copy">复制</option>
             <option value="symlink">软链接</option>
           </select>
         </label>
       </div>
-
-      {manualMoveKeepsSeeding && (
-        <div className="rounded-xl border border-orange-300 bg-orange-50 px-3 py-2 text-xs text-orange-700">
-          “保种”已开启，选择“移动”时后端会改用硬链接以保留下载源。要执行真正移动，请先在上方自动整理设置里关闭“保种”并保存。
-        </div>
-      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-ink-100">
