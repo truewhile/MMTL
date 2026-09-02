@@ -114,7 +114,10 @@ func buildSQLiteDSN(cfg *config.Config) string {
 	if cfg.Database.CacheSize != 0 {
 		dsn += fmt.Sprintf("&_pragma=cache_size(%d)", cfg.Database.CacheSize)
 	}
-	dsn += "&_pragma=temp_store(MEMORY)&_pragma=mmap_size(268435456)"
+	dsn += "&_pragma=temp_store(MEMORY)&_pragma=mmap_size(536870912)"
+	if cfg.Database.WALMode {
+		dsn += "&_pragma=wal_autocheckpoint(1000)"
+	}
 	return dsn
 }
 

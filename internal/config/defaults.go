@@ -29,7 +29,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("database.dsn", "")
 	v.SetDefault("database.wal_mode", true)
 	v.SetDefault("database.busy_timeout", 5000)
-	v.SetDefault("database.cache_size", -20000)
+	v.SetDefault("database.cache_size", -40000)
 	v.SetDefault("database.max_open_conns", defaultDatabaseMaxOpenConns)
 	v.SetDefault("database.max_idle_conns", defaultDatabaseMaxIdleConns)
 

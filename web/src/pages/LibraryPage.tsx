@@ -45,9 +45,12 @@ export function LibraryPage() {
   const [historyMap, setHistoryMap] = useState<Map<string, string>>(new Map())
 
   useEffect(() => {
+    if (sortField !== 'last_played') return
+    let cancelled = false
     historyAPI
       .list(1000)
       .then((historyItems) => {
+        if (cancelled) return
         const map = new Map<string, string>()
         for (const item of historyItems ?? []) {
           if (item.media_id && item.watched_at) {
@@ -59,7 +62,10 @@ export function LibraryPage() {
         setHistoryMap(map)
       })
       .catch(() => {})
-  }, [])
+    return () => {
+      cancelled = true
+    }
+  }, [sortField])
 
   const handleSortChange = (field: SortField, order: SortOrder) => {
     setSortField(field)
