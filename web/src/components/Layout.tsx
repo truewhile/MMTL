@@ -8,7 +8,7 @@ import {
   LayoutWorkspace,
 } from './LayoutSections'
 import { MobileBottomNav } from './MobileBottomNav'
-import { shouldShowMobileBottomNav } from './layoutNavigation'
+import { isPlayerRoute, shouldShowMobileBottomNav } from './layoutNavigation'
 import { useLayoutPermissions } from './useLayoutPermissions'
 import { useLayoutProfiles } from './useLayoutProfiles'
 import { useLayoutSidebar } from './useLayoutSidebar'
@@ -26,7 +26,7 @@ function isMediaView(pathname: string, search: string): boolean {
     pathname === '/libraries' ||
     pathname.startsWith('/library') ||
     pathname.startsWith('/media') ||
-    pathname.startsWith('/play') ||
+    isPlayerRoute(pathname) ||
     pathname === '/favourites' ||
     pathname === '/playlists' ||
     pathname.startsWith('/playlist') ||
@@ -52,7 +52,7 @@ export function Layout() {
 
   const showSidebar = !isMediaView(location.pathname, location.search)
   const hideSearch = location.pathname.startsWith('/settings')
-  const isPlayPage = location.pathname.startsWith('/play')
+  const isPlayPage = isPlayerRoute(location.pathname)
   const showMobileBottomNav = shouldShowMobileBottomNav(location.pathname)
 
   return (
