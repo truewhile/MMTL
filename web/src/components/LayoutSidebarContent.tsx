@@ -5,7 +5,6 @@ import clsx from 'clsx'
 
 import {
   LAYOUT_NAV_ITEMS,
-  MEDIA_NAV_ITEMS,
   type LayoutNavItem,
 } from './layoutNavigation'
 import { SidebarLink } from './LayoutSidebarNav'
@@ -30,7 +29,6 @@ export function LayoutSidebarContent({
   variant = 'admin',
 }: LayoutSidebarContentProps) {
   const sidebarExpanded = isSidebarOpen || isMobileDrawerOpen
-  const mediaItems = visibleSidebarItems({ isAdmin, can, items: MEDIA_NAV_ITEMS })
   const adminItems = visibleSidebarItems({ isAdmin, can, items: LAYOUT_NAV_ITEMS })
 
   return (
@@ -41,19 +39,10 @@ export function LayoutSidebarContent({
         onCloseMobileDrawer={onCloseMobileDrawer}
       />
       <div className="min-h-0 flex-1 overflow-y-auto scrollbar-hide">
-        {variant === 'media' ? (
-          <>
-            <LayoutSidebarNav items={mediaItems} sidebarExpanded={sidebarExpanded} />
-            {adminItems.length > 0 && (
-              <div className="border-t border-[var(--app-border)]">
-                <LayoutSidebarSectionLabel sidebarExpanded={sidebarExpanded} label="管理" />
-                <LayoutSidebarNav items={adminItems} sidebarExpanded={sidebarExpanded} compactTop />
-              </div>
-            )}
-          </>
-        ) : (
+        {/* 窄屏媒体浏览抽屉不展示 MEDIA_NAV_ITEMS：底部导航与用户菜单已覆盖 */}
+        {variant !== 'media' || adminItems.length > 0 ? (
           <LayoutSidebarNav items={adminItems} sidebarExpanded={sidebarExpanded} />
-        )}
+        ) : null}
       </div>
       <LayoutSidebarHomeBack sidebarExpanded={sidebarExpanded} />
     </div>
@@ -107,37 +96,15 @@ function LayoutSidebarHeader({
   )
 }
 
-function LayoutSidebarSectionLabel({
-  sidebarExpanded,
-  label,
-}: {
-  sidebarExpanded: boolean
-  label: string
-}) {
-  if (!sidebarExpanded) return null
-  return (
-    <p className="px-4 pt-4 pb-1 text-[10px] font-bold uppercase tracking-wider text-[var(--app-muted)]">
-      {label}
-    </p>
-  )
-}
-
 function LayoutSidebarNav({
   items,
   sidebarExpanded,
-  compactTop = false,
 }: {
   items: LayoutNavItem[]
   sidebarExpanded: boolean
-  compactTop?: boolean
 }) {
   return (
-    <nav
-      className={clsx(
-        'px-4 py-5 space-y-1',
-        compactTop && 'pt-2',
-      )}
-    >
+    <nav className="px-4 py-5 space-y-1">
       {items.map((item) => {
         const ItemIcon = item.icon
         return (
