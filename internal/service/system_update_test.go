@@ -10,7 +10,7 @@ import (
 
 func TestRenderSystemUpdateCommand(t *testing.T) {
 	status := SystemUpdateStatus{
-		Image:           "ghcr.io/shukebta/mmtl:latest",
+		Image:           "ghcr.io/truewhile/mmtl:latest",
 		WatchtowerImage: "containrrr/watchtower:latest",
 		ContainerID:     "abc123def456",
 		ContainerName:   "mmtl",
@@ -28,7 +28,7 @@ func TestRenderSystemUpdateCommand(t *testing.T) {
 	for _, want := range []string{
 		"containrrr/watchtower:latest",
 		"mmtl",
-		"ghcr.io/shukebta/mmtl:latest",
+		"ghcr.io/truewhile/mmtl:latest",
 		"abc123def456",
 	} {
 		if !strings.Contains(got, want) {
@@ -65,7 +65,7 @@ func TestComposeTargetInDirMatchesMMTLCompose(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "docker-compose.yml"), []byte(`
 services:
   mmtl:
-    image: ghcr.io/shukebta/mmtl:latest
+    image: ghcr.io/truewhile/mmtl:latest
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}

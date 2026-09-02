@@ -7,7 +7,7 @@ MMTL 是自托管媒体系统，常部署在 NAS、家庭网络、Docker、反�
 我们优先支持以下版本和部署方式的安全修复：
 
 - 当前 `main` 分支。
-- 最新发布镜像：`ghcr.io/shukebta/mmtl:latest`。
+- 最新发布镜像：`ghcr.io/truewhile/mmtl:latest`。
 - README 中推荐的 Docker Compose 第一档、第二档、第三档部署方式。
 
 历史版本、私有魔改镜像、未公开补丁分支和非标准部署仍可报告，但维护者可能要求先在最新 `main` 或最新镜像中复现。

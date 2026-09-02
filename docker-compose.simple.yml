@@ -13,9 +13,7 @@
 
 services:
   mmtl:
-    image: ghcr.io/shukebta/mmtl:latest
-    # Docker Hub 备用：
-    # image: shukbet/mmtl:latest
+    image: ghcr.io/truewhile/mmtl:latest
 
     container_name: mmtl
     restart: unless-stopped
