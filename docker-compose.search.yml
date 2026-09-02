@@ -20,11 +20,7 @@
 
 services:
   mmtl:
-    # 镜像二选一：
-    # 方式一：GitHub 仓库镜像 GHCR（默认，推荐）
-    image: ghcr.io/shukebta/mmtl:latest
-    # 方式二：Docker Hub 备用（GHCR 拉取慢或不可用时使用）
-    # image: shukbet/mmtl:latest
+    image: ghcr.io/truewhile/mmtl:latest
 
     restart: unless-stopped
     init: true
@@ -101,7 +97,7 @@ services:
       MMTL_SEARCH_OPENSEARCH_URL: http://opensearch:9200
       MMTL_SEARCH_INDEX: mmtl_media
 
-      MMTL_UPDATE_IMAGE: ghcr.io/shukebta/mmtl:latest
+      MMTL_UPDATE_IMAGE: ghcr.io/truewhile/mmtl:latest
 
       # 默认推荐在网页里使用容器路径 /media。
       # 如果旧媒体库已经保存了宿主机路径 /vol1/1000/Media，

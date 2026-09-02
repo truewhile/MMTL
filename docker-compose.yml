@@ -16,11 +16,7 @@
 
 services:
   mmtl:
-    # 镜像二选一：
-    # 方式一：GitHub 仓库镜像 GHCR（默认，推荐）
-    image: ghcr.io/shukebta/mmtl:latest
-    # 方式二：Docker Hub 备用（GHCR 拉取慢或不可用时使用）
-    # image: shukbet/mmtl:latest
+    image: ghcr.io/truewhile/mmtl:latest
 
     restart: unless-stopped
     init: true
@@ -112,7 +108,7 @@ services:
       MMTL_CACHE_CACHE_DIR: /cache
 
       # 管理面板热更新默认拉取此镜像，并用 Watchtower 一次性重建当前容器。
-      MMTL_UPDATE_IMAGE: ghcr.io/shukebta/mmtl:latest
+      MMTL_UPDATE_IMAGE: ghcr.io/truewhile/mmtl:latest
 
       # 路径换算配置。
       # 默认推荐在网页里使用容器路径 /media。

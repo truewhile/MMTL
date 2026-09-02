@@ -20,7 +20,7 @@ const (
 	SystemUpdateCommandSettingKey         = "system.update.command"
 	SystemUpdateComposeDirSettingKey      = "system.update.compose_dir"
 
-	DefaultSystemUpdateImage           = "ghcr.io/shukebta/mmtl:latest"
+	DefaultSystemUpdateImage           = "ghcr.io/truewhile/mmtl:latest"
 	DefaultSystemUpdateWatchtowerImage = "containrrr/watchtower:latest"
 )
 
