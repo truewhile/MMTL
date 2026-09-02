@@ -34,6 +34,40 @@ func (s *MediaService) mediaListCacheKey(libraryID string, libraryIDs []string, 
 	return "media:list:" + hex.EncodeToString(sum[:])
 }
 
+func (s *MediaService) libraryPreviewCacheKey(libraries []model.Library, cardLimit int, filter repository.MediaQueryFilter) string {
+	libIDs := make([]string, len(libraries))
+	for i, lib := range libraries {
+		libIDs[i] = lib.ID
+	}
+	sort.Strings(libIDs)
+	allowed := append([]string(nil), filter.AllowedLibraryIDs...)
+	hidden := append([]string(nil), filter.HiddenLibraryIDs...)
+	sort.Strings(allowed)
+	sort.Strings(hidden)
+	sum := sha1.Sum([]byte(strings.Join([]string{
+		"preview",
+		strings.Join(libIDs, ","),
+		fmt.Sprintf("%d:%t", cardLimit, filter.IncludeNSFW),
+		strings.Join(allowed, ","),
+		strings.Join(hidden, ","),
+	}, "|")))
+	return "media:preview:" + hex.EncodeToString(sum[:])
+}
+
+func (s *MediaService) seriesCardsCacheKey(libraryID string, visibility MediaVisibility) string {
+	allowed := append([]string(nil), visibility.AllowedLibraryIDs...)
+	hidden := append([]string(nil), visibility.HiddenLibraryIDs...)
+	sort.Strings(allowed)
+	sort.Strings(hidden)
+	sum := sha1.Sum([]byte(strings.Join([]string{
+		libraryID,
+		fmt.Sprintf("%t", visibility.IncludeNSFW),
+		strings.Join(allowed, ","),
+		strings.Join(hidden, ","),
+	}, "|")))
+	return "media:series-cards:" + hex.EncodeToString(sum[:])
+}
+
 func (s *MediaService) mediaCacheTTLSeconds() int {
 	if s == nil || s.cfg == nil || s.cfg.Cache.MediaTTLSeconds < 1 {
 		return 15

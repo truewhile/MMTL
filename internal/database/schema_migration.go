@@ -24,9 +24,17 @@ func AutoMigrate(db *gorm.DB) error {
 		return err
 	}
 	if isSQLite(db) {
-		return ensureMediaSearchIndex(db)
+		if err := ensureMediaSearchIndex(db); err != nil {
+			return err
+		}
+		return ensureSQLiteQueryOptimizer(db)
 	}
 	return nil
+}
+
+func ensureSQLiteQueryOptimizer(db *gorm.DB) error {
+	// Refresh planner statistics so indexes on large media tables are used.
+	return db.Exec("ANALYZE").Error
 }
 
 func ensurePostgresColumnCompatibility(db *gorm.DB) error {

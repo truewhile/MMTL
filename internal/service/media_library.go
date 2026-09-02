@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"github.com/ShukeBta/MMTL/internal/model"
 	"github.com/ShukeBta/MMTL/internal/repository"
@@ -12,6 +13,10 @@ type LibraryPreviewItem struct {
 	model.Library
 	Total int64        `json:"total"`
 	Cards []SeriesCard `json:"cards"`
+}
+
+type libraryPreviewCacheValue struct {
+	Items []LibraryPreviewItem `json:"items"`
 }
 
 // ListLibraries returns every library configured on the server.
@@ -29,6 +34,18 @@ func (s *MediaService) ListLibrariesWithPreview(ctx context.Context, libraries [
 		return out, nil
 	}
 
+	visibility = ExpandMediaVisibilityForMergedCloudLibraries(ctx, s.repo, visibility)
+	filter := repository.MediaQueryFilter{
+		IncludeNSFW:       visibility.IncludeNSFW,
+		AllowedLibraryIDs: visibility.AllowedLibraryIDs,
+		HiddenLibraryIDs:  visibility.HiddenLibraryIDs,
+	}
+	cacheKey := s.libraryPreviewCacheKey(libraries, cardLimit, filter)
+	var cached libraryPreviewCacheValue
+	if s.cache != nil && s.cache.GetJSON(ctx, cacheKey, &cached) {
+		return cached.Items, nil
+	}
+
 	libIDs := make([]string, 0, len(libraries))
 	for i, lib := range libraries {
 		out[i] = LibraryPreviewItem{
@@ -37,13 +54,6 @@ func (s *MediaService) ListLibrariesWithPreview(ctx context.Context, libraries [
 			Cards:   []SeriesCard{},
 		}
 		libIDs = append(libIDs, lib.ID)
-	}
-
-	visibility = ExpandMediaVisibilityForMergedCloudLibraries(ctx, s.repo, visibility)
-	filter := repository.MediaQueryFilter{
-		IncludeNSFW:       visibility.IncludeNSFW,
-		AllowedLibraryIDs: visibility.AllowedLibraryIDs,
-		HiddenLibraryIDs:  visibility.HiddenLibraryIDs,
 	}
 
 	counts, err := s.repo.Media.CountByLibraries(ctx, libIDs, filter)
@@ -64,15 +74,32 @@ func (s *MediaService) ListLibrariesWithPreview(ctx context.Context, libraries [
 		fetchCount = 200
 	}
 
+	recentByLibrary, err := s.repo.Media.ListRecentByLibraries(ctx, libIDs, fetchCount, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	allPreviewItems := make([]model.Media, 0, len(libIDs)*fetchCount)
 	for i := range out {
 		if out[i].Total == 0 {
 			continue
 		}
-		items, _, err := s.repo.Media.ListByLibrariesFiltered(ctx, []string{out[i].ID}, 0, fetchCount, filter)
-		if err != nil {
+		items := recentByLibrary[out[i].ID]
+		if len(items) == 0 {
 			continue
 		}
-		s.attachLibraryMetadata(ctx, items)
+		allPreviewItems = append(allPreviewItems, items...)
+	}
+	s.attachLibraryMetadata(ctx, allPreviewItems)
+
+	for i := range out {
+		if out[i].Total == 0 {
+			continue
+		}
+		items := recentByLibrary[out[i].ID]
+		if len(items) == 0 {
+			continue
+		}
 		cards := groupMediaSeriesCards(items)
 		if len(cards) > cardLimit {
 			cards = cards[:cardLimit]
@@ -81,6 +108,10 @@ func (s *MediaService) ListLibrariesWithPreview(ctx context.Context, libraries [
 			cards = []SeriesCard{}
 		}
 		out[i].Cards = cards
+	}
+
+	if s.cache != nil {
+		s.cache.SetJSON(ctx, cacheKey, libraryPreviewCacheValue{Items: out}, time.Duration(s.mediaCacheTTLSeconds())*time.Second)
 	}
 
 	return out, nil

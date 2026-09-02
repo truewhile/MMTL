@@ -145,6 +145,16 @@ function isSeriesLibraryType(type?: string) {
   return type === 'tv' || type === 'anime' || type === 'variety'
 }
 
+function yieldToBrowser(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof requestIdleCallback !== 'undefined') {
+      requestIdleCallback(() => resolve(), { timeout: 48 })
+    } else {
+      setTimeout(resolve, 0)
+    }
+  })
+}
+
 async function loadAllSeriesCards(
   libraryID: string,
   isRemoteEmby: boolean | undefined,
@@ -161,6 +171,7 @@ async function loadAllSeriesCards(
     onPage({ items: collected, total: data.total ?? collected.length, firstPage: page === 1 })
     if (collected.length >= (data.total ?? 0) || pageItems.length < pageSize) break
     page += 1
+    await yieldToBrowser()
   }
   return { items: collected }
 }
@@ -181,6 +192,7 @@ async function loadAllMedia(
     onPage({ items: collected, total: data.total ?? collected.length, firstPage: page === 1 })
     if (collected.length >= (data.total ?? 0) || pageItems.length < pageSize) break
     page += 1
+    await yieldToBrowser()
   }
   return { items: collected }
 }
