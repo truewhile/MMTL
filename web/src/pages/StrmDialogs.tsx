@@ -95,6 +95,26 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 
 const inputCls = 'input-base w-full'
 
+const SECRET_PLACEHOLDER = '已配置，留空则不修改'
+
+function accountDialogDefaults(existing: StrmAccount | null) {
+  const preview = existing?.config_preview
+  return {
+    provider: (existing?.provider ?? 'cloud115') as StrmProvider,
+    name: existing?.name ?? '',
+    enabled: existing?.enabled ?? true,
+    url: preview?.url ?? '',
+    server: preview?.server ?? '',
+    username: preview?.username ?? '',
+    password: '',
+    token: '',
+    proxyPlay: existing?.proxy_play ?? false,
+    embyLines: defaultEmbyRemoteLines(existing?.provider === 'emby_remote' ? existing?.emby_lines : undefined),
+    hasPassword: Boolean(preview?.has_password),
+    hasToken: Boolean(preview?.has_token || preview?.has_api_key),
+  }
+}
+
 // ─── 添加/编辑网盘账号 ────────────────────────────────────────────────────────
 
 const PROVIDER_OPTIONS: { provider: StrmProvider; label: string; desc: string }[] = [
@@ -112,18 +132,19 @@ export function StrmAccountDialog({
   onClose: () => void
   onSaved: () => void
 }) {
-  const [provider, setProvider] = useState<StrmProvider>(existing?.provider ?? 'cloud115')
-  const [name, setName] = useState(existing?.name ?? '')
-  const [enabled, setEnabled] = useState(existing?.enabled ?? true)
-  const [url, setUrl] = useState('')
-  const [embyLines, setEmbyLines] = useState<EmbyRemoteLine[]>(() =>
-    defaultEmbyRemoteLines(existing?.provider === 'emby_remote' ? existing?.emby_lines : undefined),
-  )
-  const [server, setServer] = useState('')
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [token, setToken] = useState('')
-  const [proxyPlay, setProxyPlay] = useState(existing?.proxy_play ?? false)
+  const defaults = accountDialogDefaults(existing)
+  const [provider, setProvider] = useState<StrmProvider>(defaults.provider)
+  const [name, setName] = useState(defaults.name)
+  const [enabled, setEnabled] = useState(defaults.enabled)
+  const [url, setUrl] = useState(defaults.url)
+  const [embyLines, setEmbyLines] = useState<EmbyRemoteLine[]>(defaults.embyLines)
+  const [server, setServer] = useState(defaults.server)
+  const [username, setUsername] = useState(defaults.username)
+  const [password, setPassword] = useState(defaults.password)
+  const [token, setToken] = useState(defaults.token)
+  const [proxyPlay, setProxyPlay] = useState(defaults.proxyPlay)
+  const [hasPassword, setHasPassword] = useState(defaults.hasPassword)
+  const [hasToken, setHasToken] = useState(defaults.hasToken)
   const [saving, setSaving] = useState(false)
 
   const buildConfig = (): Record<string, string> => {
@@ -178,7 +199,7 @@ export function StrmAccountDialog({
           name,
           provider: existing.provider,
           enabled,
-          config: existing.has_credential && !Object.keys(buildConfig()).length ? {} : buildConfig(),
+          config: buildConfig(),
         })
         toast.success('网盘账号已更新')
       } else {
@@ -364,7 +385,16 @@ export function StrmAccountDialog({
               <input className={inputCls} value={username} onChange={(e) => setUsername(e.target.value)} />
             </Field>
             <Field label="密码">
-              <input className={inputCls} type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+              <input
+                className={inputCls}
+                type="password"
+                value={password}
+                placeholder={existing && hasPassword ? SECRET_PLACEHOLDER : undefined}
+                onChange={(e) => {
+                  setPassword(e.target.value)
+                  if (e.target.value) setHasPassword(false)
+                }}
+              />
             </Field>
           </div>
         )}
@@ -375,20 +405,45 @@ export function StrmAccountDialog({
               <input className={inputCls} value={username} onChange={(e) => setUsername(e.target.value)} />
             </Field>
             <Field label="密码">
-              <input className={inputCls} type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+              <input
+                className={inputCls}
+                type="password"
+                value={password}
+                placeholder={existing && hasPassword ? SECRET_PLACEHOLDER : undefined}
+                onChange={(e) => {
+                  setPassword(e.target.value)
+                  if (e.target.value) setHasPassword(false)
+                }}
+              />
             </Field>
           </div>
         )}
 
         {provider === 'emby_remote' && (
           <Field label="API Key（可选）" hint="留空则用下方用户名/密码自动认证获取">
-            <input className={inputCls} value={token} placeholder="留空自动认证" onChange={(e) => setToken(e.target.value)} />
+            <input
+              className={inputCls}
+              value={token}
+              placeholder={existing && hasToken ? SECRET_PLACEHOLDER : '留空自动认证'}
+              onChange={(e) => {
+                setToken(e.target.value)
+                if (e.target.value) setHasToken(false)
+              }}
+            />
           </Field>
         )}
 
         {provider === 'openlist' && (
           <Field label="Token（可选，优先于密码）">
-            <input className={inputCls} value={token} onChange={(e) => setToken(e.target.value)} />
+            <input
+              className={inputCls}
+              value={token}
+              placeholder={existing && hasToken ? SECRET_PLACEHOLDER : undefined}
+              onChange={(e) => {
+                setToken(e.target.value)
+                if (e.target.value) setHasToken(false)
+              }}
+            />
           </Field>
         )}
 
