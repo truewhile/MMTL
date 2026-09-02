@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 
 import { playbackAPI, type PlaylistDetail } from '../api/playback'
 import { MediaCard } from '../components/MediaCard'
+import { PageHeader } from '../components/PageHeader'
 
 export function PlaylistDetailPage() {
   const { id = '' } = useParams()
@@ -24,10 +25,12 @@ export function PlaylistDetailPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="font-display text-3xl font-bold text-ink-600">{detail.playlist.name}</h1>
-        <p className="text-sm text-ink-50">{detail.items.length} 部影片</p>
-      </header>
+      <PageHeader
+        backTo="/playlists"
+        backLabel="播放列表"
+        title={detail.playlist.name}
+        description={`${detail.items.length} 部影片`}
+      />
 
       {detail.items.length === 0 && (
         <p className="text-ink-50">暂无内容,前往媒体详情页通过「加入播放列表」添加。</p>

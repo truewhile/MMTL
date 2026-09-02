@@ -60,7 +60,7 @@ const TYPE_LABELS: Record<string, string> = {
 
 const PAGE_SIZE = 50
 
-export function ScraperQueuePage() {
+export function ScraperQueuePage({ embedded = false }: { embedded?: boolean }) {
   const [snapshot, setSnapshot] = useState<ScrapeQueueSnapshot | null>(null)
   const [filter, setFilter] = useState<'all' | ScrapeTaskStatus>('all')
   const [search, setSearch] = useState('')
@@ -251,7 +251,7 @@ export function ScraperQueuePage() {
 
   return (
     <div className="space-y-6">
-      {/* 1. Header */}
+      {!embedded && (
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-primary-400/30 bg-primary-400/10 text-brand-500 shadow-sm">
@@ -385,6 +385,7 @@ export function ScraperQueuePage() {
           </details>
         </div>
       </header>
+      )}
 
       {/* 2. Status Cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
