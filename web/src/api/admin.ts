@@ -64,8 +64,24 @@ export interface SystemUpdateStatus {
   started_at?: string
 }
 
+export interface UserListResponse {
+  users: User[]
+  max_users: number
+  current_users: number
+}
+
+export interface UserLimitResponse {
+  max_users: number
+  current_users: number
+}
+
 export const adminAPI = {
-  listUsers: () => api.get<User[]>('/admin/users').then((r) => r.data),
+  listUsers: () => api.get<UserListResponse>('/admin/users').then((r) => r.data),
+
+  getUserLimit: () => api.get<UserLimitResponse>('/admin/users/limit').then((r) => r.data),
+
+  updateUserLimit: (maxUsers: number) =>
+    api.put<UserLimitResponse>('/admin/users/limit', { max_users: maxUsers }).then((r) => r.data),
 
   createUser: (payload: { username: string; password: string }) =>
     api.post<User>('/admin/users', payload).then((r) => r.data),
