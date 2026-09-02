@@ -4,20 +4,20 @@
   <img src="web/public/brand/logo-192.png" width="96" height="96" alt="MMTL Logo" />
 </p>
 
-<h3 align="center">适合 NAS、家庭共享和多端播放的私人媒体中心</h3>
+<h3 align="center">面向 NAS 与家庭影音场景的私人媒体中心</h3>
 
 <p align="center">
-  <strong>Docker 一键部署 · PostgreSQL 主库 · Redis 热缓存 · OpenSearch 搜索增强 · Emby 协议兼容 · Bot 通知</strong>
+  <strong>媒体库 · 刮削整理 · 网盘 STRM · Emby 协议 · 远程 Emby 挂载 · 多用户权限 · Docker 一键部署</strong>
 </p>
 
 <p align="center">
+  <a href="#项目简介">项目简介</a> ·
   <a href="#快速开始">快速开始</a> ·
-  <a href="#三挡部署">三挡部署</a> ·
-  <a href="#路径映射">路径映射</a> ·
-  <a href="#旧-sqlite-迁移">旧 SQLite 迁移</a> ·
+  <a href="#部署档位">部署档位</a> ·
+  <a href="#鸣谢">鸣谢</a> ·
   <a href="#开发构建">开发构建</a> ·
-  <a href="CONTRIBUTING.md">贡献规范</a> ·
-  <a href="https://mgo.3jzs.com">在线演示</a>
+  <a href="README_EN.md">English</a> ·
+  <a href="CONTRIBUTING.md">贡献规范</a>
 </p>
 
 <p align="center">
@@ -31,400 +31,223 @@
 
 ## 项目简介
 
-MMTL 是一个自托管媒体管理系统，面向 NAS、小主机、家庭影音和多用户共享场景。它把媒体库、刮削、下载整理、订阅、网盘播放、Emby 协议兼容、用户权限和 Bot 通知放在一个后台里，目标是让用户只维护一套服务，就能给网页端、手机端、电视端和第三方播放器使用。
+**MMTL** 是一个自托管私人媒体管理系统，适合 NAS、小主机、家庭共享和多端播放场景。本项目由 [MediaStationGo](https://github.com/ShukeBta/MediaStationGo) fork 并持续二开维护，在保留「一套服务覆盖网页、手机、电视与第三方播放器」思路的同时，围绕网盘播放、任务队列、远程挂载和权限体系做了大量增强。
 
-核心能力：
+你可以把 MMTL 理解为：
 
-- **媒体库管理**：电影、电视剧、动漫、综艺、音乐和自定义媒体库统一管理。
-- **Emby 协议兼容**：Infuse、VidHub、SenPlayer、Fileball 等客户端可按 Emby/Jellyfin 方式添加服务器。
-- **本地 + 网盘**：支持本地硬盘、下载目录、OpenList、CloudDrive2、WebDAV、STRMURL 和 302 反代播放。
-- **订阅下载入库**：连接 qBittorrent 后支持搜索、订阅、下载完成整理、刮削和入库通知。
-- **多用户与权限**：管理员/普通用户、有效期、成人内容开关、设备管理、注册码和 Telegram Bot 绑定。
-- **灵活部署**：单镜像 SQLite 一键起步，或按规模选择 PostgreSQL、Redis、OpenSearch，低配 NAS 到大库检索都能覆盖。
+- 一个带现代 Web UI 的**媒体库后台**
+- 一个兼容 Emby/Jellyfin 客户端的**协议网关**
+- 一个连接本地硬盘、下载目录与网盘存储的**整理与播放入口**
+
+### 核心能力
+
+| 模块 | 说明 |
+| --- | --- |
+| **媒体库** | 电影、电视剧、动漫、综艺、音乐与自定义库；多根目录、扫库、海报墙、继续观看 |
+| **元数据刮削** | TMDb、Bangumi、Douban、TheTVDB、Fanart 等；支持 NFO、手动匹配、刮削队列 |
+| **播放** | 网页播放器、HLS 转码、弹幕、字幕、播放配置档、观看历史与收藏 |
+| **Emby 协议** | Infuse、SenPlayer、Fileball 等客户端可直接添加本服务，使用 MMTL 账号登录 |
+| **远程 Emby 挂载** | 将远程 Emby 媒体库挂载到本地界面统一浏览（无需单独开 Emby 客户端） |
+| **网盘与 STRM** | OpenList、CloudDrive2、115、WebDAV 等；STRM 同步、上传/下载队列、直链/302 播放 |
+| **下载与整理** | qBittorrent 接入、站点搜索与订阅、下载后自动整理、文件管理器（复制/移动/硬链/软链） |
+| **用户与权限** | 管理员/普通用户、有效期、成人内容开关、播放配置 PIN、细粒度操作权限 |
+| **运维能力** | 统一任务队列、回收站、存储统计、DLNA 投屏、系统设置与日志 |
+
+### 技术栈
+
+- **后端**：Go · Gin · GORM · SQLite / PostgreSQL · 可选 Redis · 可选 OpenSearch
+- **前端**：React 18 · Vite · TypeScript · Tailwind CSS · Zustand
+- **部署**：Docker Compose 多档模板，支持 amd64 / arm64 镜像与单文件可执行发布
+
+---
+
 ## 快速开始
 
-最推荐使用 Docker Compose。仓库提供四份独立完整模板，全部不依赖 `.env`。想最省心就下载单镜像档（SQLite，只有一个镜像）；只需要按需修改访问端口、媒体目录、下载目录和可选硬件设备。需要多用户/高并发再选第一档起的 PostgreSQL 档位。
+推荐使用 Docker Compose。仓库提供四份**互相独立**的完整模板，无需 `.env` 即可起步。
 
 ```bash
-mkdir -p MMTL
-cd MMTL
-# 最省心：单镜像 + SQLite，只启动一个容器
+mkdir -p MMTL && cd MMTL
+
+# 最省心：单镜像 + 内置 SQLite
 curl -fsSL https://raw.githubusercontent.com/truewhile/MMTL/main/docker-compose.simple.yml -o docker-compose.yml
-# 或第一档：PostgreSQL（多用户/高并发更稳）
+
+# 或多用户场景：PostgreSQL 第一档
 # curl -fsSL https://raw.githubusercontent.com/truewhile/MMTL/main/docker-compose.yml -o docker-compose.yml
+
 docker compose up -d
 ```
 
-启动后访问：
+浏览器访问：
 
 ```text
 http://服务器IP:18080
 ```
 
-默认账号：
-
-```text
-admin / admin123
-```
-
-首次登录后请立刻修改管理员密码。
+默认账号：`admin` / `admin123`（首次登录后请立即修改密码）
 
 镜像地址：
 
 ```text
-GHCR：ghcr.io/truewhile/mmtl:latest
+ghcr.io/truewhile/mmtl:latest
 ```
+
+---
 
 ## 部署档位
 
-MMTL 推荐按机器资源和用户规模选择部署档位。每份 Compose 文件都是完整文件，不需要再叠加多个 `-f`。想一个镜像跑起来就选单镜像档（SQLite）；需要多用户 / 高并发时再用 PostgreSQL 三档。Redis 和 OpenSearch 是增强组件，不替代 PostgreSQL。
+按机器资源选择档位。每份 Compose 文件均可单独使用，**不要**叠加多个 `-f`。
 
-| 档位 | 完整配置文件 | 组件 | 适合场景 |
+| 档位 | 配置文件 | 组件 | 适合场景 |
 | --- | --- | --- | --- |
-| 单镜像档 | `docker-compose.simple.yml` | MMTL + 内置 SQLite | 新手、单人使用、只想一个镜像跑起来的低配机器 |
-| 第一档 | `docker-compose.yml` | MMTL + PostgreSQL | 大多数 NAS、个人/家庭使用、低内存机器 |
-| 第二档 | `docker-compose.standard.yml` | MMTL + PostgreSQL + Redis | 多用户、Emby 客户端频繁刷新、首页/媒体列表访问较多 |
-| 第三档 | `docker-compose.search.yml` | MMTL + PostgreSQL + Redis + OpenSearch | 超大媒体库、复杂全文搜索、后续需要独立搜索索引 |
+| 单镜像档 | `docker-compose.simple.yml` | MMTL + SQLite | 新手、单人、低配 NAS，只想一个容器跑起来 |
+| 第一档 | `docker-compose.yml` | MMTL + PostgreSQL | 大多数家庭 NAS，多用户更稳 |
+| 第二档 | `docker-compose.standard.yml` | + Redis | 多用户、Emby 客户端频繁刷新、首页/列表访问多 |
+| 第三档 | `docker-compose.search.yml` | + OpenSearch | 超大媒体库、复杂全文搜索（内存占用更高） |
 
-### 单镜像档：SQLite（最省心）
+### 单镜像档要点
 
-只启动 MMTL 一个镜像，主数据库用内置 SQLite，不需要 PostgreSQL / Redis / `.env`。变量最少、资源占用最低，适合新手和单人使用。日后需要多用户或更高并发时，保留 `./data` 后切换到第一档的 PostgreSQL 即可。
-
-```bash
-mkdir -p MMTL
-cd MMTL
-curl -fsSL https://raw.githubusercontent.com/truewhile/MMTL/main/docker-compose.simple.yml -o docker-compose.yml
-docker compose up -d
-```
-
-第一次部署通常只需要改 `docker-compose.yml` 里的这几处：
+- 只启动 **一个** MMTL 容器，数据在 `./data/mmtl.db`
+- 通常只需改端口与媒体目录挂载
+- **不要**设置 `MMTL_DATABASE_DSN`，否则会切到 PostgreSQL
 
 ```yaml
 ports:
-  - "18080:8080"          # 改左边 18080 即可
+  - "18080:8080"
 volumes:
   - ./data:/data          # 必须备份
-  - ./media:/media        # 改左边为你的媒体目录，例如 /vol1/1000/Media:/media
-  # - /dev/dri:/dev/dri   # Intel 核显硬解需要时取消注释
+  - ./cache:/cache        # 可重建
+  - ./media:/media        # 改成你的媒体目录
 ```
 
-网页后台添加媒体库时填写容器内路径：
+网页添加媒体库时填写容器内路径，例如 `/media`、`/media/电影`。
 
-```text
-/media
-/media/电影
-/media/电视剧
-```
+### PostgreSQL 档位要点
 
-关键数据目录：
-
-```text
-./data       JWT 密钥、运行配置、SQLite 主数据库（mmtl.db）——必须备份
-./cache      海报/临时缓存，可重建
-./media      媒体库
-```
-
-> 单镜像模式请不要配置 `MMTL_DATABASE_DSN`；一旦填了 DSN 就会切回 PostgreSQL。
-
-### 第一档：PostgreSQL
-
-第一档是默认推荐部署。它只启动主服务和 PostgreSQL，资源占用最低，适合绝大多数 NAS。
-
-```bash
-mkdir -p MMTL
-cd MMTL
-curl -fsSL https://raw.githubusercontent.com/truewhile/MMTL/main/docker-compose.yml -o docker-compose.yml
-docker compose up -d
-```
-
-关键数据目录：
-
-```text
-./postgres   PostgreSQL 主数据库，必须备份
-./data       JWT 密钥、运行配置、旧 SQLite 迁移源
-./cache      海报、临时文件、转码缓存，可删除重建
-```
-
-### 第二档：PostgreSQL + Redis
-
-第二档是独立完整文件，包含第一档全部配置并额外启用 Redis。Redis 用作热缓存，能减轻多用户和 Emby 客户端频繁刷新时的数据库压力。
-
-```bash
-mkdir -p MMTL
-cd MMTL
-curl -fsSL https://raw.githubusercontent.com/truewhile/MMTL/main/docker-compose.standard.yml -o docker-compose.yml
-docker compose up -d
-```
-
-Redis 数据目录是 `./redis`。它主要保存缓存，通常可重建；真正需要备份的仍然是 `./postgres` 和 `./data`。
-
-### 第三档：PostgreSQL + Redis + OpenSearch
-
-第三档是独立完整文件，包含第二档全部配置并额外启用 OpenSearch，用于大库全文搜索和独立搜索索引。OpenSearch 常驻内存明显更高，低配 NAS 不建议开启。
-
-```bash
-mkdir -p MMTL
-cd MMTL
-curl -fsSL https://raw.githubusercontent.com/truewhile/MMTL/main/docker-compose.search.yml -o docker-compose.yml
-docker compose up -d
-```
-
-OpenSearch 数据目录是 `./opensearch`。搜索索引可重建，但重建大库索引会花时间；机器资源足够时再开启第三档。
-
-## 配置示例
-
-仓库内提供四份推荐 Compose 文件：
-
-```text
-docker-compose.simple.yml     单镜像档：MMTL + 内置 SQLite
-docker-compose.yml            第一档：MMTL + PostgreSQL
-docker-compose.standard.yml   第二档：MMTL + PostgreSQL + Redis
-docker-compose.search.yml     第三档：MMTL + PostgreSQL + Redis + OpenSearch
-```
-
-仓库只保留面向用户部署和项目维护的必要文件。旧的本地部署脚本、发包脚本、开发机辅助脚本、`.env` 示例和旧高级 Compose 模板已经移除；Linux / Docker 用户按上面四个 Compose 文件部署即可。开发者本地生成的 `bin/`、`data/`、`cache/`、`logs/`、`.tmp/`、`tools/` 等目录已列入 `.gitignore`，不应提交到仓库。
-
-如果直接下载为 `docker-compose.yml`，启动命令统一是：
-
-```bash
-docker compose up -d
-```
-
-如果保留原始文件名，也可以这样启动：
-
-```bash
-docker compose -f docker-compose.simple.yml up -d
-docker compose -f docker-compose.standard.yml up -d
-docker compose -f docker-compose.search.yml up -d
-```
-
-常用配置片段如下，注释保留为中文，方便直接复制到 NAS 上调整：
+- 主库在 `./postgres`，配置与密钥在 `./data`
+- 若存在旧版 `./data/mmtl.db`，首次启动会自动迁移到 PostgreSQL
+- 迁移完成后可将 `MMTL_DATABASE_DB_PATH` 改为不存在路径，避免重复检查：
 
 ```yaml
-services:
-  mmtl:
-    image: ghcr.io/truewhile/MMTL:latest
-    ports:
-      # 左边是宿主机访问端口，右边是容器内端口。
-      - "18080:8080"
-    volumes:
-      # 运行数据：JWT 密钥、配置、旧 SQLite 迁移源。
-      - ./data:/data
-
-      # 缓存目录：海报、临时文件、转码缓存，可删除重建。
-      - ./cache:/cache
-
-      # 媒体库目录：自动整理/重命名/入库需要写权限。
-      - /vol1/1000/Media:/media
-    environment:
-      TZ: Asia/Shanghai
-
-      # PostgreSQL 主数据库。
-      MMTL_DATABASE_TYPE: postgres
-      MMTL_DATABASE_DSN: postgres://mmtl:mmtl@postgres:5432/mmtl?sslmode=disable
-
-      # 旧 SQLite 迁移源：只在从旧版 data/mmtl.db 导入时使用。
-      MMTL_DATABASE_DB_PATH: /data/mmtl.db
-
-      # 路径换算：宿主机路径和容器路径必须一一对应。
-      MMTL_MEDIA_DIR: /vol1/1000/Media
-      MMTL_MEDIA_CONTAINER_DIR: /media
-      MMTL_DOWNLOAD_DIR: /vol1/1000/Downloads
-      MMTL_DOWNLOAD_CONTAINER_DIR: /downloads
+MMTL_DATABASE_DB_PATH: /data/no-sqlite-migration.db
 ```
 
-## 路径映射
+### 必须备份与可重建
 
-路径映射是 Docker 部署里最容易填错的地方。原则是：`volumes` 左边是宿主机真实路径，右边是容器内路径；环境变量里也要保持对应关系。
+| 路径 | 说明 |
+| --- | --- |
+| `./data` | JWT 密钥、运行配置、SQLite 主库或迁移源 |
+| `./postgres` | PostgreSQL 主库（PG 档位） |
+| `./cache` | 海报/转码缓存，可重建 |
+| `./redis` | 热缓存，可重建 |
+| `./opensearch` | 搜索索引，可重建 |
 
-NAS 示例：
-
-```yaml
-volumes:
-  - /vol1/1000/Docker/moviepilot-v2/media:/vol1/1000/Docker/moviepilot-v2/media
-  - /vol1/1000/qBittorrent/downloads:/vol1/1000/qBittorrent/downloads
-environment:
-  MMTL_MEDIA_DIR: /vol1/1000/Docker/moviepilot-v2/media
-  MMTL_MEDIA_CONTAINER_DIR: /vol1/1000/Docker/moviepilot-v2/media
-  MMTL_DOWNLOAD_DIR: /vol1/1000/qBittorrent/downloads
-  MMTL_DOWNLOAD_CONTAINER_DIR: /vol1/1000/qBittorrent/downloads
-```
-
-Windows Docker Desktop 示例：
-
-```yaml
-volumes:
-  - D:/Media:/media
-environment:
-  MMTL_MEDIA_DIR: D:/Media
-  MMTL_MEDIA_CONTAINER_DIR: /media
-```
-
-如果后台添加媒体库时填的是 `/vol1/...`，Compose 里也建议把同一个 `/vol1/...` 挂进容器，避免自动整理和下载入库时路径不可访问。
-
-## 旧 SQLite 迁移
-
-新版推荐 PostgreSQL 作为主数据库。`MMTL_DATABASE_DB_PATH` 不是主库路径，而是旧 SQLite 数据的迁移源。
-
-迁移步骤：
-
-1. 把旧版 `mmtl.db` 放到 `./data/mmtl.db`。
-2. 保持 `MMTL_DATABASE_DB_PATH: /data/mmtl.db`。
-3. 启动一次，确认日志显示迁移完成，网页数据正常。
-4. 备份 `./postgres` 和 `./data`。
-5. 确认不再需要 SQLite 后，把迁移源改成不存在的路径，例如：
-
-```yaml
-environment:
-  # 已完成 SQLite 迁移后，建议改成不存在的路径，避免下次启动重复检查旧库。
-  MMTL_DATABASE_DB_PATH: /data/no-sqlite-migration.db
-```
-
-不要删除 `./postgres`。PostgreSQL 已经是主数据库，删除它会丢失账号、媒体库、订阅、配置和历史数据。
-
-## 日志与 STRM 路径
-
-Compose 模板默认把完整应用日志写入 `./data/logs/app.log`，同时拆分 `./data/logs/warn.log` 和 `./data/logs/error.log`。Docker 自身日志也会保留 10 个 50MB 文件：
-
-```bash
-docker compose logs -f mmtl
-tail -f ./data/logs/app.log
-tail -f ./data/logs/error.log
-```
-
-如果要排查订阅、站点搜索、自动整理或 STRM 生成问题，保持 `MMTL_LOGGING_LEVEL: info`；需要更细日志时临时改成 `debug`，确认后再改回 `info`。
-
-STRM 输出目录请使用容器内可写路径，例如 `/data/strm`，或你已经挂载进容器的媒体目录。旧版本保存过 `/app/data/strm` 的部署会在生成时自动迁移到当前 `MMTL_APP_DATA_DIR`，默认就是 `/data`。
-
-## 更新与备份
-
-更新镜像：
+### 更新镜像
 
 ```bash
 docker compose pull mmtl
 docker compose up -d --no-deps mmtl
 ```
 
-不要执行裸 `docker compose pull` 做日常更新。PostgreSQL / Redis / OpenSearch 是数据与缓存基础组件，compose 已设置为 `pull_policy: missing`，首次部署缺镜像时会拉取，日常更新只建议拉取 `mmtl`。需要升级这些基础组件时，请先备份 `./postgres`，再手动修改镜像版本并单独拉取。
+日常更新只拉 `mmtl` 服务即可，不要随意 `docker compose pull` 升级 PostgreSQL/Redis/OpenSearch 基础镜像。
 
-如果第二档或第三档保留了原始文件名，更新时指定对应完整文件：
+---
 
-```bash
-# 第二档
-docker compose -f docker-compose.standard.yml pull mmtl
-docker compose -f docker-compose.standard.yml up -d --no-deps mmtl
+## 路径映射
 
-# 第三档
-docker compose -f docker-compose.search.yml pull mmtl
-docker compose -f docker-compose.search.yml up -d --no-deps mmtl
+Docker 部署最常见的问题是路径填错。记住：
+
+- `volumes` **左侧**是宿主机真实路径，**右侧**是容器内路径
+- 网页后台添加媒体库时，应填写**容器内**路径（如 `/media/电影`）
+- 若使用自动整理/下载入库，`MMTL_MEDIA_DIR` 与 `MMTL_DOWNLOAD_DIR` 需与挂载一致
+
+NAS 示例：
+
+```yaml
+volumes:
+  - /vol1/1000/Media:/media
+  - /vol1/1000/Downloads:/downloads
+environment:
+  MMTL_MEDIA_DIR: /vol1/1000/Media
+  MMTL_MEDIA_CONTAINER_DIR: /media
+  MMTL_DOWNLOAD_DIR: /vol1/1000/Downloads
+  MMTL_DOWNLOAD_CONTAINER_DIR: /downloads
 ```
 
-必须备份：
+---
 
-```text
-./postgres   PostgreSQL 主数据库
-./data       JWT 密钥、运行配置、旧 SQLite 迁移源
-```
+## 首次使用建议
 
-可重建：
+1. **创建媒体库** → 填写 `/media/...` → 执行扫库
+2. **配置元数据源** → 系统设置中添加 TMDb、Bangumi 等 API
+3. **（可选）连接 qBittorrent** → 下载客户端设置，宿主机可用 `http://host.docker.internal:8085`
+4. **（可选）配置网盘账号** → STRM 管理中添加 OpenList / 115 / WebDAV 等
+5. **第三方播放器** → 以 Emby 服务器添加 `http://服务器IP:18080`，使用 MMTL 账号登录
 
-```text
-./cache      图片缓存、临时文件、转码缓存
-./redis      Redis 热缓存
-./opensearch 搜索索引
-```
+---
 
 ## 常见问题
 
-**启动后还是反复迁移 SQLite？**
+**扫库或入库很慢？**  
+先确认路径映射与数据库档位。网盘扫描还受接口限速与目录规模影响；大库可考虑第二档 Redis 或第三档 OpenSearch。
 
-确认旧数据已经迁移成功后，把 `MMTL_DATABASE_DB_PATH` 改成不存在的路径，例如 `/data/no-sqlite-migration.db`，然后重启容器。
+**qBittorrent 下载后无法整理？**  
+确认下载目录已通过 `volumes` 挂进容器，且 `MMTL_DOWNLOAD_*` 环境变量对应正确。
 
-**扫库或入库速度很慢？**
+**硬链接失败（cross-device link）？**  
+硬链接要求源与目标在同一文件系统/子卷；跨盘、跨 btrfs 子卷或网盘挂载时请改用复制或软链接。
 
-先确认数据库档位和路径映射正确。第一档已经足够大多数场景；第二档 Redis 能缓解频繁刷新造成的数据库压力；第三档主要增强搜索，不会替代媒体扫描本身。网盘扫描还会受网盘接口响应、目录数量和网络质量影响。
+**第三方播放器连不上？**  
+确认地址为 `http://IP:18080`，使用 MMTL 用户账号；反代部署需正确配置外部 URL 与 HTTPS 头。
 
-**qBittorrent 下载完成后无法整理？**
-
-确认 qBittorrent 保存路径已经通过 `volumes` 挂载进 MMTL 容器，并且 `MMTL_DOWNLOAD_DIR` 与 `MMTL_DOWNLOAD_CONTAINER_DIR` 对应正确。
-
-**硬链接目录在 Docker / NAS 上看不到内容？**
-
-硬链接不能直接链接“目录”本身，只能链接目录里的文件。文件管理器执行目录硬链接时会递归创建目标目录结构，并为每个文件创建硬链接。硬链接还要求源文件和目标文件在容器内属于同一个文件系统/子卷；如果下载目录和媒体目录是两个独立 bind mount、不同硬盘、不同 btrfs 子卷或网盘挂载，系统会返回 `invalid cross-device link`，此时请选择“复制”或“软链接”。
-
-**第三方播放器无法连接？**
-
-确认播放器填写的是 `http://服务器IP:18080`，账号密码使用 MMTL 用户账号。反代部署时需要正确设置外部访问地址和 HTTPS 头。
+---
 
 ## 开发构建
 
-本地开发需要 Go、Node.js 和 npm。
-
-后端会将 `web/dist` 通过 `go:embed` 编进二进制，因此**在编译 / 运行后端之前要先构建前端**，否则 `web` 包会因为缺少嵌入资源而编译失败。
+后端通过 `go:embed` 嵌入 `web/dist`，**编译前必须先构建前端**。
 
 ```bash
-# 前端依赖与构建（必须先做，产物被 go:embed 打进二进制）
 npm --prefix web ci
 npm --prefix web run build
 
-# 后端测试
 go test ./...
-
-# 本地运行后端（二进制自带前端界面，无需额外 web 目录）
-go run ./cmd/server
-
-# 本地运行前端开发服务器
-npm --prefix web run dev
+go run ./cmd/server          # http://127.0.0.1:8080
+npm --prefix web run dev     # http://127.0.0.1:3000
 ```
 
-前端开发服务器默认访问：
+CI 会在 Release 中提供 Windows / Linux / macOS 的 amd64、arm64 单文件可执行程序。
 
-```text
-http://127.0.0.1:3000
-```
+---
 
-后端健康检查：
+## 鸣谢
 
-```text
-http://127.0.0.1:8080/api/health
-```
+MMTL 在 [MediaStationGo](https://github.com/ShukeBta/MediaStationGo) 的基础上 fork 并持续演进。感谢上游项目在媒体库架构、Emby 协议兼容和自托管体验上的奠基工作。
 
-### 交叉编译单文件发布物
+项目中许多网盘同步、STRM 与媒体整理相关的设计与实现，也参考了 [qmediasync](https://github.com/qicfan/qmediasync)。感谢该项目的思路与实践经验。
 
-CI（`.github/workflows/Auto-docker-publish.yml`）每次发布会自动为 Windows / Linux(含 Debian) / macOS 交叉编译 amd64 + arm64 的单文件可执行程序，并上传到对应的 GitHub Release。你可以在 Releases 页面下载 `.zip`（Windows）或 `.tar.gz`（Linux / macOS）附件，解压后直接运行其中的 `mmtl`（Windows 为 `mmtl.exe`），无需额外携带前端目录。
-
-本地手动交叉编译某个平台：
-
-```bash
-# 先构建前端
-npm --prefix web ci && npm --prefix web run build
-
-# 例如：构建 Linux amd64 单文件
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-  go build -trimpath -ldflags="-s -w" -o mmtl-linux-amd64 ./cmd/server
-```
+---
 
 ## 贡献与反馈
 
-提交 Bug、功能建议或 Pull Request 前，请先阅读 [贡献规范](CONTRIBUTING.md)。
+提交 Issue 或 Pull Request 前，请阅读 [贡献规范](CONTRIBUTING.md) 与 [安全策略](SECURITY.md)。
 
-- Bug 反馈请使用 Issue 模板，并提供部署方式、复现步骤、日志和关键配置。
-- 功能建议请说明使用场景、期望行为和可接受的替代方案。
-- 安全漏洞请不要公开发 Issue，按 [安全策略](SECURITY.md) 使用私密渠道报告。
-- Pull Request 请从独立分支或 fork 分支发起，不要直接向 `main` 推送。
-- 分支名建议使用 `fix/...`、`feat/...`、`docs/...` 或 `test/...`，例如 `docs/contribution-guidelines`。
-- 提交前按改动范围运行 `go test ./...`、`npm --prefix web run build` 或定向测试，并在 PR 中说明验证结果。
+- Bug 请附部署方式、复现步骤与相关日志
+- 功能建议请说明使用场景与期望行为
+- PR 请从独立分支发起，提交前运行 `go test ./...` 与 `npm --prefix web run build`
+
+---
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=ShukeBta%2FMMTL&type=date&legend=top-left">
+<a href="https://www.star-history.com/?repos=truewhile%2FMMTL&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ShukeBta/MMTL&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ShukeBta/MMTL&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=ShukeBta/MMTL&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=truewhile/MMTL&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=truewhile/MMTL&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=truewhile/MMTL&type=date&legend=top-left" />
  </picture>
 </a>
 
+---
+
 ## 许可证
 
-本项目使用 GPL-3.0 License。详见 [LICENSE](LICENSE)。
+本项目采用 [GPL-3.0](LICENSE) 许可证。
