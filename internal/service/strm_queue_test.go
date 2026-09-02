@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/ShukeBta/MMTL/internal/model"
 	"github.com/ShukeBta/MMTL/internal/repository"
@@ -102,5 +103,64 @@ func TestStrmUploadTasksClearAndRetry(t *testing.T) {
 	db.Model(&model.StrmUploadTask{}).Count(&count)
 	if count != 2 {
 		t.Fatalf("expected 2 remaining tasks, got %d", count)
+	}
+}
+
+func TestDownloadSemSeparateByProvider(t *testing.T) {
+	svc := NewStrmService(nil, zap.NewNop(), nil, nil)
+	svc.initDownloadSems(6)
+
+	if cap(svc.downloadSem115) != strm115DownloadSemCap {
+		t.Fatalf("115 sem cap = %d, want %d", cap(svc.downloadSem115), strm115DownloadSemCap)
+	}
+	if cap(svc.downloadSemDAV) != 6 {
+		t.Fatalf("dav sem cap = %d, want 6", cap(svc.downloadSemDAV))
+	}
+
+	ctx := context.Background()
+	for i := 0; i < strm115DownloadSemCap; i++ {
+		if !svc.acquireDownloadSlot(ctx, model.StrmProvider115) {
+			t.Fatalf("failed to acquire 115 slot %d", i)
+		}
+	}
+	// 115 槽位占满后，OpenList 仍应能独立获取槽位。
+	if !svc.acquireDownloadSlot(ctx, model.StrmProviderOpenList) {
+		t.Fatal("openlist slot should remain available while 115 slots are full")
+	}
+	for i := 0; i < 5; i++ {
+		if !svc.acquireDownloadSlot(ctx, model.StrmProviderOpenList) {
+			t.Fatalf("failed to acquire extra openlist slot %d", i)
+		}
+	}
+	timeoutCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+	defer cancel()
+	if svc.acquireDownloadSlot(timeoutCtx, model.StrmProviderOpenList) {
+		t.Fatal("expected openlist slots to be exhausted after 6 acquisitions")
+	}
+}
+
+func TestRequeueDownloadTask(t *testing.T) {
+	db := newServiceTestDB(t, &model.StrmDownloadTask{})
+	repos := repository.New(db)
+	svc := NewStrmService(nil, zap.NewNop(), repos, nil)
+	now := time.Now()
+	task := &model.StrmDownloadTask{
+		Base:      model.Base{ID: "dl-running"},
+		Status:    model.StrmTaskRunning,
+		Provider:  model.StrmProviderOpenList,
+		StartedAt: &now,
+	}
+	if err := db.Create(task).Error; err != nil {
+		t.Fatalf("insert task: %v", err)
+	}
+
+	svc.requeueDownloadTask(task)
+
+	var got model.StrmDownloadTask
+	if err := db.First(&got, "id = ?", task.ID).Error; err != nil {
+		t.Fatalf("load task: %v", err)
+	}
+	if got.Status != model.StrmTaskPending || got.StartedAt != nil {
+		t.Fatalf("task not requeued: %+v", got)
 	}
 }

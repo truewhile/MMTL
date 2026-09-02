@@ -220,6 +220,7 @@ export function StrmManagePage() {
 
       {dialog === 'account' && (
         <StrmAccountDialog
+          key={editingAccount?.id ?? 'new'}
           existing={editingAccount}
           onClose={() => setDialog(null)}
           onSaved={() => { setDialog(null); refresh().catch(() => undefined) }}

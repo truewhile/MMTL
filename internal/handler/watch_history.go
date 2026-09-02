@@ -129,13 +129,22 @@ func historyContinueHandler(svc *service.Container) gin.HandlerFunc {
 					mountID, remoteID, _ := service.DecodeEmbyRemoteID(r.MediaID)
 					if mount, acct, _ := svc.EmbyRemote.ResolveMount(c.Request.Context(), mountID); mount != nil && acct != nil {
 						if rm, err := svc.EmbyRemote.RemoteMediaDetail(c.Request.Context(), mount, acct, remoteID); err == nil && rm != nil {
-							out = append(out, gin.H{
-								"history": r,
-								"media":   *rm,
-							})
+							if mediaVisibleForRequest(c, svc, rm) {
+								out = append(out, gin.H{
+									"history": r,
+									"media":   *rm,
+								})
+							}
 							continue
 						}
 					}
+				}
+				fallback := fallbackHistoryMedia(r.MediaID)
+				if fallback != nil {
+					out = append(out, gin.H{
+						"history": r,
+						"media":   *fallback,
+					})
 				}
 				continue
 			}
@@ -145,6 +154,20 @@ func historyContinueHandler(svc *service.Container) gin.HandlerFunc {
 			})
 		}
 		c.JSON(http.StatusOK, out)
+	}
+}
+
+func fallbackHistoryMedia(mediaID string) *model.Media {
+	if mediaID == "" {
+		return nil
+	}
+	title := "媒体"
+	if service.IsEmbyRemoteID(mediaID) {
+		title = "远程媒体"
+	}
+	return &model.Media{
+		Base:  model.Base{ID: mediaID},
+		Title: title,
 	}
 }
 

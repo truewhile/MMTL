@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { libraryAPI, type LibraryWithPreview } from '../api/library'
-import { playbackAPI, type HistoryItem } from '../api/playback'
+import { historyAPI } from '../api/history'
+import type { HistoryItem } from '../api/playback'
 import type { Library, Media } from '../types'
 import type { SeriesCard } from '../utils/groupSeries'
 import {
@@ -33,15 +34,24 @@ export function HomePage() {
             .list({ withPreview: true, previewLimit: 20 })
             .then((rows) => asArray<LibraryWithPreview>(rows))
             .catch(() => [] as LibraryWithPreview[]),
-          playbackAPI
-            .recentHistory()
-            .then((rows) => asArray<HistoryItem>(rows))
+          historyAPI
+            .continueWatching(12)
+            .then((rows) =>
+              rows.map(
+                (row): HistoryItem => ({
+                  ...row.history,
+                  created_at: '',
+                  updated_at: '',
+                  media: row.media,
+                }),
+              ),
+            )
             .catch(() => [] as HistoryItem[]),
         ])
 
         if (cancelled) return
         setLibraries(libs)
-        setHistory(hist.filter((h) => h && !h.completed && !!h.media))
+        setHistory(hist.filter((h) => h && !h.completed))
 
         const mapData: Record<string, { cards: SeriesCard[]; items: Media[]; total: number }> = {}
         for (const lib of libs) {

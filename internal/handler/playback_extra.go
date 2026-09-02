@@ -82,6 +82,30 @@ func playbackProgressHandler(svc *service.Container) gin.HandlerFunc {
 	}
 }
 
+func playbackResumeHandler(svc *service.Container) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		uid, _ := c.Get(middleware.CtxUserID)
+		row, err := svc.Playback.GetProgress(c.Request.Context(), toString(uid), c.Param("id"))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if row == nil {
+			c.JSON(http.StatusOK, gin.H{
+				"position_ms": 0,
+				"duration_ms": 0,
+				"completed":   false,
+			})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"position_ms": row.PositionMs,
+			"duration_ms": row.DurationMs,
+			"completed":   row.Completed,
+		})
+	}
+}
+
 // externalPlayersHandler returns the list of external player URI
 // schemes the UI can offer the user. We lookup the media row to
 // produce the per-player launch URL.

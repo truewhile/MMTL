@@ -29,6 +29,8 @@ type strmAccountView struct {
 	model.StrmAccount
 	HasCredential bool   `json:"has_credential"`
 	ProviderLabel string `json:"provider_label"`
+	// ConfigPreview 非敏感配置字段，供编辑表单回显。
+	ConfigPreview service.StrmAccountConfigPreview `json:"config_preview,omitempty"`
 	// ProxyPlay 仅远程 Emby 挂载账号返回：播放流量是否经过 MMTL 代理（编辑回显用）。
 	ProxyPlay *bool `json:"proxy_play,omitempty"`
 	// EmbyLines 仅远程 Emby 挂载账号返回：多线路配置（不含凭据）。
@@ -44,6 +46,9 @@ func strmAccountViews(svc *service.Container, accounts []model.StrmAccount) []st
 			StrmAccount:   a,
 			HasCredential: service.HasStrmAccountCredential(&a),
 			ProviderLabel: providerLabelOf(a.Provider),
+		}
+		if svc != nil && svc.Strm != nil {
+			view.ConfigPreview = svc.Strm.StrmAccountConfigPreviewOf(&a)
 		}
 		if a.Provider == model.StrmProviderEmbyRemote && svc != nil && svc.EmbyRemote != nil {
 			if proxyPlay, err := svc.EmbyRemote.ProxyPlayOf(&a); err == nil {

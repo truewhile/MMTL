@@ -23,6 +23,7 @@ import type { HistoryItem } from '../api/playback'
 import type { Library, Media } from '../types'
 import type { SeriesCard } from '../utils/groupSeries'
 import { seriesCardLink } from '../utils/groupSeries'
+import { isRemoteEmbyID } from '../utils/remoteEmby'
 import { getLibraryArtworks } from './librariesPageModel'
 
 const TYPE_ICONS: Record<string, ReactNode> = {
@@ -575,8 +576,12 @@ export function ContinueWatchingSection({ history }: { history: HistoryItem[] })
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
       >
         {history.slice(0, 12).map((h) => {
-          const media = h.media
-          if (!media) return null
+          const media: Media = h.media ?? ({
+            id: h.media_id,
+            title: isRemoteEmbyID(h.media_id) ? '远程媒体' : '媒体',
+            poster_url: '',
+            updated_at: h.watched_at,
+          } as Media)
           const progress = h.duration_ms > 0 ? h.position_ms / h.duration_ms : 0
           return (
             <div key={h.id} className="w-64 sm:w-72 shrink-0">
@@ -592,7 +597,7 @@ export function ContinueWatchingSection({ history }: { history: HistoryItem[] })
 function ContinueCard({ media, progress }: { media: Media; progress: number }) {
   return (
     <Link
-      to={`/media/${media.id}`}
+      to={`/play/${media.id}`}
       className="group flex items-center gap-3.5 rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel)] p-3 shadow-sm transition-all duration-300 hover:border-brand-500/30 hover:bg-[var(--app-panel-soft)] hover:shadow-md"
     >
       <div className="relative h-20 w-14 shrink-0 overflow-hidden rounded-xl bg-[var(--app-panel-soft)]">

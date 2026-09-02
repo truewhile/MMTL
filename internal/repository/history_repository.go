@@ -26,7 +26,9 @@ func (r *HistoryRepository) Upsert(ctx context.Context, h *model.PlaybackHistory
 		return err
 	}
 	existing.PositionMs = h.PositionMs
-	existing.DurationMs = h.DurationMs
+	if h.DurationMs > 0 {
+		existing.DurationMs = h.DurationMs
+	}
 	existing.WatchedAt = h.WatchedAt
 	existing.Completed = h.Completed
 	return r.db.WithContext(ctx).Save(&existing).Error
