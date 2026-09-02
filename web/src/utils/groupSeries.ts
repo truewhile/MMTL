@@ -89,7 +89,7 @@ const EPISODIC_PATH_RE =
 const SEASON_FOLDER_RE =
   /^(?:s\d{1,2}|season[\s._-]*\d{1,2}|第\s*[0-9一二三四五六七八九十百零两]+\s*季|special[\s._-]*episodes?|specials?|sp|ovas?|oads?|extras?|bonus(?:es)?|omake|特别篇|特別篇|番外篇?|特典|外传|外傳|总集篇|總集篇)$/i
 
-function pathLooksEpisodic(media: Media): boolean {
+export function pathLooksEpisodic(media: Media): boolean {
   const path = (media.path || media.display_library_path || media.library_path || '')
   return EPISODIC_PATH_RE.test(path)
 }
