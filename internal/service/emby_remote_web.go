@@ -301,11 +301,22 @@ func (r *EmbyRemoteService) MapRemoteItemToMedia(ctx context.Context, mount *mod
 		media.SeasonNum = 0
 		media.EpisodeNum = 0
 	}
-	if mount != nil && strings.TrimSpace(mount.RemoteViewID) != "" {
-		libID := EncodeEmbyRemoteID(mount.ID, mount.RemoteViewID)
-		media.DisplayLibraryID = libID
-		media.LibraryID = libID
-	}
+		if mount != nil && strings.TrimSpace(mount.RemoteViewID) != "" {
+			libID := EncodeEmbyRemoteID(mount.ID, mount.RemoteViewID)
+			media.DisplayLibraryID = libID
+			media.LibraryID = libID
+			libName := strings.TrimSpace(mount.Name)
+			if libName == "" {
+				libName = strings.TrimSpace(mount.RemoteViewName)
+			}
+			if libName == "" && acct != nil {
+				libName = acct.Name
+			} else if acct != nil && acct.Name != "" && !strings.Contains(libName, acct.Name) {
+				libName = acct.Name + " · " + libName
+			}
+			media.LibraryName = libName
+			media.DisplayLibraryName = libName
+		}
 	return media
 }
 

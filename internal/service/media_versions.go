@@ -120,6 +120,11 @@ func GroupMediaVersions(items []model.Media) []MediaItem {
 }
 
 func mediaVersionGroupKey(m model.Media) string {
+	// 远程 Emby 挂载条目保持独立，不与其它远程条目或本地条目折叠合并。
+	if IsEmbyRemoteID(m.ID) {
+		return fmt.Sprintf("embyremote:%s", m.ID)
+	}
+
 	if m.SeasonNum > 0 || m.EpisodeNum > 0 {
 		switch {
 		case m.TMDbID > 0:
@@ -146,14 +151,32 @@ func mediaVersionGroupKey(m model.Media) string {
 			fmt.Sprintf("%d:%d", m.SeasonNum, m.EpisodeNum),
 		}, "|")
 	}
+
+	libKey := strings.ToLower(strings.TrimSpace(m.LibraryID))
+	if libKey == "" {
+		libKey = strings.ToLower(strings.TrimSpace(m.DisplayLibraryID))
+	}
+
 	switch {
 	case m.TMDbID > 0:
+		if libKey != "" {
+			return fmt.Sprintf("movie:%s:tmdb:%d", libKey, m.TMDbID)
+		}
 		return fmt.Sprintf("tmdb:%d", m.TMDbID)
 	case m.BangumiID > 0:
+		if libKey != "" {
+			return fmt.Sprintf("movie:%s:bangumi:%d", libKey, m.BangumiID)
+		}
 		return fmt.Sprintf("bangumi:%d", m.BangumiID)
 	case strings.TrimSpace(m.DoubanID) != "":
+		if libKey != "" {
+			return fmt.Sprintf("movie:%s:douban:%s", libKey, strings.ToLower(strings.TrimSpace(m.DoubanID)))
+		}
 		return "douban:" + strings.ToLower(strings.TrimSpace(m.DoubanID))
 	case strings.TrimSpace(m.TheTVDBID) != "":
+		if libKey != "" {
+			return fmt.Sprintf("movie:%s:thetvdb:%s", libKey, strings.ToLower(strings.TrimSpace(m.TheTVDBID)))
+		}
 		return "thetvdb:" + strings.ToLower(strings.TrimSpace(m.TheTVDBID))
 	}
 	title := firstNonEmpty(m.OriginalName, m.Title)
@@ -172,6 +195,9 @@ func mediaVersionGroupKey(m model.Media) string {
 	}
 	if year <= 0 {
 		_, year = CleanQuery(m.Path)
+	}
+	if libKey != "" {
+		return fmt.Sprintf("movie:%s:%s:%d", libKey, title, year)
 	}
 	return fmt.Sprintf("movie:%s:%d", title, year)
 }

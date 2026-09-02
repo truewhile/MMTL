@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import type { NavigateFunction } from 'react-router-dom'
 import toast from 'react-hot-toast'
 
@@ -20,6 +20,8 @@ interface MediaDetailRefreshParams {
   setMedia: Dispatch<SetStateAction<Media | null>>
   setFavourite: Dispatch<SetStateAction<boolean>>
   setLoading: Dispatch<SetStateAction<boolean>>
+  setEpisodes: Dispatch<SetStateAction<Media[]>>
+  setLoadingEpisodes: Dispatch<SetStateAction<boolean>>
 }
 
 interface MediaDetailActionsParams {
@@ -34,12 +36,23 @@ export function useMediaDetailPageState({ id, navigate }: MediaDetailPageStatePa
   const [media, setMedia] = useState<Media | null>(null)
   const [favourite, setFavourite] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [episodes, setEpisodes] = useState<Media[]>([])
+  const [loadingEpisodes, setLoadingEpisodes] = useState(false)
+  const [selectedSeason, setSelectedSeason] = useState<number | null>(null)
+
   const [manualScrapeOpen, setManualScrapeOpen] = useState(false)
   const [metadataEditOpen, setMetadataEditOpen] = useState(false)
   const [organizeOpen, setOrganizeOpen] = useState(false)
   const [scrapeEpisodeArtwork, setScrapeEpisodeArtwork] = useState(false)
 
-  const refresh = useMediaDetailRefresh({ id, setMedia, setFavourite, setLoading })
+  const refresh = useMediaDetailRefresh({
+    id,
+    setMedia,
+    setFavourite,
+    setLoading,
+    setEpisodes,
+    setLoadingEpisodes,
+  })
   const actions = useMediaDetailActions({
     media,
     scrapeEpisodeArtwork,
@@ -52,6 +65,41 @@ export function useMediaDetailPageState({ id, navigate }: MediaDetailPageStatePa
     refresh().catch(() => undefined)
   }, [refresh])
 
+  const seasonGroups = useMemo(() => {
+    if (episodes.length === 0) return []
+    const seasons = new Map<number, Media[]>()
+    for (const ep of episodes) {
+      const s = ep.episode_num > 0 ? (ep.season_num ?? 0) : (ep.season_num || 1)
+      if (!seasons.has(s)) seasons.set(s, [])
+      seasons.get(s)!.push(ep)
+    }
+    for (const [, list] of seasons) {
+      list.sort((a, b) => (a.episode_num || 0) - (b.episode_num || 0))
+    }
+    return Array.from(seasons.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([season, list]) => ({ season, episodes: list }))
+  }, [episodes])
+
+  const visibleEpisodes = useMemo(() => {
+    if (selectedSeason == null) return seasonGroups[0]?.episodes ?? []
+    return seasonGroups.find((s) => s.season === selectedSeason)?.episodes ?? []
+  }, [seasonGroups, selectedSeason])
+
+  const hasEpisodes = useMemo(() => {
+    if (episodes.length > 1) return true
+    if (episodes.length === 1 && media) {
+      // 只有单条时，如果明确是集（有 episode_num > 0）或 ID 与自身不同，则按剧集渲染
+      return episodes[0].episode_num > 0 || episodes[0].id !== media.id
+    }
+    return false
+  }, [episodes, media])
+
+  const firstPlayableEpisode = useMemo(() => {
+    if (episodes.length === 0) return null
+    return (visibleEpisodes.length > 0 ? visibleEpisodes[0] : episodes[0]) || null
+  }, [episodes, visibleEpisodes])
+
   const handleMetadataSaved = useCallback(async (next: Media) => {
     setMedia(next)
     await refresh()
@@ -61,6 +109,14 @@ export function useMediaDetailPageState({ id, navigate }: MediaDetailPageStatePa
     media,
     favourite,
     loading,
+    episodes,
+    loadingEpisodes,
+    seasonGroups,
+    selectedSeason,
+    visibleEpisodes,
+    hasEpisodes,
+    firstPlayableEpisode,
+    setSelectedSeason,
     manualScrapeOpen,
     metadataEditOpen,
     organizeOpen,
@@ -80,19 +136,31 @@ function useMediaDetailRefresh({
   setMedia,
   setFavourite,
   setLoading,
+  setEpisodes,
+  setLoadingEpisodes,
 }: MediaDetailRefreshParams): () => Promise<void> {
   return useCallback(async () => {
     if (!id) return
     setLoading(true)
+    setLoadingEpisodes(true)
     try {
       const nextMedia = await mediaAPI.get(id)
       setMedia(nextMedia)
       const favourites = await playbackAPI.listFavourites().catch(() => [])
       setFavourite(favourites.some((item) => item.id === nextMedia.id))
+      // 异步加载分集列表
+      try {
+        const epRes = await mediaAPI.getEpisodes(id)
+        setEpisodes(epRes.items ?? [])
+      } catch {
+        setEpisodes([])
+      } finally {
+        setLoadingEpisodes(false)
+      }
     } finally {
       setLoading(false)
     }
-  }, [id, setFavourite, setLoading, setMedia])
+  }, [id, setFavourite, setLoading, setMedia, setEpisodes, setLoadingEpisodes])
 }
 
 function useMediaDetailActions({

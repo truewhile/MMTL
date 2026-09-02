@@ -18,6 +18,7 @@ interface MediaDetailPlaybackActionsProps {
   media: Media
   favourite: boolean
   onToggleFavourite: () => void
+  playTargetId?: string
 }
 
 interface MediaDetailMainContentProps extends MediaDetailPlaybackActionsProps {
@@ -93,17 +94,19 @@ export function MediaDetailPlaybackActions({
   media,
   favourite,
   onToggleFavourite,
+  playTargetId,
 }: MediaDetailPlaybackActionsProps) {
+  const targetId = playTargetId || media.id
   return (
     <div className="flex flex-wrap gap-3">
-      <Link to={`/play/${media.id}`} state={{ from: `/media/${media.id}` }} className="btn-primary px-6 py-3.5 shadow-sm">
+      <Link to={`/play/${targetId}`} state={{ from: `/media/${media.id}` }} className="btn-primary px-6 py-3.5 shadow-sm">
         <Play size={16} fill="currentColor" />
         <span>立即播放</span>
       </Link>
 
       {!isDirectStreamMedia(media) && (
         <Link
-        to={`/play/${media.id}?mode=hls`}
+        to={`/play/${targetId}?mode=hls`}
         state={{ from: `/media/${media.id}` }}
         className="btn-outline border-brand-500/30 hover:border-brand-500 text-[#c9954a] hover:bg-brand-50 px-5"
       >
@@ -112,7 +115,7 @@ export function MediaDetailPlaybackActions({
         </Link>
       )}
 
-      <ExternalPlayerButton mediaId={media.id} />
+      <ExternalPlayerButton mediaId={targetId} />
 
       <button
         onClick={onToggleFavourite}
@@ -134,6 +137,7 @@ export function MediaDetailMainContent({
   media,
   isAdmin,
   favourite,
+  playTargetId,
   scrapeEpisodeArtwork,
   onToggleFavourite,
   onScrapeEpisodeArtworkChange,
@@ -153,7 +157,12 @@ export function MediaDetailMainContent({
         <MediaDetailMetadata media={media} />
         <div className="divider border-gray-200/60" />
         <div className="flex flex-col gap-5">
-          <MediaDetailPlaybackActions media={media} favourite={favourite} onToggleFavourite={onToggleFavourite} />
+          <MediaDetailPlaybackActions
+            media={media}
+            favourite={favourite}
+            onToggleFavourite={onToggleFavourite}
+            playTargetId={playTargetId}
+          />
           {isAdmin && (
             <MediaDetailAdminPanel
               media={media}

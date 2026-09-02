@@ -218,3 +218,49 @@ func TestSearchMediaVisiblePageGroupedPaginatesAfterVersionGrouping(t *testing.T
 		t.Fatalf("primary version = %q, want %q", page[0].Media.Path, rows[0].Path)
 	}
 }
+
+func TestGroupMediaVersionsDoesNotMergeDifferentRemoteSeries(t *testing.T) {
+	// 模拟来自两个不同挂载库（如 00 新番连载 与 2018 动漫）的同名剧集《碧蓝之海》
+	season1 := model.Media{
+		Base:        model.Base{ID: EncodeEmbyRemoteID("mount-1", "156019")},
+		LibraryID:   EncodeEmbyRemoteID("mount-1", "view-1"),
+		Title:       "碧蓝之海",
+		Year:        2018,
+		LibraryName: "2018 动漫",
+	}
+	season2 := model.Media{
+		Base:        model.Base{ID: EncodeEmbyRemoteID("mount-2", "156030")},
+		LibraryID:   EncodeEmbyRemoteID("mount-2", "view-2"),
+		Title:       "碧蓝之海",
+		Year:        2024,
+		LibraryName: "00 新番连载",
+	}
+
+	grouped := groupMediaVersions([]model.Media{season1, season2})
+	if len(grouped) != 2 {
+		t.Fatalf("expected 2 separate groups for different remote series/libraries, got %d: %#v", len(grouped), grouped)
+	}
+	if grouped[0].Title != "碧蓝之海" || grouped[1].Title != "碧蓝之海" {
+		t.Fatalf("expected both titles to be '碧蓝之海'")
+	}
+}
+
+func TestGroupMediaVersionsDoesNotMergeAcrossDifferentLibrariesForMovies(t *testing.T) {
+	movieLib1 := model.Media{
+		Base:      model.Base{ID: "m-1"},
+		LibraryID: "lib-1",
+		Title:     "碧蓝之海",
+		Year:      2018,
+	}
+	movieLib2 := model.Media{
+		Base:      model.Base{ID: "m-2"},
+		LibraryID: "lib-2",
+		Title:     "碧蓝之海",
+		Year:      2018,
+	}
+
+	grouped := groupMediaVersions([]model.Media{movieLib1, movieLib2})
+	if len(grouped) != 2 {
+		t.Fatalf("expected 2 separate groups for movies in different libraries, got %d", len(grouped))
+	}
+}

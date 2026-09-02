@@ -239,9 +239,16 @@ function LayoutHeaderSearch() {
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-bold text-[var(--app-text)] group-hover:text-brand-500">
-                        {item.title}
-                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="truncate text-xs font-bold text-[var(--app-text)] group-hover:text-brand-500">
+                          {item.title}
+                        </p>
+                        {(item.display_library_name || item.library_name) && (
+                          <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded bg-[var(--app-panel-elevated)] border border-[var(--app-border)] text-[var(--app-muted)] max-w-[130px] truncate">
+                            {item.display_library_name || item.library_name}
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2 text-[10px] text-[var(--app-muted)] mt-0.5">
                         {item.year > 0 && <span>{item.year}</span>}
                         {item.rating > 0 && (
