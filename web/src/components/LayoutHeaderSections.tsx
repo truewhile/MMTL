@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Film, LoaderCircle, Menu, Search, Star, X } from 'lucide-react'
+import { ArrowLeft, Film, LoaderCircle, Menu, Search, Star, X } from 'lucide-react'
 
 import { imageURL } from '../api/client'
 import { mediaAPI } from '../api/library'
 import type { Media, PlayProfile, User } from '../types'
+import { resolveHeaderBack } from './layoutNavigation'
 import { LayoutThemeToggle } from './LayoutThemeToggle'
 import { LayoutUserMenu } from './LayoutUserMenu'
 import type { useLayoutProfiles } from './useLayoutProfiles'
@@ -29,6 +30,7 @@ type LayoutHeaderProps = {
   onLogout: () => void
   showSidebar?: boolean
   hideSearch?: boolean
+  pathname?: string
 }
 
 export function LayoutHeader({
@@ -41,11 +43,26 @@ export function LayoutHeader({
   onLogout,
   showSidebar,
   hideSearch,
+  pathname = '',
 }: LayoutHeaderProps) {
+  const navigate = useNavigate()
+  const headerBack = resolveHeaderBack(pathname)
+
   return (
     <header className="relative z-30 flex h-16 shrink-0 items-center justify-between gap-2 border-b border-[var(--app-border)] bg-[var(--app-header-bg)] px-3 backdrop-blur-md sm:h-20 sm:gap-4 sm:px-4 md:px-8">
-      {/* Left: Mobile Menu button or Brand Logo */}
-      <div className="flex items-center gap-3 shrink-0">
+      {/* Left: back / menu / brand */}
+      <div className="flex items-center gap-2 shrink-0 sm:gap-3">
+        {headerBack ? (
+          <button
+            type="button"
+            onClick={() => navigate(headerBack.to)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--app-border)] px-2.5 py-2 text-xs font-semibold text-[var(--app-subtle)] transition-colors hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] lg:hidden"
+            title={headerBack.label}
+          >
+            <ArrowLeft size={16} />
+            <span className="max-w-[4.5rem] truncate sm:max-w-none">{headerBack.label}</span>
+          </button>
+        ) : null}
         <button
           onClick={onOpenMobileDrawer}
           className="rounded-xl border border-[var(--app-border)] p-2.5 text-[var(--app-muted)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] transition-colors lg:hidden"
@@ -53,12 +70,7 @@ export function LayoutHeader({
         >
           <Menu size={18} />
         </button>
-        <Link
-          to="/"
-          className={`flex items-center gap-2.5 transition-transform hover:scale-105 ${
-            showSidebar ? 'lg:hidden' : ''
-          }`}
-        >
+        <Link to="/" className={`flex items-center gap-2.5 transition-transform hover:scale-105 ${showSidebar ? 'lg:hidden' : 'hidden sm:flex'}`}>
           <img
             src="/brand/logo-192.png"
             alt="MMTL"
@@ -303,6 +315,8 @@ function LayoutHeaderActions({
         onUseDefaultProfile={onUseDefaultProfile}
         onSwitchProfile={onSwitchProfile}
         onLogout={onLogout}
+        themeMode={themeMode}
+        onThemeChange={onThemeChange}
       />
     </div>
   )

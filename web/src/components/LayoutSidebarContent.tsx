@@ -2,7 +2,12 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowLeft, Menu, X } from 'lucide-react'
 import clsx from 'clsx'
-import { LAYOUT_NAV_ITEMS, type LayoutNavItem } from './layoutNavigation'
+
+import {
+  LAYOUT_NAV_ITEMS,
+  MEDIA_NAV_ITEMS,
+  type LayoutNavItem,
+} from './layoutNavigation'
 import { SidebarLink } from './LayoutSidebarNav'
 
 export type LayoutSidebarContentProps = {
@@ -12,6 +17,7 @@ export type LayoutSidebarContentProps = {
   can: (key: string) => boolean
   onToggleSidebar: () => void
   onCloseMobileDrawer: () => void
+  variant?: 'media' | 'admin'
 }
 
 export function LayoutSidebarContent({
@@ -21,9 +27,11 @@ export function LayoutSidebarContent({
   can,
   onToggleSidebar,
   onCloseMobileDrawer,
+  variant = 'admin',
 }: LayoutSidebarContentProps) {
   const sidebarExpanded = isSidebarOpen || isMobileDrawerOpen
-  const visibleItems = visibleSidebarItems({ isAdmin, can })
+  const mediaItems = visibleSidebarItems({ isAdmin, can, items: MEDIA_NAV_ITEMS })
+  const adminItems = visibleSidebarItems({ isAdmin, can, items: LAYOUT_NAV_ITEMS })
 
   return (
     <div className="flex h-full flex-col border-r border-[var(--app-border)] bg-[var(--app-panel)]">
@@ -32,7 +40,19 @@ export function LayoutSidebarContent({
         onToggleSidebar={onToggleSidebar}
         onCloseMobileDrawer={onCloseMobileDrawer}
       />
-      <LayoutSidebarNav items={visibleItems} sidebarExpanded={sidebarExpanded} />
+      {variant === 'media' ? (
+        <>
+          <LayoutSidebarNav items={mediaItems} sidebarExpanded={sidebarExpanded} grow />
+          {adminItems.length > 0 && (
+            <div className="border-t border-[var(--app-border)]">
+              <LayoutSidebarSectionLabel sidebarExpanded={sidebarExpanded} label="管理" />
+              <LayoutSidebarNav items={adminItems} sidebarExpanded={sidebarExpanded} />
+            </div>
+          )}
+        </>
+      ) : (
+        <LayoutSidebarNav items={adminItems} sidebarExpanded={sidebarExpanded} grow />
+      )}
       <LayoutSidebarHomeBack sidebarExpanded={sidebarExpanded} />
     </div>
   )
@@ -41,8 +61,9 @@ export function LayoutSidebarContent({
 function visibleSidebarItems({
   isAdmin,
   can,
-}: Pick<LayoutSidebarContentProps, 'isAdmin' | 'can'>): LayoutNavItem[] {
-  return LAYOUT_NAV_ITEMS.filter(
+  items,
+}: Pick<LayoutSidebarContentProps, 'isAdmin' | 'can'> & { items: LayoutNavItem[] }): LayoutNavItem[] {
+  return items.filter(
     (item) => (!item.adminOnly || isAdmin) && (!item.permission || can(item.permission)),
   )
 }
@@ -84,15 +105,37 @@ function LayoutSidebarHeader({
   )
 }
 
+function LayoutSidebarSectionLabel({
+  sidebarExpanded,
+  label,
+}: {
+  sidebarExpanded: boolean
+  label: string
+}) {
+  if (!sidebarExpanded) return null
+  return (
+    <p className="px-4 pt-4 pb-1 text-[10px] font-bold uppercase tracking-wider text-[var(--app-muted)]">
+      {label}
+    </p>
+  )
+}
+
 function LayoutSidebarNav({
   items,
   sidebarExpanded,
+  grow = false,
 }: {
   items: LayoutNavItem[]
   sidebarExpanded: boolean
+  grow?: boolean
 }) {
   return (
-    <nav className="flex-1 overflow-y-auto px-4 py-5 space-y-1 scrollbar-hide">
+    <nav
+      className={clsx(
+        'overflow-y-auto px-4 py-5 space-y-1 scrollbar-hide',
+        grow && 'flex-1',
+      )}
+    >
       {items.map((item) => {
         const ItemIcon = item.icon
         return (

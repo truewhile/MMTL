@@ -5,6 +5,8 @@ import { Cast, ChevronDown, Clock, Heart, ListMusic, LogOut, Settings, UserCog }
 import clsx from 'clsx'
 
 import type { PlayProfile } from '../types'
+import { LayoutThemeToggle } from './LayoutThemeToggle'
+import type { ThemeMode } from './useThemeMode'
 
 type LayoutUser = {
   username?: string
@@ -22,6 +24,8 @@ type LayoutUserMenuProps = {
   onUseDefaultProfile: () => void
   onSwitchProfile: (profile: PlayProfile) => void
   onLogout: () => void
+  themeMode?: ThemeMode
+  onThemeChange?: (mode: ThemeMode) => void
 }
 
 export function LayoutUserMenu({
@@ -35,6 +39,8 @@ export function LayoutUserMenu({
   onUseDefaultProfile,
   onSwitchProfile,
   onLogout,
+  themeMode,
+  onThemeChange,
 }: LayoutUserMenuProps) {
   const location = useLocation()
   const rootRef = useRef<HTMLDivElement>(null)
@@ -103,6 +109,14 @@ export function LayoutUserMenu({
             <UserMenuLink to="/playlists" icon={<ListMusic size={16} />} label="播放列表" onClick={onClose} />
             <UserMenuLink to="/history" icon={<Clock size={16} />} label="观看历史" onClick={onClose} />
             <UserMenuLink to="/dlna" icon={<Cast size={16} />} label="DLNA投屏" onClick={onClose} />
+            {themeMode && onThemeChange ? (
+              <div className="px-3 py-2 sm:hidden">
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[var(--app-muted)]">
+                  主题
+                </p>
+                <LayoutThemeToggle mode={themeMode} onChange={onThemeChange} />
+              </div>
+            ) : null}
             <div className="my-1.5 border-t border-[var(--app-border)]" />
             <div className="px-3 py-2">
               <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[var(--app-muted)]">

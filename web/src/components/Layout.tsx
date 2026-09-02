@@ -7,6 +7,8 @@ import {
   LayoutSidebars,
   LayoutWorkspace,
 } from './LayoutSections'
+import { MobileBottomNav } from './MobileBottomNav'
+import { shouldShowMobileBottomNav } from './layoutNavigation'
 import { useLayoutPermissions } from './useLayoutPermissions'
 import { useLayoutProfiles } from './useLayoutProfiles'
 import { useLayoutSidebar } from './useLayoutSidebar'
@@ -51,6 +53,7 @@ export function Layout() {
   const showSidebar = !isMediaView(location.pathname, location.search)
   const hideSearch = location.pathname.startsWith('/settings')
   const isPlayPage = location.pathname.startsWith('/play')
+  const showMobileBottomNav = shouldShowMobileBottomNav(location.pathname)
 
   return (
     <div className="flex h-[100dvh] min-h-0 w-full overflow-hidden bg-[var(--app-bg)] text-[var(--app-text)] font-body select-none">
@@ -59,6 +62,7 @@ export function Layout() {
         isAdmin={permissions.isAdmin}
         can={permissions.can}
         showSidebar={showSidebar}
+        sidebarVariant={showSidebar ? 'admin' : 'media'}
       />
       <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
         {!isPlayPage && (
@@ -72,9 +76,13 @@ export function Layout() {
             onLogout={closeProfileAndLogout}
             showSidebar={showSidebar}
             hideSearch={hideSearch}
+            pathname={location.pathname}
           />
         )}
-        <LayoutWorkspace routeKey={location.pathname} />
+        <LayoutWorkspace routeKey={location.pathname} showMobileBottomNav={showMobileBottomNav} />
+        {showMobileBottomNav && (
+          <MobileBottomNav onOpenMenu={() => sidebar.setIsMobileDrawerOpen(true)} />
+        )}
       </div>
     </div>
   )

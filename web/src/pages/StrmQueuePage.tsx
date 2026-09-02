@@ -55,7 +55,13 @@ function getFileIcon(filename: string): ReactNode {
   return <File size={15} className="text-gray-400 shrink-0" />
 }
 
-export function StrmQueuePanel({ kind }: { kind: 'download' | 'upload' }) {
+export function StrmQueuePanel({
+  kind,
+  embedded = false,
+}: {
+  kind: 'download' | 'upload'
+  embedded?: boolean
+}) {
   const [snapshot, setSnapshot] = useState<StrmQueueSnapshot | null>(null)
   const [filter, setFilter] = useState<'all' | StrmTaskStatus>('all')
   const [search, setSearch] = useState('')
@@ -242,7 +248,7 @@ export function StrmQueuePanel({ kind }: { kind: 'download' | 'upload' }) {
 
   return (
     <div className="space-y-6">
-      {/* 1. Header */}
+      {!embedded && (
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-primary-400/30 bg-primary-400/10 text-brand-500 shadow-sm">
@@ -403,6 +409,7 @@ export function StrmQueuePanel({ kind }: { kind: 'download' | 'upload' }) {
           </details>
         </div>
       </header>
+      )}
 
       {/* 2. Interactive Status Cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">

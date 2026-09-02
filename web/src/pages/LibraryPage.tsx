@@ -13,6 +13,7 @@ import {
   type SortOrder,
 } from '../utils/mediaSort'
 import { LibraryPageDialogs } from './LibraryPageDialogs'
+import { PageBackButton } from '../components/PageBackButton'
 import { LibraryPageHeader } from './LibraryPageHeader'
 import { LibraryMediaSections } from './LibraryMediaSections'
 import { LibrarySeriesDetailSection } from './LibrarySeriesDetailSection'
@@ -181,6 +182,12 @@ export function LibraryPage() {
 
   return (
     <div className="space-y-6">
+      {!selectedSeries && (
+        <div className="hidden lg:block">
+          <PageBackButton to="/libraries" label="全部媒体库" compact />
+        </div>
+      )}
+
       {!selectedSeries && (
         <LibraryPageHeader
           library={library}

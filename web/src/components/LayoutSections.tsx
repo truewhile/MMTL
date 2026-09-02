@@ -25,10 +25,12 @@ type LayoutSidebarsProps = Omit<
 > & {
   sidebar: LayoutSidebarState
   showSidebar: boolean
+  sidebarVariant?: 'media' | 'admin'
 }
 
 type LayoutWorkspaceProps = {
   routeKey: string
+  showMobileBottomNav?: boolean
 }
 
 export { LayoutHeader } from './LayoutHeaderSections'
@@ -78,6 +80,7 @@ export function LayoutSidebars({
   isAdmin,
   can,
   showSidebar,
+  sidebarVariant = 'admin',
 }: LayoutSidebarsProps) {
   const content = (
     <LayoutSidebarContent
@@ -87,6 +90,7 @@ export function LayoutSidebars({
       can={can}
       onToggleSidebar={sidebar.toggleSidebar}
       onCloseMobileDrawer={() => sidebar.setIsMobileDrawerOpen(false)}
+      variant={sidebarVariant}
     />
   )
 
@@ -116,7 +120,11 @@ export function LayoutSidebars({
   )
 }
 
-export function LayoutWorkspace({ routeKey }: LayoutWorkspaceProps) {
+export function LayoutWorkspace({ routeKey, showMobileBottomNav = false }: LayoutWorkspaceProps) {
+  const bottomPad = showMobileBottomNav
+    ? 'pb-[calc(3.75rem+env(safe-area-inset-bottom,0px))] lg:pb-10'
+    : ''
+
   if (routeKey.startsWith('/play')) {
     return (
       <main className="flex flex-1 h-full w-full overflow-hidden">
@@ -128,7 +136,7 @@ export function LayoutWorkspace({ routeKey }: LayoutWorkspaceProps) {
   }
 
   return (
-    <main className="flex-1 overflow-y-auto px-4 py-6 md:px-8 md:py-10">
+    <main className={clsx('flex-1 overflow-y-auto px-4 py-6 md:px-8 md:py-10', bottomPad)}>
       <div className="max-w-7xl mx-auto">
         <AnimatePresence mode="wait">
           <motion.div
