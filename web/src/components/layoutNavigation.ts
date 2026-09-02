@@ -85,6 +85,44 @@ export function isRootMediaPath(pathname: string): boolean {
   return ROOT_MEDIA_PATHS.has(pathname)
 }
 
+/** Admin-entry query used to open the management sidebar on library pages. */
+export function isAdminEntrySearch(search: string): boolean {
+  const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search)
+  return (
+    params.get('from') === 'admin' ||
+    params.get('from') === 'settings' ||
+    params.get('manage') === '1'
+  )
+}
+
+export function isLibraryPath(pathname: string): boolean {
+  return pathname === '/libraries' || pathname.startsWith('/library')
+}
+
+/**
+ * Sidebar active state must honor query strings. NavLink only matches pathname,
+ * so `/libraries` and `/libraries?from=admin` would otherwise both highlight.
+ */
+export function isSidebarLinkActive(
+  to: string,
+  pathname: string,
+  search: string,
+  end?: boolean,
+): boolean {
+  const [toPath, toQuery = ''] = to.split('?')
+  const toIsAdminLibrary = toPath === '/libraries' && isAdminEntrySearch(toQuery)
+  const toIsMediaLibrary = toPath === '/libraries' && !toIsAdminLibrary
+
+  if (toIsAdminLibrary) {
+    return isLibraryPath(pathname) && isAdminEntrySearch(search)
+  }
+  if (toIsMediaLibrary) {
+    return isLibraryPath(pathname) && !isAdminEntrySearch(search)
+  }
+
+  return end ? pathname === toPath : pathname === toPath || pathname.startsWith(`${toPath}/`)
+}
+
 export function resolveHeaderBack(pathname: string): HeaderBackTarget | null {
   if (pathname.startsWith('/library/')) {
     return { to: '/libraries', label: '媒体库' }

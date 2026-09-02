@@ -40,7 +40,7 @@ export function LayoutDesktopSidebar({ children, isSidebarOpen }: LayoutSidebarP
   return (
     <aside
       className={clsx(
-        'hidden lg:flex flex-col h-full shrink-0 transition-all duration-300 ease-out',
+        'hidden lg:flex min-h-0 h-full shrink-0 flex-col transition-all duration-300 ease-out',
         isSidebarOpen ? 'w-64' : 'w-20',
       )}
     >
@@ -66,7 +66,7 @@ export function LayoutMobileSidebar({ children, isOpen, onClose }: LayoutMobileS
             animate={{ x: 0 }}
             exit={{ x: '-100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-            className="relative flex w-64 max-w-xs flex-col h-full z-10 shadow-xl"
+            className="relative z-10 flex h-full min-h-0 w-64 max-w-xs flex-col overflow-hidden shadow-xl"
           >
             {children}
           </motion.div>

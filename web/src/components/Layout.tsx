@@ -8,16 +8,15 @@ import {
   LayoutWorkspace,
 } from './LayoutSections'
 import { MobileBottomNav } from './MobileBottomNav'
-import { isPlayerRoute, shouldShowMobileBottomNav } from './layoutNavigation'
+import { isAdminEntrySearch, isPlayerRoute, shouldShowMobileBottomNav } from './layoutNavigation'
 import { useLayoutPermissions } from './useLayoutPermissions'
 import { useLayoutProfiles } from './useLayoutProfiles'
 import { useLayoutSidebar } from './useLayoutSidebar'
 import { useThemeMode } from './useThemeMode'
 
 function isMediaView(pathname: string, search: string): boolean {
-  const params = new URLSearchParams(search)
-  // 从设置/管理后台菜单进入（携带 from=admin 或 from=settings 或 manage=1）时展示左侧栏
-  if (params.get('from') === 'admin' || params.get('from') === 'settings' || params.get('manage') === '1') {
+  // 从设置/管理后台菜单进入时展示左侧栏
+  if (isAdminEntrySearch(search)) {
     return false
   }
 
