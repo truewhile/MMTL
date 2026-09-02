@@ -189,10 +189,12 @@ function useMediaDetailActions({
 }
 
 function goBackFromMediaDetail(media: Media | null, navigate: NavigateFunction, replace = false): void {
-  if (!media) return
+  if (!media) {
+    navigate('/libraries')
+    return
+  }
   const backTarget = mediaLibraryBackTarget(media)
-  if (backTarget) navigate(backTarget, replace ? { replace: true } : undefined)
-  else navigate(-1)
+  navigate(backTarget || '/libraries', replace ? { replace: true } : undefined)
 }
 
 async function toggleMediaFavourite(
