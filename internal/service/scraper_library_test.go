@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 func TestManualEnrichLibraryRetriesNoMatchAndCountsRealMatches(t *testing.T) {

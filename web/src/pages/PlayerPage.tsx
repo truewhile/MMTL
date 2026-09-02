@@ -29,7 +29,7 @@ import { PlayerPlaylistPanel } from '../components/PlayerPlaylistPanel'
 //
 // External subtitles next to the source file are auto-discovered and
 // attached as <track> elements.
-const SUBTITLE_STORAGE_KEY = 'mmtl.subtitle'
+const SUBTITLE_STORAGE_KEY = 'mebox.subtitle'
 
 // 初始字幕偏好：localStorage 记录上次选择的轨道（-1=关闭）；没有偏好时
 // 默认 0（自动加载第一条字幕）。

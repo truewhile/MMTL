@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ShukeBta/MMTL/internal/config"
+	"github.com/truewhile/MeBox/internal/config"
 )
 
 const defaultLogMaxSizeMB = 20

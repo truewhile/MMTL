@@ -7,8 +7,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/middleware"
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/middleware"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 func registerPublicAuthRoutes(api *gin.RouterGroup, svc *service.Container, log *zap.Logger) {

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.6
 # =============================================================================
-# Multi-architecture build for MMTL.
+# Multi-architecture build for MeBox.
 #
 # Stage 1 (frontend) :  Node 20  -> static SPA bundle
 # Stage 2 (backend)  :  Go 1.25  -> single static binary (CGO_ENABLED=0)
@@ -8,7 +8,7 @@
 #
 # Build:
 #   docker buildx build --platform linux/amd64,linux/arm64 \
-#     --build-arg VERSION=MMTL-v0.1.16 -t mmtl:latest --push .
+#     --build-arg VERSION=MeBox-v0.1.16 -t mebox:latest --push .
 #
 # Optional Intel VAAPI/QSV runtime packages:
 #   docker buildx build --build-arg WITH_VAAPI=true ...
@@ -39,7 +39,7 @@ COPY . .
 COPY --from=frontend /app/web/dist ./web/dist
 RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o mmtl ./cmd/server
+    go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o mebox ./cmd/server
 
 # ---- Stage 3: runtime ------------------------------------------------------
 FROM alpine:3.23
@@ -64,22 +64,22 @@ RUN apk add --no-cache \
     && rm -rf /var/cache/apk/*
 
 # Non-root user for the long-running process.
-RUN addgroup -S mmtl && adduser -S mmtl -G mmtl
+RUN addgroup -S mebox && adduser -S mebox -G mebox
 
 WORKDIR /app
-COPY --from=backend /app/mmtl /usr/local/bin/mmtl
+COPY --from=backend /app/mebox /usr/local/bin/mebox
 COPY --from=frontend /app/web/dist /app/web/dist
 
 RUN mkdir -p /data /cache /media \
-    && chown -R mmtl:mmtl /data /cache /media
+    && chown -R mebox:mebox /data /cache /media
 
 # Default environment (overridable via docker-compose / `docker run -e`).
-ENV MMTL_APP_PORT=8080 \
-    MMTL_APP_DATA_DIR=/data \
-    MMTL_APP_WEB_DIR=/app/web/dist \
-    MMTL_DATABASE_DB_PATH=/data/mmtl.db \
-    MMTL_CACHE_CACHE_DIR=/cache \
-    MMTL_LOGGING_LEVEL=info \
+ENV MEBOX_APP_PORT=8080 \
+    MEBOX_APP_DATA_DIR=/data \
+    MEBOX_APP_WEB_DIR=/app/web/dist \
+    MEBOX_DATABASE_DB_PATH=/data/mebox.db \
+    MEBOX_CACHE_CACHE_DIR=/cache \
+    MEBOX_LOGGING_LEVEL=info \
     TZ=Asia/Shanghai
 
 EXPOSE 8080

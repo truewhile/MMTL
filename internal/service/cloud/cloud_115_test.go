@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ShukeBta/MMTL/internal/service/cloud115"
+	"github.com/truewhile/MeBox/internal/service/cloud115"
 )
 
 // 115 开放平台（openapi）驱动测试：mock proapi 的列目录/直链接口。

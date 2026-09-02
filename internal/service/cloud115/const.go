@@ -39,7 +39,7 @@ const (
 )
 
 // DefaultUA 请求 UA（标准 API 客户端格式，避免伪装浏览器触发 115 WAF 拦截与 405 错误）。
-const DefaultUA = "MMTL-115-GoClient/1.0"
+const DefaultUA = "MeBox-115-GoClient/1.0"
 
 // OpenAPIError 保留 115 开放平台返回的原始错误信息。
 type OpenAPIError struct {

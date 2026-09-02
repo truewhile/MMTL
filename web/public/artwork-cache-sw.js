@@ -1,4 +1,4 @@
-const ARTWORK_CACHE_PREFIX = 'mmtl-artwork-'
+const ARTWORK_CACHE_PREFIX = 'mebox-artwork-'
 const ARTWORK_CACHE = `${ARTWORK_CACHE_PREFIX}v2`
 const MIN_CACHEABLE_ARTWORK_BYTES = 128
 const STRIP_QUERY_KEYS = ['token', 'profile_id', 'profile_pin_token']

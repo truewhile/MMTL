@@ -6,13 +6,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 func TestWriteMediaNFOUsesMappedDestinationPath(t *testing.T) {
 	root := t.TempDir()
-	t.Setenv("MMTL_MEDIA_DIR", root)
-	t.Setenv("MMTL_MEDIA_CONTAINER_DIR", "/media")
+	t.Setenv("MEBOX_MEDIA_DIR", root)
+	t.Setenv("MEBOX_MEDIA_CONTAINER_DIR", "/media")
 	mediaPath := filepath.Join(root, "电影", "测试电影.mkv")
 	if err := os.MkdirAll(filepath.Dir(mediaPath), 0o755); err != nil {
 		t.Fatal(err)

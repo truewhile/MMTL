@@ -11,12 +11,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 // PlaybackInfo returns a PlaybackInfoResponse usable by Emby clients.
 // 远程 Emby 条目直接转发远程 PlaybackInfo，并按账号 proxy_play 配置决定
-// 播放地址指向远程（直连）还是 MMTL 本地代理端点。
+// 播放地址指向远程（直连）还是 MeBox 本地代理端点。
 func (e *EmbyService) PlaybackInfo(ctx context.Context, mediaID, userID string) (map[string]any, error) {
 	if e.remote != nil && IsEmbyRemoteID(mediaID) {
 		mountID, remoteID, _ := DecodeEmbyRemoteID(mediaID)

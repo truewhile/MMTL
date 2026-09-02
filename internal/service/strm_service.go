@@ -23,10 +23,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/config"
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/repository"
-	"github.com/ShukeBta/MMTL/internal/service/cloud"
+	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/repository"
+	"github.com/truewhile/MeBox/internal/service/cloud"
 )
 
 // strm 全局设置键（存于 Setting 表，strm.* 前缀）。
@@ -756,7 +756,7 @@ var StrmProviderLabels = map[string]string{
 	model.StrmProviderEmbyRemote: "Emby 远程挂载",
 }
 
-const defaultStrmUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 MMTL-Strm/1.0"
+const defaultStrmUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 MeBox-Strm/1.0"
 
 // ensureLocalDir 创建本地输出目录。
 func ensureLocalDir(dir string) error {

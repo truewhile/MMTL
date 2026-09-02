@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/ShukeBta/MMTL/internal/config"
+	"github.com/truewhile/MeBox/internal/config"
 )
 
 func openSQLiteMigrationSource(cfg *config.Config, sqlitePath string) (*gorm.DB, error) {
@@ -36,23 +36,30 @@ func sqliteMigrationSourcePath(cfg *config.Config, log *zap.Logger) (string, err
 		}
 	}
 
-	fallback := filepath.Join(strings.TrimSpace(cfg.App.DataDir), "mmtl.db")
-	if fallback == "" || sameCleanPath(configured, fallback) {
-		return "", nil
+	// Prefer the new default filename, then fall back to legacy MMTL SQLite files.
+	candidates := []string{
+		filepath.Join(strings.TrimSpace(cfg.App.DataDir), "mebox.db"),
+		filepath.Join(strings.TrimSpace(cfg.App.DataDir), "mmtl.db"),
 	}
-	exists, err := regularFileExists(fallback)
-	if err != nil {
-		return "", fmt.Errorf("stat default sqlite migration source: %w", err)
+	for _, fallback := range candidates {
+		if fallback == "" || sameCleanPath(configured, fallback) {
+			continue
+		}
+		exists, err := regularFileExists(fallback)
+		if err != nil {
+			return "", fmt.Errorf("stat default sqlite migration source: %w", err)
+		}
+		if !exists {
+			continue
+		}
+		if log != nil && configured != "" {
+			log.Warn("configured sqlite migration source not found; using data-dir default",
+				zap.String("configured", configured),
+				zap.String("fallback", fallback))
+		}
+		return fallback, nil
 	}
-	if !exists {
-		return "", nil
-	}
-	if log != nil && configured != "" {
-		log.Warn("configured sqlite migration source not found; using data-dir default",
-			zap.String("configured", configured),
-			zap.String("fallback", fallback))
-	}
-	return fallback, nil
+	return "", nil
 }
 
 func regularFileExists(path string) (bool, error) {

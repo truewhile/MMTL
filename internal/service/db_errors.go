@@ -1,6 +1,6 @@
 package service
 
-import "github.com/ShukeBta/MMTL/internal/repository"
+import "github.com/truewhile/MeBox/internal/repository"
 
 func IsTransientDatabaseLock(err error) bool {
 	return repository.IsSQLiteBusyError(err)

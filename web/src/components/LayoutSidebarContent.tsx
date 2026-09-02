@@ -73,7 +73,7 @@ function LayoutSidebarHeader({
       <Link to="/" className="flex items-center gap-3">
         <img
           src="/brand/logo-192.png"
-          alt="MMTL"
+          alt="MeBox"
           className="h-10 w-10 shrink-0 rounded-xl object-contain shadow-sm"
         />
         {sidebarExpanded && (
@@ -82,7 +82,7 @@ function LayoutSidebarHeader({
             animate={{ opacity: 1, x: 0 }}
             className="font-display text-lg font-extrabold tracking-tight text-[var(--app-text)]"
           >
-            MMTL
+            MeBox
           </motion.span>
         )}
       </Link>

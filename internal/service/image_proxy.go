@@ -2,7 +2,7 @@
 //
 // Some deployments cannot reach image.tmdb.org directly (GFW, internal-only
 // networks). ImageProxy fronts a remote image URL so the browser only ever
-// talks to the MMTL origin. The proxy:
+// talks to the MeBox origin. The proxy:
 //
 //   - validates the URL scheme is http/https,
 //   - streams bytes through with a small disk cache under cache/images,
@@ -20,7 +20,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/config"
+	"github.com/truewhile/MeBox/internal/config"
 )
 
 // ImageProxy fetches and caches remote images on behalf of the browser.

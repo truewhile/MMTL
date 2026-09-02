@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 // Item 单条目详情。

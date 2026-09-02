@@ -18,7 +18,7 @@ verify-downloads/
 .tmp_*
 .tmp-deploy-*
 .tmp-deploy-data/
-.mmtl.pid
+.mebox.pid
 *.db
 *.db-journal
 *.db-shm

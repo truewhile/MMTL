@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 func (o *OrganizerService) lookupReclassifyMetadata(ctx context.Context, media model.Media, lib model.Library, mediaType string) *Match {

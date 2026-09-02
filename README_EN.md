@@ -1,7 +1,7 @@
-# MMTL (My Movie and TV Library)
+# MeBox
 
 <p align="center">
-  <img src="web/public/brand/logo-192.png" width="96" height="96" alt="MMTL Logo" />
+  <img src="web/public/brand/logo-192.png" width="96" height="96" alt="MeBox Logo" />
 </p>
 
 <h3 align="center">A self-hosted media center for NAS and home theater</h3>
@@ -30,9 +30,9 @@
 
 ## Overview
 
-**MMTL** is a self-hosted private media management system for NAS, mini PCs, family sharing, and multi-device playback. This repository is a maintained fork of [MediaStationGo](https://github.com/ShukeBta/MediaStationGo), extended with stronger cloud playback, task queues, remote mounts, and permission controls.
+**MeBox** is a self-hosted private media management system for NAS, mini PCs, family sharing, and multi-device playback. This repository is a maintained fork of [MediaStationGo](https://github.com/ShukeBta/MediaStationGo), extended with stronger cloud playback, task queues, remote mounts, and permission controls.
 
-In practice, MMTL gives you:
+In practice, MeBox gives you:
 
 - A modern **web media library**
 - An **Emby/Jellyfin-compatible protocol gateway** for third-party players
@@ -45,8 +45,8 @@ In practice, MMTL gives you:
 | **Libraries** | Movies, TV, anime, variety, music, custom libraries; multi-root scanning; poster wall; continue watching |
 | **Metadata** | TMDb, Bangumi, Douban, TheTVDB, Fanart, NFO import, manual matching, scrape queue |
 | **Playback** | Web player, HLS transcoding, danmaku, subtitles, play profiles, history and favourites |
-| **Emby protocol** | Add MMTL in Infuse, SenPlayer, Fileball, etc. and sign in with MMTL accounts |
-| **Remote Emby mounts** | Browse remote Emby libraries inside MMTL without a separate Emby client |
+| **Emby protocol** | Add MeBox in Infuse, SenPlayer, Fileball, etc. and sign in with MeBox accounts |
+| **Remote Emby mounts** | Browse remote Emby libraries inside MeBox without a separate Emby client |
 | **Cloud & STRM** | OpenList, CloudDrive2, 115, WebDAV; STRM sync; upload/download queues; direct or 302 playback |
 | **Downloads & organize** | qBittorrent, site search/subscriptions, post-download organization, file manager |
 | **Users & permissions** | Admin/regular users, expiry, NSFW toggle, play-profile PIN, granular permissions |
@@ -65,13 +65,13 @@ In practice, MMTL gives you:
 Docker Compose is the recommended path. The repo ships four **standalone** templates; no `.env` is required.
 
 ```bash
-mkdir -p MMTL && cd MMTL
+mkdir -p MeBox && cd MeBox
 
 # Simplest: one container with built-in SQLite
-curl -fsSL https://raw.githubusercontent.com/truewhile/MMTL/main/docker-compose.simple.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/truewhile/MeBox/main/docker-compose.simple.yml -o docker-compose.yml
 
 # Or PostgreSQL tier for multi-user setups
-# curl -fsSL https://raw.githubusercontent.com/truewhile/MMTL/main/docker-compose.yml -o docker-compose.yml
+# curl -fsSL https://raw.githubusercontent.com/truewhile/MeBox/main/docker-compose.yml -o docker-compose.yml
 
 docker compose up -d
 ```
@@ -87,7 +87,7 @@ Default login: `admin` / `admin123` — change the password immediately.
 Image:
 
 ```text
-ghcr.io/truewhile/mmtl:latest
+ghcr.io/truewhile/mebox:latest
 ```
 
 ---
@@ -98,22 +98,22 @@ Pick one compose file. Do **not** stack multiple `-f` files.
 
 | Tier | File | Stack | Best for |
 | --- | --- | --- | --- |
-| Single image | `docker-compose.simple.yml` | MMTL + SQLite | Beginners, single-user, low-resource NAS |
-| Tier 1 | `docker-compose.yml` | MMTL + PostgreSQL | Most home NAS deployments |
+| Single image | `docker-compose.simple.yml` | MeBox + SQLite | Beginners, single-user, low-resource NAS |
+| Tier 1 | `docker-compose.yml` | MeBox + PostgreSQL | Most home NAS deployments |
 | Tier 2 | `docker-compose.standard.yml` | + Redis | Multi-user, frequent Emby client refreshes |
 | Tier 3 | `docker-compose.search.yml` | + OpenSearch | Very large libraries, advanced full-text search |
 
 ### Single-image notes
 
-- Only one MMTL container; database lives in `./data/mmtl.db`
-- Do **not** set `MMTL_DATABASE_DSN` or it switches to PostgreSQL
+- Only one MeBox container; database lives in `./data/mebox.db`
+- Do **not** set `MEBOX_DATABASE_DSN` or it switches to PostgreSQL
 - Back up `./data`; `./cache` can be rebuilt
 
 ### PostgreSQL notes
 
 - Primary DB: `./postgres`; secrets and runtime files: `./data`
-- Existing `./data/mmtl.db` migrates automatically on first start
-- After migration, point `MMTL_DATABASE_DB_PATH` at a non-existent file to disable re-checks
+- Existing `./data/mebox.db` migrates automatically on first start
+- After migration, point `MEBOX_DATABASE_DB_PATH` at a non-existent file to disable re-checks
 
 ### Backup
 
@@ -126,8 +126,8 @@ Pick one compose file. Do **not** stack multiple `-f` files.
 ### Update
 
 ```bash
-docker compose pull mmtl
-docker compose up -d --no-deps mmtl
+docker compose pull mebox
+docker compose up -d --no-deps mebox
 ```
 
 ---
@@ -138,7 +138,7 @@ The most common Docker mistake is mixing host paths with container paths.
 
 - Left side of `volumes` = real host/NAS path
 - Right side = container path; use `/media/...` in the web UI
-- Keep `MMTL_MEDIA_DIR` / `MMTL_DOWNLOAD_DIR` aligned with mounts when organizing or ingesting downloads
+- Keep `MEBOX_MEDIA_DIR` / `MEBOX_DOWNLOAD_DIR` aligned with mounts when organizing or ingesting downloads
 
 Example:
 
@@ -147,10 +147,10 @@ volumes:
   - /vol1/1000/Media:/media
   - /vol1/1000/Downloads:/downloads
 environment:
-  MMTL_MEDIA_DIR: /vol1/1000/Media
-  MMTL_MEDIA_CONTAINER_DIR: /media
-  MMTL_DOWNLOAD_DIR: /vol1/1000/Downloads
-  MMTL_DOWNLOAD_CONTAINER_DIR: /downloads
+  MEBOX_MEDIA_DIR: /vol1/1000/Media
+  MEBOX_MEDIA_CONTAINER_DIR: /media
+  MEBOX_DOWNLOAD_DIR: /vol1/1000/Downloads
+  MEBOX_DOWNLOAD_CONTAINER_DIR: /downloads
 ```
 
 ---
@@ -161,7 +161,7 @@ environment:
 2. Add metadata providers (TMDb, Bangumi, etc.) in system settings
 3. Optionally connect qBittorrent (`http://host.docker.internal:8085` when qB runs on the host)
 4. Optionally configure cloud accounts under STRM management
-5. Add the server in Emby-compatible players at `http://SERVER_IP:18080` using MMTL credentials
+5. Add the server in Emby-compatible players at `http://SERVER_IP:18080` using MeBox credentials
 
 ---
 
@@ -177,7 +177,7 @@ Ensure the download directory is mounted into the container and env vars match.
 Hardlinks require the same filesystem/subvolume; use copy or symlink across disks or cloud mounts.
 
 **External player cannot connect**  
-Use `http://IP:18080` and a MMTL user account; reverse proxies need correct external URL and HTTPS headers.
+Use `http://IP:18080` and a MeBox user account; reverse proxies need correct external URL and HTTPS headers.
 
 ---
 
@@ -200,7 +200,7 @@ Release builds ship single-file binaries for Windows, Linux, and macOS on amd64 
 
 ## Acknowledgements
 
-MMTL is forked from and continues to evolve [MediaStationGo](https://github.com/ShukeBta/MediaStationGo). Thank you to the upstream project for the media-library architecture, Emby-protocol compatibility, and self-hosted foundation.
+MeBox is forked from and continues to evolve [MediaStationGo](https://github.com/ShukeBta/MediaStationGo). Thank you to the upstream project for the media-library architecture, Emby-protocol compatibility, and self-hosted foundation.
 
 Many cloud sync, STRM, and media-organization ideas in this project were also informed by [qmediasync](https://github.com/qicfan/qmediasync). Thank you for the reference implementation and design patterns.
 
@@ -214,11 +214,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md) before ope
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=truewhile%2FMMTL&type=date&legend=top-left">
+<a href="https://www.star-history.com/?repos=truewhile%2FMeBox&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=truewhile/MMTL&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=truewhile/MMTL&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=truewhile/MMTL&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=truewhile/MeBox&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=truewhile/MeBox&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=truewhile/MeBox&type=date&legend=top-left" />
  </picture>
 </a>
 

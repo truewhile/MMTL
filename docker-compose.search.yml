@@ -1,7 +1,7 @@
-# MMTL 第三档完整 Docker Compose 部署文件
+# MeBox 第三档完整 Docker Compose 部署文件
 #
 # 组件：
-#   MMTL + PostgreSQL + Redis + OpenSearch
+#   MeBox + PostgreSQL + Redis + OpenSearch
 #
 # 使用方式二选一：
 #   1. 保存为 docker-compose.yml 后执行：
@@ -19,8 +19,8 @@
 #   admin / admin123
 
 services:
-  mmtl:
-    image: ghcr.io/truewhile/mmtl:latest
+  mebox:
+    image: ghcr.io/truewhile/mebox:latest
 
     restart: unless-stopped
     init: true
@@ -74,45 +74,45 @@ services:
       PUID: "1000"
       PGID: "1000"
 
-      MMTL_APP_HOST: 0.0.0.0
-      MMTL_APP_PORT: 8080
-      MMTL_APP_WEB_DIR: /app/web/dist
-      MMTL_APP_DATA_DIR: /data
-      MMTL_LOGGING_LEVEL: info
-      MMTL_LOGGING_FORMAT: console
-      MMTL_LOGGING_OUTPUT_PATH: /data/logs
-      MMTL_LOGGING_MAX_SIZE_MB: "50"
-      MMTL_LOGGING_MAX_BACKUPS: "20"
-      MMTL_LOGGING_MAX_AGE_DAYS: "30"
+      MEBOX_APP_HOST: 0.0.0.0
+      MEBOX_APP_PORT: 8080
+      MEBOX_APP_WEB_DIR: /app/web/dist
+      MEBOX_APP_DATA_DIR: /data
+      MEBOX_LOGGING_LEVEL: info
+      MEBOX_LOGGING_FORMAT: console
+      MEBOX_LOGGING_OUTPUT_PATH: /data/logs
+      MEBOX_LOGGING_MAX_SIZE_MB: "50"
+      MEBOX_LOGGING_MAX_BACKUPS: "20"
+      MEBOX_LOGGING_MAX_AGE_DAYS: "30"
 
-      MMTL_DATABASE_TYPE: postgres
-      MMTL_DATABASE_DSN: postgres://mmtl:mmtl@postgres:5432/mmtl?sslmode=disable
-      MMTL_DATABASE_DB_PATH: /data/mmtl.db
+      MEBOX_DATABASE_TYPE: postgres
+      MEBOX_DATABASE_DSN: postgres://mebox:mebox@postgres:5432/mebox?sslmode=disable
+      MEBOX_DATABASE_DB_PATH: /data/mebox.db
 
-      MMTL_CACHE_REDIS_URL: redis://redis:6379/0
-      MMTL_CACHE_CACHE_DIR: /cache
+      MEBOX_CACHE_REDIS_URL: redis://redis:6379/0
+      MEBOX_CACHE_CACHE_DIR: /cache
 
       # OpenSearch 只做搜索索引，主数据仍以 PostgreSQL 为准。
-      MMTL_SEARCH_BACKEND: opensearch
-      MMTL_SEARCH_OPENSEARCH_URL: http://opensearch:9200
-      MMTL_SEARCH_INDEX: mmtl_media
+      MEBOX_SEARCH_BACKEND: opensearch
+      MEBOX_SEARCH_OPENSEARCH_URL: http://opensearch:9200
+      MEBOX_SEARCH_INDEX: mebox_media
 
-      MMTL_UPDATE_IMAGE: ghcr.io/truewhile/mmtl:latest
+      MEBOX_UPDATE_IMAGE: ghcr.io/truewhile/mebox:latest
 
       # 默认推荐在网页里使用容器路径 /media。
       # 如果旧媒体库已经保存了宿主机路径 /vol1/1000/Media，
       # 再把这里改成同一个宿主机真实路径用于旧路径换算。
-      MMTL_MEDIA_DIR: /media
-      MMTL_MEDIA_CONTAINER_DIR: /media
-      MMTL_DOWNLOAD_DIR: /downloads
-      MMTL_DOWNLOAD_CONTAINER_DIR: /downloads
+      MEBOX_MEDIA_DIR: /media
+      MEBOX_MEDIA_CONTAINER_DIR: /media
+      MEBOX_DOWNLOAD_DIR: /downloads
+      MEBOX_DOWNLOAD_CONTAINER_DIR: /downloads
 
-      MMTL_TRANSCODER_ENABLED: "true"
-      MMTL_TRANSCODER_HARDWARE_ACCEL: "false"
-      MMTL_TRANSCODER_REALTIME: "true"
-      MMTL_TRANSCODER_THREADS: "2"
-      MMTL_TRANSCODER_MAX_CONCURRENT: "1"
-      MMTL_TRANSCODER_IDLE_TIMEOUT_SECONDS: "120"
+      MEBOX_TRANSCODER_ENABLED: "true"
+      MEBOX_TRANSCODER_HARDWARE_ACCEL: "false"
+      MEBOX_TRANSCODER_REALTIME: "true"
+      MEBOX_TRANSCODER_THREADS: "2"
+      MEBOX_TRANSCODER_MAX_CONCURRENT: "1"
+      MEBOX_TRANSCODER_IDLE_TIMEOUT_SECONDS: "120"
 
     healthcheck:
       test: ["CMD-SHELL", "busybox wget -qO- http://127.0.0.1:8080/api/health || exit 1"]
@@ -129,18 +129,18 @@ services:
 
   postgres:
     image: postgres:16-alpine
-    # 首次部署允许拉取；日常更新请只 pull mmtl。
+    # 首次部署允许拉取；日常更新请只 pull mebox。
     pull_policy: missing
     restart: unless-stopped
     environment:
-      POSTGRES_DB: mmtl
-      POSTGRES_USER: mmtl
-      POSTGRES_PASSWORD: mmtl
+      POSTGRES_DB: mebox
+      POSTGRES_USER: mebox
+      POSTGRES_PASSWORD: mebox
       TZ: Asia/Shanghai
     volumes:
       - ./postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U mmtl -d mmtl"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U mebox -d mebox"]
       interval: 10s
       timeout: 5s
       retries: 10

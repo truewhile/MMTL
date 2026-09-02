@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 func (s *SessionTrackerService) ApplyToUsers(ctx context.Context, users []model.User) {

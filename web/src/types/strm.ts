@@ -27,7 +27,7 @@ export interface StrmAccount {
   has_credential: boolean
   provider_label: string
   config_preview?: StrmAccountConfigPreview
-  /** 仅远程 Emby 挂载账号返回：播放流量是否经过 MMTL 代理 */
+  /** 仅远程 Emby 挂载账号返回：播放流量是否经过 MeBox 代理 */
   proxy_play?: boolean
   /** 仅远程 Emby 挂载账号返回：多线路配置 */
   emby_lines?: EmbyRemoteLine[]

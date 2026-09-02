@@ -41,8 +41,8 @@ func (o *OrganizerService) OrganizeSourceCandidates(ctx context.Context) []Organ
 	}
 	add("默认整理源", o.settingValue(ctx, "organize.source_dir"), "source")
 	add("下载器保存目录", o.settingValue(ctx, "qbittorrent.savepath"), "download")
-	add("下载目录", envOrDefault("MMTL_DOWNLOAD_CONTAINER_DIR", "/downloads"), "download")
-	add("媒体目录", envOrDefault("MMTL_MEDIA_CONTAINER_DIR", "/media"), "media")
+	add("下载目录", envOrDefault("MEBOX_DOWNLOAD_CONTAINER_DIR", "/downloads"), "download")
+	add("媒体目录", envOrDefault("MEBOX_MEDIA_CONTAINER_DIR", "/media"), "media")
 	return out
 }
 
@@ -69,7 +69,7 @@ func (o *OrganizerService) defaultSourceRoot(ctx context.Context, override strin
 	if v := o.settingValue(ctx, "qbittorrent.savepath"); v != "" {
 		return v
 	}
-	return envOrDefault("MMTL_DOWNLOAD_CONTAINER_DIR", "/downloads")
+	return envOrDefault("MEBOX_DOWNLOAD_CONTAINER_DIR", "/downloads")
 }
 
 // defaultDestRoot resolves the destination root for a directory organize:
@@ -83,7 +83,7 @@ func (o *OrganizerService) defaultDestRoot(ctx context.Context, override string)
 			return strings.TrimSpace(v)
 		}
 	}
-	return envOrDefault("MMTL_MEDIA_CONTAINER_DIR", "/media")
+	return envOrDefault("MEBOX_MEDIA_CONTAINER_DIR", "/media")
 }
 
 func ensureOrganizeDestinationWritable(dest string) error {
@@ -97,7 +97,7 @@ func ensureOrganizeDestinationWritable(dest string) error {
 	if err := os.MkdirAll(dest, 0o755); err != nil { // #nosec G301 -- organized media directories must remain readable by NAS/player users.
 		return fmt.Errorf("destination path is not a writable directory: %s: %w", dest, err)
 	}
-	probe, err := os.CreateTemp(dest, ".mmtl-write-test-*") // #nosec G304 -- dest is operator-configured organize root.
+	probe, err := os.CreateTemp(dest, ".mebox-write-test-*") // #nosec G304 -- dest is operator-configured organize root.
 	if err != nil {
 		return fmt.Errorf("destination path is not writable: %s: %w", dest, err)
 	}

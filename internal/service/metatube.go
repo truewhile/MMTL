@@ -273,7 +273,7 @@ func (p *MetaTubeProvider) applyAuthHeader(req *http.Request, token string) {
 		req.Header.Set("X-Token", token)
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "MMTL/1.0 (MetaTube Client)")
+	req.Header.Set("User-Agent", "MeBox/1.0 (MetaTube Client)")
 }
 
 func (p *MetaTubeProvider) convertSearchResultToMatch(query string, res *MetaTubeSearchResult) *Match {

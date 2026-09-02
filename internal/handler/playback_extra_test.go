@@ -15,11 +15,11 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MMTL/internal/config"
-	"github.com/ShukeBta/MMTL/internal/middleware"
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/repository"
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/middleware"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/repository"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 func TestExternalURLUsesMediaScopedPlaybackToken(t *testing.T) {
@@ -109,7 +109,7 @@ func TestExternalURLPrefersBrowserPublicOriginOverForwardedSource(t *testing.T) 
 	req.Header.Set("Authorization", "Bearer "+loginToken)
 	req.Header.Set("X-Forwarded-Proto", "https")
 	req.Header.Set("X-Forwarded-Host", "media.v6.agonyz.dpdns.org")
-	req.Header.Set("X-MMTL-Public-Origin", "https://media.agonyz.dpdns.org")
+	req.Header.Set("X-MeBox-Public-Origin", "https://media.agonyz.dpdns.org")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -140,7 +140,7 @@ func TestExternalPlayersSanitizeBrowserPublicOrigin(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "http://origin.internal/api/playback/media-1/external-players", nil)
 	req.Header.Set("Authorization", "Bearer "+loginToken)
-	req.Header.Set("X-MMTL-Public-Origin", "https://user:pass@media.agonyz.dpdns.org/sneaky/path?x=1#frag")
+	req.Header.Set("X-MeBox-Public-Origin", "https://user:pass@media.agonyz.dpdns.org/sneaky/path?x=1#frag")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -184,7 +184,7 @@ func TestExternalURLFallsBackToConfiguredPublicServerURL(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+loginToken)
 	req.Header.Set("X-Forwarded-Proto", "https")
 	req.Header.Set("X-Forwarded-Host", "source.example.test")
-	req.Header.Set("X-MMTL-Public-Origin", "javascript:alert(1)")
+	req.Header.Set("X-MeBox-Public-Origin", "javascript:alert(1)")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -211,7 +211,7 @@ func TestExternalURLPrefersConfiguredPublicServerURLOverLocalBrowserOrigin(t *te
 
 	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080/api/playback/media-1/external-url", nil)
 	req.Header.Set("Authorization", "Bearer "+loginToken)
-	req.Header.Set("X-MMTL-Public-Origin", "http://127.0.0.1:8080")
+	req.Header.Set("X-MeBox-Public-Origin", "http://127.0.0.1:8080")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 

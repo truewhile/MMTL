@@ -1,6 +1,6 @@
 package service
 
-import "github.com/ShukeBta/MMTL/internal/model"
+import "github.com/truewhile/MeBox/internal/model"
 
 func applyLocalMetadata(m *model.Media, local *LocalMetadata) {
 	applyLocalIdentityMetadata(m, local)

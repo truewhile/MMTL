@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/repository"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/repository"
 )
 
 // SearchMedia performs a simple LIKE search across titles.

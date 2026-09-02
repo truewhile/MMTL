@@ -14,8 +14,8 @@ func TestResolveAccessibleLibraryPathMapsConfiguredHostMediaDir(t *testing.T) {
 	if err := os.MkdirAll(containerLibrary, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("MMTL_MEDIA_DIR", hostRoot)
-	t.Setenv("MMTL_MEDIA_CONTAINER_DIR", containerRoot)
+	t.Setenv("MEBOX_MEDIA_DIR", hostRoot)
+	t.Setenv("MEBOX_MEDIA_CONTAINER_DIR", containerRoot)
 
 	got, err := resolveAccessibleLibraryPath(filepath.Join(hostRoot, "电视剧", "国产剧"))
 	if err != nil {
@@ -33,8 +33,8 @@ func TestResolveAccessibleLibraryPathMapsWindowsDriveBeforeLinuxAbs(t *testing.T
 	if err := os.MkdirAll(containerLibrary, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("MMTL_MEDIA_DIR", `Q:\media`)
-	t.Setenv("MMTL_MEDIA_CONTAINER_DIR", containerRoot)
+	t.Setenv("MEBOX_MEDIA_DIR", `Q:\media`)
+	t.Setenv("MEBOX_MEDIA_CONTAINER_DIR", containerRoot)
 
 	for _, input := range []string{
 		`Q:\media\电视剧\国产剧`,
@@ -61,8 +61,8 @@ func TestResolveAccessibleLibraryPathRecoversDockerPollutedWindowsDrive(t *testi
 	if err := os.MkdirAll(containerLibrary, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("MMTL_MEDIA_DIR", `F:\media`)
-	t.Setenv("MMTL_MEDIA_CONTAINER_DIR", containerRoot)
+	t.Setenv("MEBOX_MEDIA_DIR", `F:\media`)
+	t.Setenv("MEBOX_MEDIA_CONTAINER_DIR", containerRoot)
 
 	got, err := resolveAccessibleLibraryPath(`/app/F:\media\电视剧\国产剧`)
 	if err != nil {
@@ -95,7 +95,7 @@ func TestResolveAccessibleLibraryPathMapsRelativeDockerMediaMarker(t *testing.T)
 	if err := os.MkdirAll(containerLibrary, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("MMTL_MEDIA_CONTAINER_DIR", containerRoot)
+	t.Setenv("MEBOX_MEDIA_CONTAINER_DIR", containerRoot)
 
 	got, err := resolveAccessibleLibraryPath(filepath.Join("media", "电视剧", "国产剧"))
 	if err != nil {
@@ -116,7 +116,7 @@ func TestResolveAccessibleLibraryPathMapsEmbeddedHostMediaMarker(t *testing.T) {
 	if err := os.MkdirAll(containerLibrary, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("MMTL_MEDIA_CONTAINER_DIR", containerRoot)
+	t.Setenv("MEBOX_MEDIA_CONTAINER_DIR", containerRoot)
 
 	got, err := resolveAccessibleLibraryPath("/vol1/1000/Docker/moviepilot-v2/media/电视剧/国产剧")
 	if err != nil {
@@ -134,7 +134,7 @@ func TestResolveAccessibleMappedPathMapsEmbeddedHostDownloadMarker(t *testing.T)
 	if err := os.MkdirAll(containerItem, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("MMTL_DOWNLOAD_CONTAINER_DIR", containerDownloads)
+	t.Setenv("MEBOX_DOWNLOAD_CONTAINER_DIR", containerDownloads)
 
 	got, _, err := resolveAccessibleMappedPath("/vol1/1000/Docker/qbittorrent/downloads/国产剧")
 	if err != nil {
@@ -180,7 +180,7 @@ func TestMappedPathCandidatesMapWindowsDriveDownloadMarker(t *testing.T) {
 	root := t.TempDir()
 	containerDownloads := filepath.Join(root, "container", "downloads")
 	containerLibrary := filepath.Join(containerDownloads, "国产剧")
-	t.Setenv("MMTL_DOWNLOAD_CONTAINER_DIR", containerDownloads)
+	t.Setenv("MEBOX_DOWNLOAD_CONTAINER_DIR", containerDownloads)
 
 	want := filepath.Clean(containerLibrary)
 	for _, got := range mappedPathCandidates(`F:\downloads\国产剧`) {
@@ -197,8 +197,8 @@ func TestResolveMappedDestinationPathPrefersConfiguredContainerMapping(t *testin
 	if err := os.MkdirAll(containerMedia, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("MMTL_MEDIA_DIR", `Q:\media`)
-	t.Setenv("MMTL_MEDIA_CONTAINER_DIR", containerMedia)
+	t.Setenv("MEBOX_MEDIA_DIR", `Q:\media`)
+	t.Setenv("MEBOX_MEDIA_CONTAINER_DIR", containerMedia)
 
 	for _, input := range []string{`Q:\media`, `Q:/media`, `/app/Q:\media`} {
 		t.Run(input, func(t *testing.T) {
@@ -221,7 +221,7 @@ func TestResolveMappedDestinationPathPrefersContainerForRelativeMediaMarker(t *t
 		t.Fatal(err)
 	}
 	t.Chdir(workDir)
-	t.Setenv("MMTL_MEDIA_CONTAINER_DIR", containerMedia)
+	t.Setenv("MEBOX_MEDIA_CONTAINER_DIR", containerMedia)
 
 	got := resolveMappedDestinationPath(filepath.Join("media", "电视剧", "国产剧"))
 	want := filepath.Join(containerMedia, "电视剧", "国产剧")
@@ -237,8 +237,8 @@ func TestResolveAccessibleMappedPathMapsWindowsDownloadVariants(t *testing.T) {
 	if err := os.MkdirAll(containerSource, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("MMTL_DOWNLOAD_DIR", `Q:\downloads`)
-	t.Setenv("MMTL_DOWNLOAD_CONTAINER_DIR", containerDownloads)
+	t.Setenv("MEBOX_DOWNLOAD_DIR", `Q:\downloads`)
+	t.Setenv("MEBOX_DOWNLOAD_CONTAINER_DIR", containerDownloads)
 
 	for _, input := range []string{`Q:\downloads\国产剧`, `Q:/downloads/国产剧`, `/app/Q:\downloads\国产剧`} {
 		t.Run(input, func(t *testing.T) {

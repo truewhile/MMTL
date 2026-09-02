@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 func (e *EmbyService) seriesIDForMedia(m *model.Media) string {

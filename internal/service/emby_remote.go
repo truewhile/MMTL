@@ -1,13 +1,13 @@
 // EmbyRemoteService 是「远程 Emby 联邦聚合」核心：把挂载的远程 Emby 服务器
-// 作为外部媒体源，通过 MMTL 的 Emby 兼容 API 透出。
+// 作为外部媒体源，通过 MeBox 的 Emby 兼容 API 透出。
 //
 // 设计要点：
 //   - 远程媒体的元数据完全不落库：每次请求实时向远程 Emby 拉取；
 //   - 条目 ID 用 embyremote~{accountID}~{remoteID} 伪装（见 emby_remote_ids.go），
 //     客户端拿伪装 ID 回来时按账号路由回远程；
 //   - 播放分流由账号级 proxy_play 配置决定：
-//     不代理（默认）= MediaSource 下发热门远程绝对 URL，播放字节完全不经过 MMTL；
-//     代理 = 下发 MMTL 本地 /Videos/{encoded} 端点，由 ProxyVideoStream 反向拉流。
+//     不代理（默认）= MediaSource 下发热门远程绝对 URL，播放字节完全不经过 MeBox；
+//     代理 = 下发 MeBox 本地 /Videos/{encoded} 端点，由 ProxyVideoStream 反向拉流。
 //
 // 配置复用 STRM 账号体系（StrmAccount.Provider = emby_remote），CRUD/加密/连通
 // 测试全部走既有 /admin/strm/accounts 接口，不需要新增数据表。
@@ -30,9 +30,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/config"
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/repository"
+	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/repository"
 )
 
 // embyRemoteHTTPTimeout 远程 Emby 常规 API 请求超时（流式代理不在此列）。
@@ -63,7 +63,7 @@ type EmbyRemoteConfig struct {
 	Password     string
 	Token        string // api_key（手动填写或自动认证获得）
 	RemoteUserID string // 远程用户 Id（自动认证后回填）
-	ProxyPlay    bool   // true=播放流量经 MMTL 反向代理；false=客户端直连远程
+	ProxyPlay    bool   // true=播放流量经 MeBox 反向代理；false=客户端直连远程
 }
 
 // EmbyRemoteService 提供对远程 Emby 服务器的读写封装。
@@ -401,7 +401,7 @@ func (r *EmbyRemoteService) ensureTokenOnLine(ctx context.Context, acct *model.S
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Emby-Authorization", `MediaBrowser Client="MMTL", Device="MMTL-Federated", DeviceId="mmtl-federated", Version="1.0"`)
+	req.Header.Set("X-Emby-Authorization", `MediaBrowser Client="MeBox", Device="MeBox-Federated", DeviceId="mebox-federated", Version="1.0"`)
 	resp, err := r.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("连接远程 Emby 失败: %w", err)
@@ -699,7 +699,7 @@ func (r *EmbyRemoteService) RemoteLatest(ctx context.Context, mount *model.EmbyM
 }
 
 // RemotePlaybackInfo 拉取远程 PlaybackInfo，并按挂载的 proxy_play 配置重写
-// 播放 URL：不代理=指向远程绝对地址（播放字节不过 MMTL）；代理=指向 MMTL
+// 播放 URL：不代理=指向远程绝对地址（播放字节不过 MeBox）；代理=指向 MeBox
 // 本地 /Videos/{encodedID} 端点（由 ProxyVideoStream 反代）。
 func (r *EmbyRemoteService) RemotePlaybackInfo(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, remoteID, userID string) (map[string]any, error) {
 	cfg, err := r.configOf(acct)
@@ -719,7 +719,7 @@ func (r *EmbyRemoteService) RemotePlaybackInfo(ctx context.Context, mount *model
 
 // rewritePlayURLs 按挂载代理模式重写载荷内 MediaSources 的播放地址。
 // 远程 Emby 的 PlaybackInfo 通常不返回 DirectStreamUrl（客户端靠它拼
-// /Videos/{Id}/stream），因此这里总是强制构造播放地址，完全由 MMTL 掌控
+// /Videos/{Id}/stream），因此这里总是强制构造播放地址，完全由 MeBox 掌控
 // 直连（远程绝对 URL）或代理（本地 /Videos/{encoded}）的最终去向。
 func (r *EmbyRemoteService) rewritePlayURLs(value any, mount *model.EmbyMount, cfg *EmbyRemoteConfig, remoteID string) {
 	encoded := EncodeEmbyRemoteID(mount.ID, remoteID)
@@ -979,7 +979,7 @@ func (r *EmbyRemoteService) proxySubtitleOnLine(ctx context.Context, w http.Resp
 
 // ─── 播放状态透传 ──────────────────────────────────────────────────────────────
 
-// ProxySetPlayed 把「已看/未看」状态透传到远程 Emby（MMTL 本地不落库）。
+// ProxySetPlayed 把「已看/未看」状态透传到远程 Emby（MeBox 本地不落库）。
 func (r *EmbyRemoteService) ProxySetPlayed(ctx context.Context, acct *model.StrmAccount, remoteID string, played bool) error {
 	cfg, err := r.configOf(acct)
 	if err != nil {

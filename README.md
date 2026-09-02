@@ -1,7 +1,7 @@
-# MMTL (My Movie and TV Library)
+# MeBox
 
 <p align="center">
-  <img src="web/public/brand/logo-192.png" width="96" height="96" alt="MMTL Logo" />
+  <img src="web/public/brand/logo-192.png" width="96" height="96" alt="MeBox Logo" />
 </p>
 
 <h3 align="center">面向 NAS 与家庭影音场景的私人媒体中心</h3>
@@ -31,9 +31,9 @@
 
 ## 项目简介
 
-**MMTL** 是一个自托管私人媒体管理系统，适合 NAS、小主机、家庭共享和多端播放场景。本项目由 [MediaStationGo](https://github.com/ShukeBta/MediaStationGo) fork 并持续二开维护，在保留「一套服务覆盖网页、手机、电视与第三方播放器」思路的同时，围绕网盘播放、任务队列、远程挂载和权限体系做了大量增强。
+**MeBox** 是一个自托管私人媒体管理系统，适合 NAS、小主机、家庭共享和多端播放场景。本项目由 [MediaStationGo](https://github.com/ShukeBta/MediaStationGo) fork 并持续二开维护，在保留「一套服务覆盖网页、手机、电视与第三方播放器」思路的同时，围绕网盘播放、任务队列、远程挂载和权限体系做了大量增强。
 
-你可以把 MMTL 理解为：
+你可以把 MeBox 理解为：
 
 - 一个带现代 Web UI 的**媒体库后台**
 - 一个兼容 Emby/Jellyfin 客户端的**协议网关**
@@ -46,7 +46,7 @@
 | **媒体库** | 电影、电视剧、动漫、综艺、音乐与自定义库；多根目录、扫库、海报墙、继续观看 |
 | **元数据刮削** | TMDb、Bangumi、Douban、TheTVDB、Fanart 等；支持 NFO、手动匹配、刮削队列 |
 | **播放** | 网页播放器、HLS 转码、弹幕、字幕、播放配置档、观看历史与收藏 |
-| **Emby 协议** | Infuse、SenPlayer、Fileball 等客户端可直接添加本服务，使用 MMTL 账号登录 |
+| **Emby 协议** | Infuse、SenPlayer、Fileball 等客户端可直接添加本服务，使用 MeBox 账号登录 |
 | **远程 Emby 挂载** | 将远程 Emby 媒体库挂载到本地界面统一浏览（无需单独开 Emby 客户端） |
 | **网盘与 STRM** | OpenList、CloudDrive2、115、WebDAV 等；STRM 同步、上传/下载队列、直链/302 播放 |
 | **下载与整理** | qBittorrent 接入、站点搜索与订阅、下载后自动整理、文件管理器（复制/移动/硬链/软链） |
@@ -66,13 +66,13 @@
 推荐使用 Docker Compose。仓库提供四份**互相独立**的完整模板，无需 `.env` 即可起步。
 
 ```bash
-mkdir -p MMTL && cd MMTL
+mkdir -p MeBox && cd MeBox
 
 # 最省心：单镜像 + 内置 SQLite
-curl -fsSL https://raw.githubusercontent.com/truewhile/MMTL/main/docker-compose.simple.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/truewhile/MeBox/main/docker-compose.simple.yml -o docker-compose.yml
 
 # 或多用户场景：PostgreSQL 第一档
-# curl -fsSL https://raw.githubusercontent.com/truewhile/MMTL/main/docker-compose.yml -o docker-compose.yml
+# curl -fsSL https://raw.githubusercontent.com/truewhile/MeBox/main/docker-compose.yml -o docker-compose.yml
 
 docker compose up -d
 ```
@@ -88,7 +88,7 @@ http://服务器IP:18080
 镜像地址：
 
 ```text
-ghcr.io/truewhile/mmtl:latest
+ghcr.io/truewhile/mebox:latest
 ```
 
 ---
@@ -99,16 +99,16 @@ ghcr.io/truewhile/mmtl:latest
 
 | 档位 | 配置文件 | 组件 | 适合场景 |
 | --- | --- | --- | --- |
-| 单镜像档 | `docker-compose.simple.yml` | MMTL + SQLite | 新手、单人、低配 NAS，只想一个容器跑起来 |
-| 第一档 | `docker-compose.yml` | MMTL + PostgreSQL | 大多数家庭 NAS，多用户更稳 |
+| 单镜像档 | `docker-compose.simple.yml` | MeBox + SQLite | 新手、单人、低配 NAS，只想一个容器跑起来 |
+| 第一档 | `docker-compose.yml` | MeBox + PostgreSQL | 大多数家庭 NAS，多用户更稳 |
 | 第二档 | `docker-compose.standard.yml` | + Redis | 多用户、Emby 客户端频繁刷新、首页/列表访问多 |
 | 第三档 | `docker-compose.search.yml` | + OpenSearch | 超大媒体库、复杂全文搜索（内存占用更高） |
 
 ### 单镜像档要点
 
-- 只启动 **一个** MMTL 容器，数据在 `./data/mmtl.db`
+- 只启动 **一个** MeBox 容器，数据在 `./data/mebox.db`
 - 通常只需改端口与媒体目录挂载
-- **不要**设置 `MMTL_DATABASE_DSN`，否则会切到 PostgreSQL
+- **不要**设置 `MEBOX_DATABASE_DSN`，否则会切到 PostgreSQL
 
 ```yaml
 ports:
@@ -124,11 +124,11 @@ volumes:
 ### PostgreSQL 档位要点
 
 - 主库在 `./postgres`，配置与密钥在 `./data`
-- 若存在旧版 `./data/mmtl.db`，首次启动会自动迁移到 PostgreSQL
-- 迁移完成后可将 `MMTL_DATABASE_DB_PATH` 改为不存在路径，避免重复检查：
+- 若存在旧版 `./data/mebox.db`，首次启动会自动迁移到 PostgreSQL
+- 迁移完成后可将 `MEBOX_DATABASE_DB_PATH` 改为不存在路径，避免重复检查：
 
 ```yaml
-MMTL_DATABASE_DB_PATH: /data/no-sqlite-migration.db
+MEBOX_DATABASE_DB_PATH: /data/no-sqlite-migration.db
 ```
 
 ### 必须备份与可重建
@@ -144,11 +144,11 @@ MMTL_DATABASE_DB_PATH: /data/no-sqlite-migration.db
 ### 更新镜像
 
 ```bash
-docker compose pull mmtl
-docker compose up -d --no-deps mmtl
+docker compose pull mebox
+docker compose up -d --no-deps mebox
 ```
 
-日常更新只拉 `mmtl` 服务即可，不要随意 `docker compose pull` 升级 PostgreSQL/Redis/OpenSearch 基础镜像。
+日常更新只拉 `mebox` 服务即可，不要随意 `docker compose pull` 升级 PostgreSQL/Redis/OpenSearch 基础镜像。
 
 ---
 
@@ -158,7 +158,7 @@ Docker 部署最常见的问题是路径填错。记住：
 
 - `volumes` **左侧**是宿主机真实路径，**右侧**是容器内路径
 - 网页后台添加媒体库时，应填写**容器内**路径（如 `/media/电影`）
-- 若使用自动整理/下载入库，`MMTL_MEDIA_DIR` 与 `MMTL_DOWNLOAD_DIR` 需与挂载一致
+- 若使用自动整理/下载入库，`MEBOX_MEDIA_DIR` 与 `MEBOX_DOWNLOAD_DIR` 需与挂载一致
 
 NAS 示例：
 
@@ -167,10 +167,10 @@ volumes:
   - /vol1/1000/Media:/media
   - /vol1/1000/Downloads:/downloads
 environment:
-  MMTL_MEDIA_DIR: /vol1/1000/Media
-  MMTL_MEDIA_CONTAINER_DIR: /media
-  MMTL_DOWNLOAD_DIR: /vol1/1000/Downloads
-  MMTL_DOWNLOAD_CONTAINER_DIR: /downloads
+  MEBOX_MEDIA_DIR: /vol1/1000/Media
+  MEBOX_MEDIA_CONTAINER_DIR: /media
+  MEBOX_DOWNLOAD_DIR: /vol1/1000/Downloads
+  MEBOX_DOWNLOAD_CONTAINER_DIR: /downloads
 ```
 
 ---
@@ -181,7 +181,7 @@ environment:
 2. **配置元数据源** → 系统设置中添加 TMDb、Bangumi 等 API
 3. **（可选）连接 qBittorrent** → 下载客户端设置，宿主机可用 `http://host.docker.internal:8085`
 4. **（可选）配置网盘账号** → STRM 管理中添加 OpenList / 115 / WebDAV 等
-5. **第三方播放器** → 以 Emby 服务器添加 `http://服务器IP:18080`，使用 MMTL 账号登录
+5. **第三方播放器** → 以 Emby 服务器添加 `http://服务器IP:18080`，使用 MeBox 账号登录
 
 ---
 
@@ -191,13 +191,13 @@ environment:
 先确认路径映射与数据库档位。网盘扫描还受接口限速与目录规模影响；大库可考虑第二档 Redis 或第三档 OpenSearch。
 
 **qBittorrent 下载后无法整理？**  
-确认下载目录已通过 `volumes` 挂进容器，且 `MMTL_DOWNLOAD_*` 环境变量对应正确。
+确认下载目录已通过 `volumes` 挂进容器，且 `MEBOX_DOWNLOAD_*` 环境变量对应正确。
 
 **硬链接失败（cross-device link）？**  
 硬链接要求源与目标在同一文件系统/子卷；跨盘、跨 btrfs 子卷或网盘挂载时请改用复制或软链接。
 
 **第三方播放器连不上？**  
-确认地址为 `http://IP:18080`，使用 MMTL 用户账号；反代部署需正确配置外部 URL 与 HTTPS 头。
+确认地址为 `http://IP:18080`，使用 MeBox 用户账号；反代部署需正确配置外部 URL 与 HTTPS 头。
 
 ---
 
@@ -220,7 +220,7 @@ CI 会在 Release 中提供 Windows / Linux / macOS 的 amd64、arm64 单文件�
 
 ## 鸣谢
 
-MMTL 在 [MediaStationGo](https://github.com/ShukeBta/MediaStationGo) 的基础上 fork 并持续演进。感谢上游项目在媒体库架构、Emby 协议兼容和自托管体验上的奠基工作。
+MeBox 在 [MediaStationGo](https://github.com/ShukeBta/MediaStationGo) 的基础上 fork 并持续演进。感谢上游项目在媒体库架构、Emby 协议兼容和自托管体验上的奠基工作。
 
 项目中许多网盘同步、STRM 与媒体整理相关的设计与实现，也参考了 [qmediasync](https://github.com/qicfan/qmediasync)。感谢该项目的思路与实践经验。
 
@@ -238,11 +238,11 @@ MMTL 在 [MediaStationGo](https://github.com/ShukeBta/MediaStationGo) 的基础�
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=truewhile%2FMMTL&type=date&legend=top-left">
+<a href="https://www.star-history.com/?repos=truewhile%2FMeBox&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=truewhile/MMTL&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=truewhile/MMTL&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=truewhile/MMTL&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=truewhile/MeBox&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=truewhile/MeBox&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=truewhile/MeBox&type=date&legend=top-left" />
  </picture>
 </a>
 
