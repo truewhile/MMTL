@@ -29,9 +29,8 @@ const (
 
 // downloadWorker 下载队列 worker：认领 → 解析直链 → 下载 → 落盘。
 //
-// 采用「批量认领 + 全局并发限流」：一次认领数个任务，用 StrmService 上的全局信号量
-// 限制整个进程「同时换直链+下载」的并发数（与 115 换链风控匹配，见 strmDownloadSemCap），
-// 同时让下载充分并行。换链走全局令牌桶（QPS=3）兜底，下载走 CDN 不限速。
+// 采用「批量认领 + 按网盘类型限流」：一次认领数个任务，115 与 WebDAV/OpenList
+// 使用独立信号量（115 固定 3 防风控；OpenList/CloudDrive2 并发由 download_threads 控制）。
 func (s *StrmService) downloadWorker(ctx context.Context) {
 	const claimBatch = 12 // 每次批量认领的任务数
 	for {
@@ -41,12 +40,6 @@ func (s *StrmService) downloadWorker(ctx context.Context) {
 		case <-s.stopCh:
 			return
 		default:
-		}
-		// 115 风控/限流熔断：冷却期间整体暂停，不给 WAF 续封机会
-		if left := s.wafCooldownLeft(); left > 0 {
-			s.log.Debug("下载队列冷却中", zap.Duration("remaining", left))
-			sleepContext(ctx, left)
-			continue
 		}
 		tasks, err := s.repo.StrmDownload.ClaimPendingDownload(ctx, claimBatch)
 		if err != nil {
@@ -58,21 +51,34 @@ func (s *StrmService) downloadWorker(ctx context.Context) {
 			sleepContext(ctx, 2*time.Second)
 			continue
 		}
-		// 并发处理本批任务：每个任务先获取全局下载槽位，槽位内部执行换链+下载。
-		// 信号量与令牌桶双重限速，确保任意时刻并发换链请求不超过安全阈值。
 		var wg sync.WaitGroup
 		for i := range tasks {
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()
-				if !s.acquireDownloadSlot(ctx) {
+				task := &tasks[i]
+				if task.Provider == model.StrmProvider115 && s.wafCooldownLeft() > 0 {
+					s.requeueDownloadTask(task)
 					return
 				}
-				defer s.releaseDownloadSlot()
-				s.processDownloadTask(ctx, &tasks[i])
+				if !s.acquireDownloadSlot(ctx, task.Provider) {
+					s.requeueDownloadTask(task)
+					return
+				}
+				defer s.releaseDownloadSlot(task.Provider)
+				s.processDownloadTask(ctx, task)
 			}(i)
 		}
 		wg.Wait()
+	}
+}
+
+// requeueDownloadTask 把已认领但未实际执行的任务退回 pending，避免长期停留在 running。
+func (s *StrmService) requeueDownloadTask(task *model.StrmDownloadTask) {
+	task.Status = model.StrmTaskPending
+	task.StartedAt = nil
+	if err := s.repo.StrmDownload.Update(context.Background(), task); err != nil {
+		s.log.Warn("requeue strm download task failed", zap.Error(err), zap.String("id", task.ID))
 	}
 }
 
@@ -648,7 +654,7 @@ func sleepContext(ctx context.Context, d time.Duration) {
 
 // ─── 115 风控/限流熔断 ────────────────────────────────────────────────────────
 
-// triggerWAFCooldown 检测到 115 风控/限流后触发全局冷却，冷却期间下载 worker 暂停。
+// triggerWAFCooldown 检测到 115 风控/限流后触发冷却，仅影响 115 下载任务。
 // 冷却时间取最大值，避免连续触发时缩短等待。
 func (s *StrmService) triggerWAFCooldown() {
 	s.mu.Lock()

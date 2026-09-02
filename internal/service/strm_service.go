@@ -68,7 +68,7 @@ var StrmSettingDefs = map[string]struct {
 	StrmSettingUploadMeta:      {Default: "false", Label: "上传元数据", Kind: "bool", Help: "同步时把本地元数据上传到远端（需网盘支持写入）"},
 	StrmSettingDeleteDir:       {Default: "false", Label: "清理空目录", Kind: "bool", Help: "清理远端已删除的多余 .strm/元数据后，删除空目录"},
 	Strm115RelayKeySetting:     {Default: "", Label: "115 中继授权共享密钥", Kind: "text", Help: "QMediaSync/MQFamily 中继授权的共享 AES 密钥（OAUTH_RELAY_ENCRYPTION_KEY）；不配置则中继授权不可用"},
-	StrmSettingDownloadThreads: {Default: "3", Label: "下载队列线程数", Kind: "number", Help: "元数据下载并发数"},
+	StrmSettingDownloadThreads: {Default: "6", Label: "下载队列线程数", Kind: "number", Help: "OpenList/CloudDrive2 元数据下载并发数（115 独立限速为 3）"},
 	StrmSettingUploadThreads:   {Default: "2", Label: "上传队列线程数", Kind: "number", Help: "元数据上传并发数"},
 }
 
@@ -91,33 +91,51 @@ type StrmService struct {
 	oauthSessions map[string]*strm115AuthSession
 	wafUntil      time.Time // 115 风控/限流熔断截止时间（由 mu 保护）
 
-	downloadSem     chan struct{} // 全局下载并发信号量：限制整个进程同时进行「换直链+下载」的并发数
+	downloadSem115 chan struct{} // 115 换直链+下载并发上限（风控兜底）
+	downloadSemDAV chan struct{} // WebDAV/OpenList/CloudDrive2 元数据下载并发上限
 	downloadSemOnce sync.Once
 }
 
-// strmWAFCooldown 检测到 115 风控/限流后下载队列的全局冷却时长。
+// strmWAFCooldown 检测到 115 风控/限流后 115 下载任务的全局冷却时长。
 const strmWAFCooldown = 3 * time.Minute
 
-// strmDownloadSemCap 全局同时进行「换直链+下载」的并发上限。
+// strm115DownloadSemCap 115 同时进行「换直链+下载」的并发上限。
 //
 // 115 对换直链接口（/open/ufile/downurl）风控极严：过去把全局 QPS 提到 8 或让多
 // worker 高并发换链，会瞬时撞上 WAF 返回 405 阻断页并触发 180 秒冷却，反而更慢。
-// 因此用信号量把整个进程同时换直链的并发数压到 3，与令牌桶限速共同兜底：
-// 宁可下载稍慢，也绝不触发风控。下载本身走 CDN 不限速。
-const strmDownloadSemCap = 3
+// 因此把 115 换直链并发压到 3，与令牌桶限速共同兜底；OpenList/CloudDrive2 元数据
+// 走 WebDAV，不受此限制，并发由 strm.download_threads 控制。
+const strm115DownloadSemCap = 3
 
-// ensureDownloadSem 惰性初始化全局共享的下载并发信号量。
-func (s *StrmService) ensureDownloadSem() {
+// initDownloadSems 按设置初始化 115 与 WebDAV 两套下载并发信号量。
+func (s *StrmService) initDownloadSems(davCap int) {
 	s.downloadSemOnce.Do(func() {
-		s.downloadSem = make(chan struct{}, strmDownloadSemCap)
+		if davCap < 1 {
+			davCap = 1
+		}
+		if davCap > 16 {
+			davCap = 16
+		}
+		s.downloadSem115 = make(chan struct{}, strm115DownloadSemCap)
+		s.downloadSemDAV = make(chan struct{}, davCap)
 	})
 }
 
+func (s *StrmService) downloadSemForProvider(provider string) chan struct{} {
+	if provider == model.StrmProvider115 {
+		return s.downloadSem115
+	}
+	return s.downloadSemDAV
+}
+
 // acquireDownloadSlot 获取一个下载并发槽位（等待/取消安全）。
-func (s *StrmService) acquireDownloadSlot(ctx context.Context) bool {
-	s.ensureDownloadSem()
+func (s *StrmService) acquireDownloadSlot(ctx context.Context, provider string) bool {
+	sem := s.downloadSemForProvider(provider)
+	if sem == nil {
+		return false
+	}
 	select {
-	case s.downloadSem <- struct{}{}:
+	case sem <- struct{}{}:
 		return true
 	case <-ctx.Done():
 		return false
@@ -125,11 +143,12 @@ func (s *StrmService) acquireDownloadSlot(ctx context.Context) bool {
 }
 
 // releaseDownloadSlot 释放一个下载并发槽位。
-func (s *StrmService) releaseDownloadSlot() {
-	if s.downloadSem == nil {
+func (s *StrmService) releaseDownloadSlot(provider string) {
+	sem := s.downloadSemForProvider(provider)
+	if sem == nil {
 		return
 	}
-	<-s.downloadSem
+	<-sem
 }
 
 // NewStrmService constructs the STRM service.
@@ -151,13 +170,14 @@ func NewStrmService(cfg *config.Config, log *zap.Logger, repos *repository.Conta
 func (s *StrmService) Start(ctx context.Context) {
 	s.sync115RelayKey(ctx)
 	s.recoverInterruptedSyncs(ctx)
-	downloadThreads := s.strmIntSetting(ctx, StrmSettingDownloadThreads, 3)
+	downloadThreads := s.strmIntSetting(ctx, StrmSettingDownloadThreads, 6)
 	if downloadThreads < 1 {
 		downloadThreads = 1
 	}
-	if downloadThreads > 8 {
-		downloadThreads = 8
+	if downloadThreads > 16 {
+		downloadThreads = 16
 	}
+	s.initDownloadSems(downloadThreads)
 	uploadThreads := s.strmIntSetting(ctx, StrmSettingUploadThreads, 2)
 	if uploadThreads < 1 {
 		uploadThreads = 1
