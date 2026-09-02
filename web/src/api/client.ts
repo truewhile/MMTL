@@ -12,6 +12,7 @@ export const api = axios.create({
 
 export const LONG_REQUEST_TIMEOUT = 120_000
 export const BATCH_REQUEST_TIMEOUT = 300_000
+export const MIGRATION_REQUEST_TIMEOUT = 600_000
 
 // Flag to prevent multiple simultaneous refresh attempts
 let isRefreshing = false
