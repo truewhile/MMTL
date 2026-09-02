@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -9,7 +10,7 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 // jobScanLibraries re-walks every enabled library.
@@ -201,4 +202,32 @@ func isMissingTableErr(err error) bool {
 		return false
 	}
 	return err == gorm.ErrInvalidDB
+}
+
+// jobCleanImageCache prunes image proxy cache files when disk usage exceeds the configured limit.
+func (s *SchedulerService) jobCleanImageCache(ctx context.Context) error {
+	if s.cacheDir == "" {
+		return nil
+	}
+	maxMB := s.imagesMaxSizeMB()
+	if maxMB <= 0 {
+		return nil
+	}
+	imagesDir := filepath.Join(s.cacheDir, "images")
+	maxSizeBytes := int64(maxMB) * 1024 * 1024
+	res, err := PruneImageCache(imagesDir, maxSizeBytes)
+	if err != nil {
+		if s.log != nil {
+			s.log.Warn("scheduled image cache cleanup failed", zap.Error(err))
+		}
+		return err
+	}
+	if res.DeletedFiles > 0 && s.log != nil {
+		s.log.Info("scheduled image cache cleanup completed",
+			zap.Int("deleted_files", res.DeletedFiles),
+			zap.Int64("freed_bytes", res.FreedBytes),
+			zap.Int64("remaining_bytes", res.RemainingBytes),
+		)
+	}
+	return nil
 }

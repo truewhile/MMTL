@@ -21,7 +21,7 @@ import (
 
 // embyProvider implements Provider against a remote Emby server using an
 // api_key (token) for authentication. DirectLink.Resolve returns the remote
-// stream URL; whether MMTL reverse-proxies the bytes is decided by the
+// stream URL; whether MeBox reverse-proxies the bytes is decided by the
 // emby.proxy_play account config (defaults to off).
 type embyProvider struct {
 	base      string // e.g. http://host:8096（自动补 /emby 前缀）
@@ -159,7 +159,7 @@ func (p *embyProvider) ensureToken(ctx context.Context) (string, error) {
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Emby-Authorization", `MediaBrowser Client="MMTL", Device="MMTL-Federated", DeviceId="mmtl-federated", Version="1.0"`)
+	req.Header.Set("X-Emby-Authorization", `MediaBrowser Client="MeBox", Device="MeBox-Federated", DeviceId="mebox-federated", Version="1.0"`)
 	resp, err := p.client.Do(req)
 	if err != nil {
 		return "", err
@@ -184,12 +184,12 @@ func (p *embyProvider) ensureToken(ctx context.Context) (string, error) {
 
 // embyItemSummary 目录浏览所需的最小 Emby 条目字段。
 type embyItemSummary struct {
-	Id          string `json:"Id"`
-	Name        string `json:"Name"`
-	Type        string `json:"Type"`
-	IsFolder    bool   `json:"IsFolder"`
-	ChildCount  int    `json:"ChildCount"`
-	RunTimeTicks int64 `json:"RunTimeTicks"`
+	Id           string `json:"Id"`
+	Name         string `json:"Name"`
+	Type         string `json:"Type"`
+	IsFolder     bool   `json:"IsFolder"`
+	ChildCount   int    `json:"ChildCount"`
+	RunTimeTicks int64  `json:"RunTimeTicks"`
 }
 
 type embyItemListResponse struct {
@@ -234,7 +234,7 @@ func (p *embyProvider) List(ctx context.Context, dirID string) ([]FileEntry, err
 }
 
 // Resolve 返回远程 Emby 直链。Proxy=true 时由调用方(StrmService.ProxyDirect)
-// 反向代理流量；false 时 302 到直链。默认不代理（播放字节不经过 MMTL）。
+// 反向代理流量；false 时 302 到直链。默认不代理（播放字节不经过 MeBox）。
 func (p *embyProvider) Resolve(ctx context.Context, fileRef string) (*DirectLink, error) {
 	token, err := p.ensureToken(ctx)
 	if err != nil {

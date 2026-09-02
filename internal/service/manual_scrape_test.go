@@ -13,9 +13,9 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MMTL/internal/config"
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/repository"
+	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/repository"
 )
 
 func TestManualRequestMatchFallsBackToCandidatePayload(t *testing.T) {
@@ -179,9 +179,9 @@ func TestManualSearchFallsBackToMovieFolderForGenericQuery(t *testing.T) {
 	if len(results) != 1 || results[0].TMDbID != 27205 {
 		t.Fatalf("manual search results=%#v, want folder fallback candidate; queries=%v", results, queries)
 	}
-		if len(queries) < 2 || queries[0] != "00000" || queries[len(queries)-1] != "inception" {
-			t.Fatalf("manual search queries=%v, want explicit query then folder fallback", queries)
-		}
+	if len(queries) < 2 || queries[0] != "00000" || queries[len(queries)-1] != "inception" {
+		t.Fatalf("manual search queries=%v, want explicit query then folder fallback", queries)
+	}
 }
 
 func TestManualSearchReturnsMovieFallbackForTVTypedTMDbSearch(t *testing.T) {

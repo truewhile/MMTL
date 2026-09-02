@@ -11,12 +11,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/config"
-	"github.com/ShukeBta/MMTL/internal/handler"
-	"github.com/ShukeBta/MMTL/internal/middleware"
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/handler"
+	"github.com/truewhile/MeBox/internal/middleware"
+	"github.com/truewhile/MeBox/internal/service"
 
-	"github.com/ShukeBta/MMTL/web"
+	"github.com/truewhile/MeBox/web"
 )
 
 func buildRouter(cfg *config.Config, logger *zap.Logger, svc *service.Container) *gin.Engine {
@@ -78,7 +78,7 @@ func serveSPA(r *gin.Engine, root fs.FS) {
 		setNoCacheHeaders(c)
 		data, err := fs.ReadFile(root, "index.html")
 		if err != nil {
-			c.String(http.StatusNotFound, "MMTL web UI not found")
+			c.String(http.StatusNotFound, "MeBox web UI not found")
 			return
 		}
 		c.Data(http.StatusOK, "text/html; charset=utf-8", data)

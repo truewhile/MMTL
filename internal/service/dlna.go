@@ -6,7 +6,7 @@
 // service to start playback of an HTTP URL.
 //
 // We do NOT mediate the renderer ↔ client traffic; the renderer pulls
-// the bytes directly from MMTL's /api/stream endpoint, so
+// the bytes directly from MeBox's /api/stream endpoint, so
 // the cast call only ever transports a URL string.
 package service
 

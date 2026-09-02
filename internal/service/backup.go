@@ -19,7 +19,7 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MMTL/internal/config"
+	"github.com/truewhile/MeBox/internal/config"
 )
 
 // BackupService manages database backups.
@@ -72,7 +72,7 @@ func (b *BackupService) Create(ctx context.Context) (*BackupInfo, error) {
 		return nil, err
 	}
 	ts := time.Now().Format("20060102_150405")
-	dst := filepath.Join(dir, fmt.Sprintf("mmtl_%s.db", ts))
+	dst := filepath.Join(dir, fmt.Sprintf("mebox_%s.db", ts))
 
 	// VACUUM INTO creates a clean, non-WAL copy atomically.
 	if err := b.db.WithContext(ctx).Exec("VACUUM INTO ?", dst).Error; err != nil {

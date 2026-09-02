@@ -1,4 +1,4 @@
-// Package service 包含 MMTL 的业务逻辑。
+// Package service 包含 MeBox 的业务逻辑。
 // Handler 反序列化 HTTP 请求，调用 Service 方法，然后序列化响应。
 // Services 拥有所有横切策略（认证、扫描、转码等）且不直接处理 HTTP 类型。
 package service
@@ -9,8 +9,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/config"
-	"github.com/ShukeBta/MMTL/internal/repository"
+	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/repository"
 )
 
 // Container 持有在启动时初始化的每个服务。Handler 接收指向它的指针并选择相关字段。
@@ -59,13 +59,13 @@ type Container struct {
 	Device           *DeviceService
 	Cache            *RuntimeCacheService
 	Sessions         *SessionTrackerService
-		RecognitionWords *RecognitionWordsService
-		Danmaku          *DanmakuService
-		Strm             *StrmService
-		Database         *DatabaseAdminService
-		FFTools          *FFmpegToolsService
+	RecognitionWords *RecognitionWordsService
+	Danmaku          *DanmakuService
+	Strm             *StrmService
+	Database         *DatabaseAdminService
+	FFTools          *FFmpegToolsService
 
-		stopCtx    context.Context
+	stopCtx    context.Context
 	stopCancel context.CancelFunc
 
 	// ReloadHTTPServer 由 cmd/server 注入。HTTPS 相关设置保存后，handler
@@ -110,12 +110,12 @@ func (c *Container) Boot() {
 		c.Strm.Start(c.stopCtx)
 	}
 
-		// 启动刮削队列后台消费者
-		if c.Scraper != nil {
-			c.Scraper.Start(c.stopCtx)
-		}
+	// 启动刮削队列后台消费者
+	if c.Scraper != nil {
+		c.Scraper.Start(c.stopCtx)
+	}
 
-		// Mgo 保号规则巡检：默认关闭，由管理员通过 Telegram Bot 命令开启。
+	// Mgo 保号规则巡检：默认关闭，由管理员通过 Telegram Bot 命令开启。
 	// 每天触发一次评估；规则里的窗口可随机，不固定。
 	if c.Device != nil {
 		go c.runInactivitySweeper(c.stopCtx)

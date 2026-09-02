@@ -1,6 +1,6 @@
-// Package main is the MMTL HTTP server entry point.
+// Package main is the MeBox HTTP server entry point.
 //
-// MMTL is a Go rewrite of the legacy Python implementation,
+// MeBox is a Go rewrite of the legacy Python implementation,
 // adopting the same tech stack as cropflre/nowen-video:
 //
 //	Backend:  Go 1.25 + Gin + GORM + PostgreSQL/SQLite + Viper + Zap + JWT
@@ -21,10 +21,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/config"
-	"github.com/ShukeBta/MMTL/internal/database"
-	"github.com/ShukeBta/MMTL/internal/repository"
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/database"
+	"github.com/truewhile/MeBox/internal/repository"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 // version is overwritten at build time via -ldflags="-X main.version=...".
@@ -35,7 +35,7 @@ func effectiveVersion(buildVersion string) string {
 	if buildVersion != "" && buildVersion != "dev" {
 		return buildVersion
 	}
-	if envVersion := strings.TrimSpace(os.Getenv("MMTL_VERSION")); envVersion != "" {
+	if envVersion := strings.TrimSpace(os.Getenv("MEBOX_VERSION")); envVersion != "" {
 		return envVersion
 	}
 	if buildVersion == "" {
@@ -59,7 +59,7 @@ func main() {
 	defer func() { _ = logger.Sync() }()
 
 	appVersion := effectiveVersion(version)
-	logger.Info("starting MMTL",
+	logger.Info("starting MeBox",
 		zap.String("version", appVersion),
 		zap.Int("port", cfg.App.Port),
 		zap.String("data_dir", cfg.App.DataDir),
@@ -135,5 +135,5 @@ func main() {
 		logger.Error("graceful shutdown failed", zap.Error(err))
 	}
 	services.Close()
-	logger.Info("MMTL stopped")
+	logger.Info("MeBox stopped")
 }

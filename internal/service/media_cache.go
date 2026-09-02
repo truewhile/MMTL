@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/repository"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/repository"
 )
 
 type mediaListCacheValue struct {
@@ -32,6 +32,40 @@ func (s *MediaService) mediaListCacheKey(libraryID string, libraryIDs []string, 
 		strings.Join(hidden, ","),
 	}, "|")))
 	return "media:list:" + hex.EncodeToString(sum[:])
+}
+
+func (s *MediaService) libraryPreviewCacheKey(libraries []model.Library, cardLimit int, filter repository.MediaQueryFilter) string {
+	libIDs := make([]string, len(libraries))
+	for i, lib := range libraries {
+		libIDs[i] = lib.ID
+	}
+	sort.Strings(libIDs)
+	allowed := append([]string(nil), filter.AllowedLibraryIDs...)
+	hidden := append([]string(nil), filter.HiddenLibraryIDs...)
+	sort.Strings(allowed)
+	sort.Strings(hidden)
+	sum := sha1.Sum([]byte(strings.Join([]string{
+		"preview",
+		strings.Join(libIDs, ","),
+		fmt.Sprintf("%d:%t", cardLimit, filter.IncludeNSFW),
+		strings.Join(allowed, ","),
+		strings.Join(hidden, ","),
+	}, "|")))
+	return "media:preview:" + hex.EncodeToString(sum[:])
+}
+
+func (s *MediaService) seriesCardsCacheKey(libraryID string, visibility MediaVisibility) string {
+	allowed := append([]string(nil), visibility.AllowedLibraryIDs...)
+	hidden := append([]string(nil), visibility.HiddenLibraryIDs...)
+	sort.Strings(allowed)
+	sort.Strings(hidden)
+	sum := sha1.Sum([]byte(strings.Join([]string{
+		libraryID,
+		fmt.Sprintf("%t", visibility.IncludeNSFW),
+		strings.Join(allowed, ","),
+		strings.Join(hidden, ","),
+	}, "|")))
+	return "media:series-cards:" + hex.EncodeToString(sum[:])
 }
 
 func (s *MediaService) mediaCacheTTLSeconds() int {

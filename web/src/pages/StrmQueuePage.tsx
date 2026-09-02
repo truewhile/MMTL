@@ -55,7 +55,13 @@ function getFileIcon(filename: string): ReactNode {
   return <File size={15} className="text-gray-400 shrink-0" />
 }
 
-export function StrmQueuePanel({ kind }: { kind: 'download' | 'upload' }) {
+export function StrmQueuePanel({
+  kind,
+  embedded = false,
+}: {
+  kind: 'download' | 'upload'
+  embedded?: boolean
+}) {
   const [snapshot, setSnapshot] = useState<StrmQueueSnapshot | null>(null)
   const [filter, setFilter] = useState<'all' | StrmTaskStatus>('all')
   const [search, setSearch] = useState('')
@@ -242,7 +248,7 @@ export function StrmQueuePanel({ kind }: { kind: 'download' | 'upload' }) {
 
   return (
     <div className="space-y-6">
-      {/* 1. Header */}
+      {!embedded && (
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-primary-400/30 bg-primary-400/10 text-brand-500 shadow-sm">
@@ -309,7 +315,10 @@ export function StrmQueuePanel({ kind }: { kind: 'download' | 'upload' }) {
                   onClick={(e) => {
                     e.currentTarget.closest('details')?.removeAttribute('open')
                     runGlobalBatch(
-                      () => strmAPI.retryFailedDownloads(),
+                      () =>
+                        isDownload
+                          ? strmAPI.retryFailedDownloads()
+                          : strmAPI.retryFailedUploads(),
                       '确定重新入队所有失败任务？',
                     )
                   }}
@@ -340,23 +349,26 @@ export function StrmQueuePanel({ kind }: { kind: 'download' | 'upload' }) {
                 </button>
               )}
               <div className="my-1 border-t border-gray-100" />
-              {isDownload && (
-                <button
-                  type="button"
-                  disabled={batchBusy}
-                  onClick={(e) => {
-                    e.currentTarget.closest('details')?.removeAttribute('open')
-                    runGlobalBatch(
-                      () => strmAPI.clearDoneDownloads(),
-                      '确定清空所有已完成的下载记录？',
-                    )
-                  }}
-                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-ink-100 hover:bg-gray-50"
-                >
-                  <CheckCircle2 size={13} className="text-emerald-500" />
-                  <span>清空已完成记录</span>
-                </button>
-              )}
+              <button
+                type="button"
+                disabled={batchBusy}
+                onClick={(e) => {
+                  e.currentTarget.closest('details')?.removeAttribute('open')
+                  runGlobalBatch(
+                    () =>
+                      isDownload
+                        ? strmAPI.clearDoneDownloads()
+                        : strmAPI.clearDoneUploads(),
+                    isDownload
+                      ? '确定清空所有已完成的下载记录？'
+                      : '确定清空所有已完成的上传记录？',
+                  )
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-ink-100 hover:bg-gray-50"
+              >
+                <CheckCircle2 size={13} className="text-emerald-500" />
+                <span>清空已完成记录</span>
+              </button>
               <button
                 type="button"
                 disabled={batchBusy}
@@ -375,27 +387,29 @@ export function StrmQueuePanel({ kind }: { kind: 'download' | 'upload' }) {
                 <Ban size={13} className="text-amber-500" />
                 <span>清空已取消记录</span>
               </button>
-              {isDownload && (
-                <button
-                  type="button"
-                  disabled={batchBusy}
-                  onClick={(e) => {
-                    e.currentTarget.closest('details')?.removeAttribute('open')
-                    runGlobalBatch(
-                      () => strmAPI.clearFinishedDownloads(),
-                      '确定清空所有已完成、失败及取消的历史记录？',
-                    )
-                  }}
-                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-rose-500 hover:bg-rose-50"
-                >
-                  <Trash2 size={13} />
-                  <span>清空全部历史记录</span>
-                </button>
-              )}
+              <button
+                type="button"
+                disabled={batchBusy}
+                onClick={(e) => {
+                  e.currentTarget.closest('details')?.removeAttribute('open')
+                  runGlobalBatch(
+                    () =>
+                      isDownload
+                        ? strmAPI.clearFinishedDownloads()
+                        : strmAPI.clearFinishedUploads(),
+                    '确定清空所有已完成、失败及取消的历史记录？',
+                  )
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-rose-500 hover:bg-rose-50"
+              >
+                <Trash2 size={13} />
+                <span>清空全部历史记录</span>
+              </button>
             </div>
           </details>
         </div>
       </header>
+      )}
 
       {/* 2. Interactive Status Cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -463,7 +477,7 @@ export function StrmQueuePanel({ kind }: { kind: 'download' | 'upload' }) {
 
         {/* Selected Batch Toolbar */}
         {selectedIds.size > 0 && (
-          <div className="flex items-center gap-2 rounded-xl border border-brand-500/30 bg-primary-400/10 px-3 py-1.5 text-xs animate-in fade-in zoom-in-95">
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-brand-500/30 bg-primary-400/10 px-3 py-2 text-xs animate-in fade-in zoom-in-95">
             <span className="font-bold text-brand-500">已选中 {selectedIds.size} 项</span>
             <div className="h-3.5 w-px bg-brand-300/40 mx-1" />
             <button
@@ -522,8 +536,8 @@ export function StrmQueuePanel({ kind }: { kind: 'download' | 'upload' }) {
                 : `「${FILTERS.find((f) => f.key === filter)?.label}」状态下暂无任务`}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+          <div className="table-scroll">
+            <table className="min-w-[900px] w-full text-left text-sm">
               <thead className="border-b border-gray-200/80 bg-gray-50/50 text-[11px] font-bold uppercase tracking-wider text-sand-500">
                 <tr>
                   <th className="w-10 px-3 py-3 text-center">

@@ -14,10 +14,10 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MMTL/internal/config"
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/repository"
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/repository"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 func TestEmbyMarkPlayedRefreshesPlaybackDevice(t *testing.T) {
@@ -213,10 +213,13 @@ func TestEmbyAuthenticatedRequestRefreshesRealtimeUserActivity(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("admin users status: %d body=%s", w.Code, w.Body.String())
 	}
-	var users []model.User
-	if err := json.Unmarshal(w.Body.Bytes(), &users); err != nil {
+	var payload struct {
+		Users []model.User `json:"users"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode users: %v", err)
 	}
+	users := payload.Users
 	if len(users) != 1 {
 		t.Fatalf("users = %#v", users)
 	}

@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/repository"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/repository"
 	"go.uber.org/zap"
 )
 

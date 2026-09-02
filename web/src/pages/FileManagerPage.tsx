@@ -4,7 +4,6 @@ import { ChevronUp, Home } from 'lucide-react'
 import { filesAPI, type FileEntry, type FileListing } from '../api/files'
 import { libraryAPI } from '../api/library'
 import type { Library } from '../types'
-import { settingOn } from './autoOrganizeModel'
 import { AutoOrganizeSettingsPanel } from './AutoOrganizeSettingsPanel'
 import { FileBrowserRoots } from './FileBrowserRoots'
 import { FileEntriesTable } from './FileEntriesTable'
@@ -36,7 +35,6 @@ export function FileManagerPage() {
     () => libraries.filter((library) => !isCloudLibraryPath(library.path)),
     [libraries],
   )
-  const autoMoveKeepsSeeding = autoOrganize.moveKeepsSeeding
 
   const refresh = useCallback(() => {
     setLoading(true)
@@ -68,7 +66,6 @@ export function FileManagerPage() {
     selectedPath: fileOperations.selected?.path,
     selectedPaths: fileOperations.selectedPaths,
     scrapeAfter,
-    keepSeeding: settingOn(autoOrganize.config.keepSeeding),
     onScrapeAfterChange: setScrapeAfter,
     onClearSelected: () => fileOperations.setSelectedPaths([]),
     refresh,
@@ -102,7 +99,6 @@ export function FileManagerPage() {
         loading={autoOrganize.loading}
         saving={autoOrganize.saving}
         running={autoOrganize.running}
-        moveKeepsSeeding={autoMoveKeepsSeeding}
         onRefresh={autoOrganize.refresh}
         onSave={() => void autoOrganize.save()}
         onRunNow={autoOrganize.runNow}
@@ -119,7 +115,6 @@ export function FileManagerPage() {
           organizeDestPath={manualOrganize.organizeDestPath}
           organizeMediaType={manualOrganize.organizeMediaType}
           organizeTransferMode={manualOrganize.organizeTransferMode}
-          manualMoveKeepsSeeding={manualOrganize.manualMoveKeepsSeeding}
           scanAfter={manualOrganize.scanAfter}
           scrapeAfter={scrapeAfter}
           organizeReady={manualOrganize.organizeReady}

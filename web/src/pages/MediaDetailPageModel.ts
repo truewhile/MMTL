@@ -1,14 +1,13 @@
 import type { Media } from '../types'
-import { getSeriesKey, isEpisodeLike } from '../utils/groupSeries'
+import { mediaLibraryTarget } from '../utils/mediaNavigation'
 
 export function mediaLibraryBackTarget(media: Media): string {
+  const seriesTarget = mediaLibraryTarget(media)
+  if (seriesTarget) return seriesTarget
+
   const libraryID = media.display_library_id || media.library_id
   if (!libraryID) return ''
-  if (!isEpisodeLike(media)) return `/library/${encodeURIComponent(libraryID)}`
-
-  const seriesKey = getSeriesKey(media)
-  const target = `/library/${encodeURIComponent(libraryID)}`
-  return seriesKey ? `${target}?series=${encodeURIComponent(seriesKey)}` : target
+  return `/library/${encodeURIComponent(libraryID)}`
 }
 
 export function mediaDetailScrapeMediaType(media: Media): string | undefined {

@@ -6,6 +6,7 @@ export interface EmbyMount {
   remote_view_name: string
   collection_type: string
   name: string
+  sort_order?: number
   proxy_play: boolean
   enabled: boolean
   created_at: string

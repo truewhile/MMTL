@@ -4,9 +4,9 @@ package handler
 import (
 	"github.com/gin-gonic/gin"
 
-	"github.com/ShukeBta/MMTL/internal/config"
-	"github.com/ShukeBta/MMTL/internal/middleware"
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/middleware"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 func registerAdminRoutes(api *gin.RouterGroup, cfg *config.Config, svc *service.Container) {
@@ -51,6 +51,7 @@ func registerAdminStrmRoutes(admin *gin.RouterGroup, svc *service.Container) {
 	admin.POST("/emby/accounts/:id/full-mount", fullMountEmbyAccountHandler(svc))
 	admin.GET("/emby/mounts", listEmbyMountsHandler(svc))
 	admin.POST("/emby/mounts", createEmbyMountsHandler(svc))
+	admin.PUT("/emby/mounts/reorder", reorderEmbyMountsHandler(svc))
 	admin.PUT("/emby/mounts/:id", updateEmbyMountHandler(svc))
 	admin.DELETE("/emby/mounts/:id", deleteEmbyMountHandler(svc))
 
@@ -93,11 +94,16 @@ func registerAdminStrmRoutes(admin *gin.RouterGroup, svc *service.Container) {
 	admin.POST("/strm/uploads/:id/retry", retryStrmUploadHandler(svc))
 	admin.DELETE("/strm/uploads/:id", deleteStrmUploadHandler(svc))
 	admin.POST("/strm/uploads/batch", batchActionUploadsHandler(svc))
-	admin.POST("/strm/uploads/cancel-pending", cancelPendingUploadsHandler(svc))
+	admin.POST("/strm/uploads/clear-done", clearDoneUploadsHandler(svc))
+	admin.POST("/strm/uploads/clear-finished", clearFinishedUploadsHandler(svc))
 	admin.POST("/strm/uploads/clear-canceled", clearCanceledUploadsHandler(svc))
+	admin.POST("/strm/uploads/retry-failed", retryAllFailedUploadsHandler(svc))
+	admin.POST("/strm/uploads/cancel-pending", cancelPendingUploadsHandler(svc))
 }
 
 func registerAdminUserRoutes(admin *gin.RouterGroup, svc *service.Container) {
+	admin.GET("/users/limit", getUserLimitHandler(svc))
+	admin.PUT("/users/limit", updateUserLimitHandler(svc))
 	admin.GET("/users", listUsersHandler(svc))
 	admin.POST("/users", createUserHandler(svc))
 	admin.PATCH("/users/:id", updateUserHandler(svc))

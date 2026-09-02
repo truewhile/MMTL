@@ -1,15 +1,19 @@
-import { FormEvent, useEffect, useRef, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import {
+  ArrowDown,
+  ArrowUp,
   ChevronRight,
   Cloud,
   ExternalLink,
   FolderPlus,
   HardDrive,
   Loader2,
+  Plus,
   QrCode,
   RefreshCw,
   Search,
+  Trash2,
   Tv,
   X,
 } from 'lucide-react'
@@ -23,6 +27,13 @@ import type { StrmAccount, StrmSyncPath, StrmSyncPathInput, StrmProvider } from 
 import { STRM_PROVIDER_LABELS } from '../types/strm'
 import { apiErrorMessage } from './StrmManagePage'
 import { LocalDirBrowserDialog } from '../components/LocalDirBrowserDialog'
+import {
+  defaultEmbyRemoteLines,
+  encodeEmbyRemoteConfigLines,
+  normalizeEmbyRemoteLines,
+  type EmbyRemoteLine,
+} from '../utils/embyRemoteLines'
+import { lastPathSegment, syncLocalPathWithRemote } from '../utils/strmPaths'
 
 // ─── 弹框外壳 ────────────────────────────────────────────────────────────────
 
@@ -48,7 +59,7 @@ function DialogShell({
         role="dialog"
         aria-modal="true"
         className={
-          'flex max-h-[88vh] w-full flex-col overflow-hidden rounded-3xl border border-white/70 bg-white shadow-2xl ' +
+          'flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-3xl border border-white/70 bg-white shadow-2xl ' +
           (wide ? 'max-w-3xl' : 'max-w-lg')
         }
         onClick={(event) => event.stopPropagation()}
@@ -67,7 +78,7 @@ function DialogShell({
             <X size={20} />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-6">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">{children}</div>
       </div>
     </div>
   )
@@ -84,6 +95,26 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 }
 
 const inputCls = 'input-base w-full'
+
+const SECRET_PLACEHOLDER = '已配置，留空则不修改'
+
+function accountDialogDefaults(existing: StrmAccount | null) {
+  const preview = existing?.config_preview
+  return {
+    provider: (existing?.provider ?? 'cloud115') as StrmProvider,
+    name: existing?.name ?? '',
+    enabled: existing?.enabled ?? true,
+    url: preview?.url ?? '',
+    server: preview?.server ?? '',
+    username: preview?.username ?? '',
+    password: '',
+    token: '',
+    proxyPlay: existing?.proxy_play ?? false,
+    embyLines: defaultEmbyRemoteLines(existing?.provider === 'emby_remote' ? existing?.emby_lines : undefined),
+    hasPassword: Boolean(preview?.has_password),
+    hasToken: Boolean(preview?.has_token || preview?.has_api_key),
+  }
+}
 
 // ─── 添加/编辑网盘账号 ────────────────────────────────────────────────────────
 
@@ -102,15 +133,19 @@ export function StrmAccountDialog({
   onClose: () => void
   onSaved: () => void
 }) {
-  const [provider, setProvider] = useState<StrmProvider>(existing?.provider ?? 'cloud115')
-  const [name, setName] = useState(existing?.name ?? '')
-  const [enabled, setEnabled] = useState(existing?.enabled ?? true)
-  const [url, setUrl] = useState('')
-  const [server, setServer] = useState('')
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [token, setToken] = useState('')
-  const [proxyPlay, setProxyPlay] = useState(existing?.proxy_play ?? false)
+  const defaults = accountDialogDefaults(existing)
+  const [provider, setProvider] = useState<StrmProvider>(defaults.provider)
+  const [name, setName] = useState(defaults.name)
+  const [enabled, setEnabled] = useState(defaults.enabled)
+  const [url, setUrl] = useState(defaults.url)
+  const [embyLines, setEmbyLines] = useState<EmbyRemoteLine[]>(defaults.embyLines)
+  const [server, setServer] = useState(defaults.server)
+  const [username, setUsername] = useState(defaults.username)
+  const [password, setPassword] = useState(defaults.password)
+  const [token, setToken] = useState(defaults.token)
+  const [proxyPlay, setProxyPlay] = useState(defaults.proxyPlay)
+  const [hasPassword, setHasPassword] = useState(defaults.hasPassword)
+  const [hasToken, setHasToken] = useState(defaults.hasToken)
   const [saving, setSaving] = useState(false)
 
   const buildConfig = (): Record<string, string> => {
@@ -128,14 +163,16 @@ export function StrmAccountDialog({
           ...(password ? { password } : {}),
           ...(token ? { token } : {}),
         }
-      case 'emby_remote':
+      case 'emby_remote': {
+        const lineConfig = encodeEmbyRemoteConfigLines(embyLines)
         return {
-          ...(url ? { url } : {}),
+          ...lineConfig,
           ...(username ? { username } : {}),
           ...(password ? { password } : {}),
           ...(token ? { token } : {}),
           proxy_play: proxyPlay ? 'true' : 'false',
         }
+      }
       default:
         return {}
     }
@@ -148,7 +185,7 @@ export function StrmAccountDialog({
       case 'openlist':
         return server !== '' && (token !== '' || password !== '')
       case 'emby_remote':
-        return url !== '' && (token !== '' || password !== '')
+        return normalizeEmbyRemoteLines(embyLines).length > 0 && (token !== '' || password !== '')
       default:
         return false
     }
@@ -163,7 +200,7 @@ export function StrmAccountDialog({
           name,
           provider: existing.provider,
           enabled,
-          config: existing.has_credential && !Object.keys(buildConfig()).length ? {} : buildConfig(),
+          config: buildConfig(),
         })
         toast.success('网盘账号已更新')
       } else {
@@ -192,7 +229,7 @@ export function StrmAccountDialog({
       <form onSubmit={submit} className="space-y-5">
         {/* 提供方选择 */}
         {!existing && (
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {PROVIDER_OPTIONS.map((option) => {
               const Icon =
                 option.provider === 'cloud115'
@@ -255,9 +292,92 @@ export function StrmAccountDialog({
         )}
 
         {provider === 'emby_remote' && (
-          <Field label="Emby 服务地址" hint="远程 Emby 服务器地址，如 http://192.168.1.10:8096">
-            <input className={inputCls} value={url} placeholder="http://host:8096" onChange={(e) => setUrl(e.target.value)} />
-          </Field>
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-sm font-medium text-ink-100">接入线路</p>
+                <p className="text-xs text-sand-500">可配置内网、外网等多条线路，连接失败时按顺序自动切换</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEmbyLines((prev) => [...prev, { name: `线路 ${prev.length + 1}`, url: '' }])}
+                className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-semibold text-ink-100 hover:bg-gray-50"
+              >
+                <Plus size={12} />
+                添加线路
+              </button>
+            </div>
+            {embyLines.map((line, index) => (
+              <div key={`emby-line-${index}`} className="space-y-2 rounded-2xl border border-sand-200 bg-gray-50/70 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wide text-sand-500">
+                    线路 {index + 1}
+                    {existing?.emby_active_line === index ? ' · 当前优先' : index === 0 ? ' · 默认优先' : ''}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmbyLines((prev) => {
+                          const target = index - 1
+                          if (target < 0) return prev
+                          const next = [...prev]
+                          const [moved] = next.splice(index, 1)
+                          next.splice(target, 0, moved)
+                          return next
+                        })
+                      }}
+                      disabled={index === 0}
+                      className="rounded-lg border border-gray-200 p-1 text-ink-100 hover:bg-white disabled:opacity-30"
+                    >
+                      <ArrowUp size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmbyLines((prev) => {
+                          const target = index + 1
+                          if (target >= prev.length) return prev
+                          const next = [...prev]
+                          const [moved] = next.splice(index, 1)
+                          next.splice(target, 0, moved)
+                          return next
+                        })
+                      }}
+                      disabled={index === embyLines.length - 1}
+                      className="rounded-lg border border-gray-200 p-1 text-ink-100 hover:bg-white disabled:opacity-30"
+                    >
+                      <ArrowDown size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEmbyLines((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)))}
+                      disabled={embyLines.length <= 1}
+                      className="rounded-lg border border-gray-200 p-1 text-red-500 hover:bg-red-50 disabled:opacity-30"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </div>
+                <input
+                  className={inputCls}
+                  value={line.name}
+                  placeholder="线路名称，如：内网 / 外网 / IPv6"
+                  onChange={(e) =>
+                    setEmbyLines((prev) => prev.map((item, i) => (i === index ? { ...item, name: e.target.value } : item)))
+                  }
+                />
+                <input
+                  className={inputCls}
+                  value={line.url}
+                  placeholder="http://192.168.1.10:8096 或 https://emby.example.com"
+                  onChange={(e) =>
+                    setEmbyLines((prev) => prev.map((item, i) => (i === index ? { ...item, url: e.target.value } : item)))
+                  }
+                />
+              </div>
+            ))}
+          </div>
         )}
 
         {(provider === 'clouddrive2' || provider === 'emby_remote') && (
@@ -266,7 +386,16 @@ export function StrmAccountDialog({
               <input className={inputCls} value={username} onChange={(e) => setUsername(e.target.value)} />
             </Field>
             <Field label="密码">
-              <input className={inputCls} type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+              <input
+                className={inputCls}
+                type="password"
+                value={password}
+                placeholder={existing && hasPassword ? SECRET_PLACEHOLDER : undefined}
+                onChange={(e) => {
+                  setPassword(e.target.value)
+                  if (e.target.value) setHasPassword(false)
+                }}
+              />
             </Field>
           </div>
         )}
@@ -277,20 +406,45 @@ export function StrmAccountDialog({
               <input className={inputCls} value={username} onChange={(e) => setUsername(e.target.value)} />
             </Field>
             <Field label="密码">
-              <input className={inputCls} type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+              <input
+                className={inputCls}
+                type="password"
+                value={password}
+                placeholder={existing && hasPassword ? SECRET_PLACEHOLDER : undefined}
+                onChange={(e) => {
+                  setPassword(e.target.value)
+                  if (e.target.value) setHasPassword(false)
+                }}
+              />
             </Field>
           </div>
         )}
 
         {provider === 'emby_remote' && (
           <Field label="API Key（可选）" hint="留空则用下方用户名/密码自动认证获取">
-            <input className={inputCls} value={token} placeholder="留空自动认证" onChange={(e) => setToken(e.target.value)} />
+            <input
+              className={inputCls}
+              value={token}
+              placeholder={existing && hasToken ? SECRET_PLACEHOLDER : '留空自动认证'}
+              onChange={(e) => {
+                setToken(e.target.value)
+                if (e.target.value) setHasToken(false)
+              }}
+            />
           </Field>
         )}
 
         {provider === 'openlist' && (
           <Field label="Token（可选，优先于密码）">
-            <input className={inputCls} value={token} onChange={(e) => setToken(e.target.value)} />
+            <input
+              className={inputCls}
+              value={token}
+              placeholder={existing && hasToken ? SECRET_PLACEHOLDER : undefined}
+              onChange={(e) => {
+                setToken(e.target.value)
+                if (e.target.value) setHasToken(false)
+              }}
+            />
           </Field>
         )}
 
@@ -435,9 +589,19 @@ function Strm115AuthPanel({
     })()
   }, [])
 
-  const filteredApps = (sources?.built_in ?? []).filter(
-    (s) => !appKeyword || s.app_name.toLowerCase().includes(appKeyword.toLowerCase()) || s.app_id.includes(appKeyword),
+  const filteredApps = useMemo(
+    () =>
+      (sources?.built_in ?? []).filter(
+        (s) => !appKeyword || s.app_name.toLowerCase().includes(appKeyword.toLowerCase()) || s.app_id.includes(appKeyword),
+      ),
+    [appKeyword, sources],
   )
+
+  useEffect(() => {
+    if (filteredApps.length > 0 && !filteredApps.some((source) => source.app_id === appID)) {
+      setAppID(filteredApps[0].app_id)
+    }
+  }, [appID, filteredApps])
 
   const buildStartPayload = () => {
     switch (authSource) {
@@ -453,6 +617,11 @@ function Strm115AuthPanel({
   }
 
   const startAuth = async () => {
+    if (authSource === 'built_in_appid' && filteredApps.length === 0) {
+      toast.error('未找到匹配的官方应用')
+      return
+    }
+
     setStarting(true)
     setAuthStatus('')
     try {
@@ -552,6 +721,7 @@ function Strm115AuthPanel({
                     </option>
                   ))}
                 </select>
+                {filteredApps.length === 0 && <p className="text-xs text-sand-500">未找到匹配的官方应用</p>}
               </Field>
             </div>
           )}
@@ -577,7 +747,12 @@ function Strm115AuthPanel({
             </Field>
           )}
 
-          <button type="button" onClick={startAuth} disabled={starting} className="neon-button disabled:opacity-50">
+          <button
+            type="button"
+            onClick={startAuth}
+            disabled={starting || (authSource === 'built_in_appid' && filteredApps.length === 0)}
+            className="neon-button disabled:opacity-50"
+          >
             {starting ? <Loader2 size={16} className="animate-spin" /> : <QrCode size={16} />}
             {authSource === 'built_in_appid' || authSource === 'custom_appid' ? '获取登录二维码' : '获取授权链接'}
           </button>
@@ -739,9 +914,26 @@ export function StrmSyncPathDialog({
   const [saving, setSaving] = useState(false)
   const [browsing, setBrowsing] = useState(false)
   const [browsingLocal, setBrowsingLocal] = useState<null | 'remote_path' | 'local_path'>(null)
+  const prevRemoteTailRef = useRef(existing ? lastPathSegment(existing.remote_path) : '')
 
   const set = <K extends keyof StrmSyncPathInput>(key: K, value: StrmSyncPathInput[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
+
+  const updateRemotePath = (remotePath: string) => {
+    setForm((f) => {
+      const synced = syncLocalPathWithRemote(f.local_path, remotePath, prevRemoteTailRef.current)
+      prevRemoteTailRef.current = synced.remoteTail
+      return { ...f, remote_path: remotePath, local_path: synced.localPath }
+    })
+  }
+
+  const commitLocalPath = (localPath: string) => {
+    setForm((f) => {
+      const synced = syncLocalPathWithRemote(localPath, f.remote_path, prevRemoteTailRef.current)
+      prevRemoteTailRef.current = synced.remoteTail
+      return { ...f, local_path: synced.localPath }
+    })
+  }
 
   const isLocal = form.provider === 'local'
   const availableAccounts = accounts.filter((a) => a.provider === form.provider && a.has_credential)
@@ -826,7 +1018,15 @@ export function StrmSyncPathDialog({
                       : '远端路径（可通过浏览选择）'
                 }
               >
-                <input className={inputCls} value={form.remote_path} placeholder={isLocal ? 'D:\\movies' : '/'} onChange={(e) => set('remote_path', e.target.value)} />
+                <input
+                  className={inputCls}
+                  value={form.remote_path}
+                  placeholder={isLocal ? 'D:\\movies' : '/'}
+                  onChange={(e) => set('remote_path', e.target.value)}
+                  onBlur={(e) => {
+                    if (!isLocal) updateRemotePath(e.target.value)
+                  }}
+                />
               </Field>
             </div>
             {isLocal && (
@@ -849,8 +1049,23 @@ export function StrmSyncPathDialog({
         <div className="space-y-1">
           <div className="flex items-end gap-2">
             <div className="flex-1">
-              <Field label="本地输出目录" hint="生成的 .strm 与下载的元数据写到这里的对应目录结构下">
-                <input className={inputCls} value={form.local_path} placeholder="D:\\strm\\movies" onChange={(e) => set('local_path', e.target.value)} />
+              <Field
+                label="本地输出目录"
+                hint={
+                  !isLocal && lastPathSegment(form.remote_path)
+                    ? `将自动拼接远端末级目录「${lastPathSegment(form.remote_path)}」`
+                    : '生成的 .strm 与下载的元数据写到这里的对应目录结构下'
+                }
+              >
+                <input
+                  className={inputCls}
+                  value={form.local_path}
+                  placeholder="D:\\strm\\movies"
+                  onChange={(e) => set('local_path', e.target.value)}
+                  onBlur={(e) => {
+                    if (!isLocal) commitLocalPath(e.target.value)
+                  }}
+                />
               </Field>
             </div>
             <button
@@ -935,7 +1150,7 @@ export function StrmSyncPathDialog({
           accountId={form.account_id}
           initialDir={form.remote_path || undefined}
           onSelect={(id) => {
-            set('remote_path', id)
+            updateRemotePath(id)
             setBrowsing(false)
           }}
           onClose={() => setBrowsing(false)}
@@ -946,7 +1161,11 @@ export function StrmSyncPathDialog({
         <LocalDirBrowserDialog
           initialDir={form[browsingLocal] || undefined}
           onSelect={(path) => {
-            set(browsingLocal, path)
+            if (browsingLocal === 'local_path') {
+              commitLocalPath(path)
+            } else {
+              set(browsingLocal, path)
+            }
             setBrowsingLocal(null)
           }}
           onClose={() => setBrowsingLocal(null)}

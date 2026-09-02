@@ -100,6 +100,14 @@ export const generalSettingsGroup: SettingGroup = {
       defaultValue: '1',
     },
     {
+      key: 'cache.images_max_size_mb',
+      label: '图片缓存上限 (MB)',
+      type: 'number',
+      hint: '海报、剧照等图片代理缓存目录 (cache/images) 的最大占用空间。超过上限时自动按修改时间清理最旧的文件。设为 0 表示不限制，默认 500MB',
+      defaultValue: '500',
+      placeholder: '500',
+    },
+    {
       key: 'https.enabled',
       label: '启用 HTTPS',
       type: 'toggle',
@@ -125,14 +133,14 @@ export const generalSettingsGroup: SettingGroup = {
       label: 'SSL 证书路径',
       type: 'text',
       hint: '可选。填写证书文件的绝对路径则优先从文件读取（无需粘贴内容）；留空则使用上方粘贴的证书内容。文件被替换后无需改设置，最长 30 秒内自动热加载新证书。',
-      placeholder: '/etc/ssl/mmtl-cert.pem',
+      placeholder: '/etc/ssl/mebox-cert.pem',
     },
     {
       key: 'https.key_path',
       label: 'SSL 私钥路径',
       type: 'text',
       hint: '可选。填写私钥文件的绝对路径则优先从文件读取；留空则使用上方粘贴的私钥内容。',
-      placeholder: '/etc/ssl/mmtl-key.pem',
+      placeholder: '/etc/ssl/mebox-key.pem',
     },
   ],
 }

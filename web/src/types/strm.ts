@@ -9,6 +9,11 @@ export const STRM_PROVIDER_LABELS: Record<StrmProvider, string> = {
   emby_remote: 'Emby 远程挂载',
 }
 
+export type EmbyRemoteLine = {
+  name: string
+  url: string
+}
+
 export interface StrmAccount {
   id: string
   name: string
@@ -21,8 +26,22 @@ export interface StrmAccount {
   last_test_ok: boolean
   has_credential: boolean
   provider_label: string
-  /** 仅远程 Emby 挂载账号返回：播放流量是否经过 MMTL 代理 */
+  config_preview?: StrmAccountConfigPreview
+  /** 仅远程 Emby 挂载账号返回：播放流量是否经过 MeBox 代理 */
   proxy_play?: boolean
+  /** 仅远程 Emby 挂载账号返回：多线路配置 */
+  emby_lines?: EmbyRemoteLine[]
+  /** 当前优先使用的线路下标 */
+  emby_active_line?: number
+}
+
+export interface StrmAccountConfigPreview {
+  url?: string
+  server?: string
+  username?: string
+  has_password?: boolean
+  has_token?: boolean
+  has_api_key?: boolean
 }
 
 export interface StrmAccountInput {

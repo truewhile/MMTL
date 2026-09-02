@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 export type ThemeMode = 'light' | 'dark' | 'system'
 export type ResolvedTheme = 'light' | 'dark'
 
-const THEME_STORAGE_KEY = 'mmtl.theme'
+const THEME_STORAGE_KEY = 'mebox.theme'
 const THEME_LEGACY_STORAGE_KEY = 'mediastationgo.theme'
 const DARK_QUERY = '(prefers-color-scheme: dark)'
 

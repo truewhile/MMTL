@@ -11,10 +11,10 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/ShukeBta/MMTL/internal/config"
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/repository"
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/repository"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 // TestStrmAdminRoutes 冒烟测试 STRM 管理端点注册与 401 拦截。
@@ -50,16 +50,19 @@ func TestStrmAdminRoutesAreRegistered(t *testing.T) {
 		"GET /api/admin/strm/downloads",
 		"POST /api/admin/strm/downloads/:id/cancel",
 		"POST /api/admin/strm/downloads/:id/retry",
-			"POST /api/admin/strm/downloads/clear-finished",
-			"POST /api/admin/strm/downloads/clear-canceled",
-			"POST /api/admin/strm/downloads/retry-failed",
-			"POST /api/admin/strm/downloads/cancel-pending",
-			"GET /api/admin/strm/uploads",
-			"POST /api/admin/strm/uploads/:id/cancel",
-			"POST /api/admin/strm/uploads/:id/retry",
-			"POST /api/admin/strm/uploads/cancel-pending",
-			"POST /api/admin/strm/uploads/clear-canceled",
-			"GET /api/strm/play/:provider/:file",
+		"POST /api/admin/strm/downloads/clear-finished",
+		"POST /api/admin/strm/downloads/clear-canceled",
+		"POST /api/admin/strm/downloads/retry-failed",
+		"POST /api/admin/strm/downloads/cancel-pending",
+		"GET /api/admin/strm/uploads",
+		"POST /api/admin/strm/uploads/:id/cancel",
+		"POST /api/admin/strm/uploads/:id/retry",
+		"POST /api/admin/strm/uploads/clear-done",
+		"POST /api/admin/strm/uploads/clear-finished",
+		"POST /api/admin/strm/uploads/clear-canceled",
+		"POST /api/admin/strm/uploads/retry-failed",
+		"POST /api/admin/strm/uploads/cancel-pending",
+		"GET /api/strm/play/:provider/:file",
 	} {
 		if !routes[want] {
 			t.Fatalf("%s route is not registered", want)

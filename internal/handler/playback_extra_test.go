@@ -15,11 +15,11 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MMTL/internal/config"
-	"github.com/ShukeBta/MMTL/internal/middleware"
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/repository"
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/middleware"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/repository"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 func TestExternalURLUsesMediaScopedPlaybackToken(t *testing.T) {
@@ -109,7 +109,7 @@ func TestExternalURLPrefersBrowserPublicOriginOverForwardedSource(t *testing.T) 
 	req.Header.Set("Authorization", "Bearer "+loginToken)
 	req.Header.Set("X-Forwarded-Proto", "https")
 	req.Header.Set("X-Forwarded-Host", "media.v6.agonyz.dpdns.org")
-	req.Header.Set("X-MMTL-Public-Origin", "https://media.agonyz.dpdns.org")
+	req.Header.Set("X-MeBox-Public-Origin", "https://media.agonyz.dpdns.org")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -140,7 +140,7 @@ func TestExternalPlayersSanitizeBrowserPublicOrigin(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "http://origin.internal/api/playback/media-1/external-players", nil)
 	req.Header.Set("Authorization", "Bearer "+loginToken)
-	req.Header.Set("X-MMTL-Public-Origin", "https://user:pass@media.agonyz.dpdns.org/sneaky/path?x=1#frag")
+	req.Header.Set("X-MeBox-Public-Origin", "https://user:pass@media.agonyz.dpdns.org/sneaky/path?x=1#frag")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -184,7 +184,7 @@ func TestExternalURLFallsBackToConfiguredPublicServerURL(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+loginToken)
 	req.Header.Set("X-Forwarded-Proto", "https")
 	req.Header.Set("X-Forwarded-Host", "source.example.test")
-	req.Header.Set("X-MMTL-Public-Origin", "javascript:alert(1)")
+	req.Header.Set("X-MeBox-Public-Origin", "javascript:alert(1)")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -211,7 +211,7 @@ func TestExternalURLPrefersConfiguredPublicServerURLOverLocalBrowserOrigin(t *te
 
 	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080/api/playback/media-1/external-url", nil)
 	req.Header.Set("Authorization", "Bearer "+loginToken)
-	req.Header.Set("X-MMTL-Public-Origin", "http://127.0.0.1:8080")
+	req.Header.Set("X-MeBox-Public-Origin", "http://127.0.0.1:8080")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -404,8 +404,77 @@ func newPlaybackScopeTestRouter(t *testing.T) (*gin.Engine, *service.Container, 
 	router := gin.New()
 	api := router.Group("/api")
 	api.Use(middleware.AuthRequired(cfg.Secrets.JWTSecret))
+	api.GET("/playback/:id/info", playbackInfoHandler(svc))
 	api.GET("/playback/:id/external-url", externalURLHandler(svc))
 	api.GET("/playback/:id/external-players", externalPlayersHandler(svc))
 	api.GET("/stream/:id", streamHandler(svc))
+	api.GET("/hls/:id/index.m3u8", hlsPlaylistHandler(svc))
+	api.GET("/media/:id/subtitles", listSubtitlesHandler(svc))
 	return router, svc, cfg.Secrets.JWTSecret
+}
+
+func TestPlaybackInfoForSTRMMediaDisablesHLS(t *testing.T) {
+	router, _, secret := newPlaybackScopeTestRouter(t)
+	loginToken := signedTestToken(t, secret)
+
+	req := httptest.NewRequest(http.MethodGet, "http://nas.local/api/playback/media-1/info", nil)
+	req.Header.Set("Authorization", "Bearer "+loginToken)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
+	}
+	var payload struct {
+		StreamURL string `json:"stream_url"`
+		HlsURL    string `json:"hls_url"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if payload.StreamURL == "" {
+		t.Fatalf("expected non-empty stream_url")
+	}
+	if payload.HlsURL != "" {
+		t.Fatalf("expected empty hls_url for STRM media, got %q", payload.HlsURL)
+	}
+}
+
+func TestHLSPlaylistForRemoteEmbyMediaDisabled(t *testing.T) {
+	router, svc, secret := newPlaybackScopeTestRouter(t)
+	svc.EmbyRemote = &service.EmbyRemoteService{}
+	loginToken := signedTestToken(t, secret)
+
+	req := httptest.NewRequest(http.MethodGet, "http://nas.local/api/hls/embyremote~acct1~item1/index.m3u8", nil)
+	req.Header.Set("Authorization", "Bearer "+loginToken)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d (409 StatusConflict)", w.Code, http.StatusConflict)
+	}
+}
+
+func TestListSubtitlesForRemoteEmbyMediaReturnsEmptyTracks(t *testing.T) {
+	router, svc, secret := newPlaybackScopeTestRouter(t)
+	svc.EmbyRemote = &service.EmbyRemoteService{}
+	loginToken := signedTestToken(t, secret)
+
+	req := httptest.NewRequest(http.MethodGet, "http://nas.local/api/media/embyremote~acct1~item1/subtitles", nil)
+	req.Header.Set("Authorization", "Bearer "+loginToken)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 OK", w.Code)
+	}
+	var payload struct {
+		Tracks []any `json:"tracks"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if payload.Tracks == nil || len(payload.Tracks) != 0 {
+		t.Fatalf("expected empty tracks array, got %v", payload.Tracks)
+	}
 }

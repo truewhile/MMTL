@@ -11,7 +11,8 @@ import { subtitlesAPI, type SubtitleTrack } from '../api/subtitles'
 import { systemAPI } from '../api/system'
 import type { Media } from '../types'
 import { getSeriesKey, seriesTitleFromPath } from '../utils/groupSeries'
-import { pickPlayerMode, needsTranscodeForBrowser, type PlayerMode } from './playerPageModel'
+import { isRemoteEmbyID } from '../utils/remoteEmby'
+import { pickPlayerMode, needsTranscodeForBrowser, isDirectStreamMedia, type PlayerMode } from './playerPageModel'
 import { PlayerTopBar } from './PlayerTopBar'
 import { PlayerVideoStage } from './PlayerVideoStage'
 import { PlayerDanmakuPanel } from '../components/PlayerDanmakuPanel'
@@ -28,7 +29,7 @@ import { PlayerPlaylistPanel } from '../components/PlayerPlaylistPanel'
 //
 // External subtitles next to the source file are auto-discovered and
 // attached as <track> elements.
-const SUBTITLE_STORAGE_KEY = 'mmtl.subtitle'
+const SUBTITLE_STORAGE_KEY = 'mebox.subtitle'
 
 // 初始字幕偏好：localStorage 记录上次选择的轨道（-1=关闭）；没有偏好时
 // 默认 0（自动加载第一条字幕）。
@@ -63,6 +64,8 @@ export function PlayerPage() {
   const [playerError, setPlayerError] = useState('')
   // 「客户端直连解码」模式：宿主机不转码，播放器强制 direct play、隐藏 HLS 切换。
   const [directOnly, setDirectOnly] = useState(false)
+  const [resumePosition, setResumePosition] = useState(0)
+  const [initialSeekDone, setInitialSeekDone] = useState(false)
 
   // 弹幕控制：状态来自 /api/danmaku/config 初始值，用户在面板里实时调整。
   const [danmakuOpen, setDanmakuOpen] = useState(false)
@@ -186,10 +189,11 @@ export function PlayerPage() {
     if (!id) return
     mediaAPI.get(id).then((m) => {
       setMedia(m)
+      const isDirect = isDirectStreamMedia(m)
       const forced = params.get('mode') as PlayerMode | null
       const auto = pickPlayerMode(m)
-      // 直连解码模式下忽略 ?mode=hls 与自动判定，始终 direct play。
-      setMode(directOnly ? 'direct' : (forced ?? auto))
+      // 直连解码模式以及 STRM / Emby 挂载等直连媒体，忽略 ?mode=hls，始终 direct play。
+      setMode(directOnly || isDirect ? 'direct' : (forced ?? auto))
       setPlayerError('')
     })
     subtitlesAPI
@@ -252,7 +256,43 @@ export function PlayerPage() {
     return () => teardownHls(media.id, mode === 'hls')
   }, [hlsUnavailable, media, mode, params, setParams, teardownHls])
 
-  // Persist resume position every 10 seconds while playing.
+  // 自动拉取已有的播放进度并恢复播放位置
+  useEffect(() => {
+    if (!id) return
+    setResumePosition(0)
+    setInitialSeekDone(false)
+    playbackAPI
+      .getResume(id)
+      .then((progress) => {
+        if (progress.position_ms > 2000 && !progress.completed) {
+          setResumePosition(progress.position_ms / 1000)
+        }
+      })
+      .catch(() => undefined)
+  }, [id])
+
+  useEffect(() => {
+    const video = ref.current
+    if (!video || !resumePosition || initialSeekDone) return
+    const applyResume = () => {
+      if (resumePosition > 0 && Math.abs(video.currentTime - resumePosition) > 2) {
+        video.currentTime = resumePosition
+        setInitialSeekDone(true)
+        const m = Math.floor(resumePosition / 60)
+        const s = Math.floor(resumePosition % 60)
+        const timeStr = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+        toast.success(`已恢复上次播放进度至 ${timeStr}`, { duration: 2500 })
+      }
+    }
+    if (video.readyState >= 1) {
+      applyResume()
+    } else {
+      video.addEventListener('loadedmetadata', applyResume, { once: true })
+      return () => video.removeEventListener('loadedmetadata', applyResume)
+    }
+  }, [resumePosition, initialSeekDone])
+
+  // Persist resume position every 10 seconds while playing, and immediately upon pause/unmount.
   useEffect(() => {
     if (!media || !ref.current) return
     const video = ref.current
@@ -271,6 +311,11 @@ export function PlayerPage() {
     return () => {
       video.removeEventListener('timeupdate', handler)
       video.removeEventListener('pause', handler)
+      const positionMs = Math.floor(video.currentTime * 1000)
+      const durationMs = Math.floor((video.duration || 0) * 1000)
+      if (positionMs > 0 && media) {
+        playbackAPI.recordProgress(media.id, positionMs, durationMs).catch(() => undefined)
+      }
     }
   }, [media])
 
@@ -429,12 +474,18 @@ export function PlayerPage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [goBack, prevEpisode, nextEpisode, handlePrevEpisode, handleNextEpisode, playlistOpen, danmakuOpen])
 
+  const isDirectStream = isDirectStreamMedia(media)
+
   const toggleMode = useCallback(() => {
+    if (isDirectStream) {
+      toast('该媒体为直连播放，无需且不支持转码')
+      return
+    }
     const next = mode === 'hls' ? 'direct' : 'hls'
     setMode(next)
     params.set('mode', next)
     setParams(params, { replace: true })
-  }, [mode, params, setParams])
+  }, [isDirectStream, mode, params, setParams])
 
   // 用户切换字幕轨道：-1=关闭；记忆偏好，下次播放默认沿用。
   const selectSubtitle = useCallback((index: number) => {
@@ -450,7 +501,13 @@ export function PlayerPage() {
     // 浏览器对 <video src> 的错误描述非常有限，把详细原因
     // 转给开发者控制台 + 一条 toast；常见原因是 codec 不支持。
     if (mode === 'direct') {
-      if (directOnly) {
+      if (isRemoteEmbyID(media?.id)) {
+        setPlayerError('直接播放失败。该媒体为远程 Emby 挂载直连播放（不进行转码）；当前浏览器可能不支持该视频编码或音频格式，建议使用外部播放器（如 PotPlayer / VLC / IINA）播放。')
+        toast.error('直接播放失败，建议使用外部播放器')
+      } else if (isDirectStreamMedia(media)) {
+        setPlayerError('直接播放失败。该媒体为 STRM 远程直连播放（不进行转码）；当前浏览器可能不支持该视频编码或音频格式，建议使用外部播放器播放。')
+        toast.error('直接播放失败，建议使用外部播放器')
+      } else if (directOnly) {
         setPlayerError('直接播放失败。当前为「客户端直连解码」模式，宿主机不转码；请使用支持该编码/封装的播放器（如 Infuse / VLC / Emby 客户端）播放，或关闭直连解码模式。')
         toast.error('直接播放失败（客户端直连解码模式）')
       } else if (hlsUnavailable) {
@@ -467,12 +524,20 @@ export function PlayerPage() {
 
     setPlayerError('视频播放失败，请检查文件是否存在，或确认 ffmpeg 已正确配置。')
     toast.error('视频播放失败，请检查文件是否存在')
-  }, [directOnly, hlsUnavailable, mode, params, setParams])
+  }, [directOnly, hlsUnavailable, media, mode, params, setParams])
 
   return (
     <div className="relative flex h-full w-full flex-1 flex-col overflow-hidden bg-black">
       <PlayerTopBar
         directOnly={directOnly}
+        isDirectStream={isDirectStream}
+        directStreamLabel={
+          isRemoteEmbyID(media?.id)
+            ? 'Emby 直连播放'
+            : isDirectStream
+            ? 'STRM 直连播放'
+            : undefined
+        }
         mode={mode}
         onBack={goBack}
         onToggleMode={toggleMode}

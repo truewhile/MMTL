@@ -16,8 +16,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/service/cloud"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/service/cloud"
 )
 
 // overrideDanmakuOfficialBase points the "official" endpoint (match + fallback)
@@ -34,7 +34,7 @@ func overrideDanmakuOfficialBase(t *testing.T, base string) {
 // since the file is smaller than the 16MB prefix).
 func writeDanmakuTestVideo(t *testing.T, name string) (path, wantHash string) {
 	t.Helper()
-	content := bytes.Repeat([]byte("MMTL-danmaku-hash-test-0123456789"), 500)
+	content := bytes.Repeat([]byte("MeBox-danmaku-hash-test-0123456789"), 500)
 	path = filepath.Join(t.TempDir(), name)
 	require.NoError(t, os.WriteFile(path, content, 0o644))
 	sum := md5.Sum(content)
@@ -278,69 +278,171 @@ func TestDanmakuSameBase(t *testing.T) {
 	require.False(t, sameDanmakuBase("", "https://api.dandanplay.net"))
 }
 
-	// fetchCommentWithFallback：配置源与官方同源时不重复请求；
-	// 全失败时带出最后一跳错误。
-	func TestDanmakuFetchCommentWithFallback(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusInternalServerError)
-		}))
-		t.Cleanup(srv.Close)
+// fetchCommentWithFallback：配置源与官方同源时不重复请求；
+// 全失败时带出最后一跳错误。
+func TestDanmakuFetchCommentWithFallback(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
 
-		svc := newDanmakuTestService(t)
-		ctx := context.Background()
-		raw, st, err := svc.fetchCommentWithFallback(ctx, srv.URL, srv.URL, "25484")
-		require.Error(t, err)
-		require.Empty(t, raw)
-		require.Equal(t, "auto", st)
-	}
+	svc := newDanmakuTestService(t)
+	ctx := context.Background()
+	raw, st, err := svc.fetchCommentWithFallback(ctx, srv.URL, srv.URL, "25484")
+	require.Error(t, err)
+	require.Empty(t, raw)
+	require.Equal(t, "auto", st)
+}
 
-	// 视频即便能命中 Hash 自动识别，当用户传入手动搜索关键词时应跳过 Hash 匹配，走关键词搜索。
-	func TestDanmakuFetchHashMatchSkippedOnManualKeyword(t *testing.T) {
-		videoPath, _ := writeDanmakuTestVideo(t, "测试动画.第01话.mkv")
+// 视频即便能命中 Hash 自动识别，当用户传入手动搜索关键词时应跳过 Hash 匹配，走关键词搜索。
+func TestDanmakuFetchHashMatchSkippedOnManualKeyword(t *testing.T) {
+	videoPath, _ := writeDanmakuTestVideo(t, "测试动画.第01话.mkv")
 
-		// 官方服务同时提供 match 和 search：
-		// match 会返回 episodeId=25484（动画A）
-		// search 会根据关键词返回 episodeId=99999（动画B）
-		mux := http.NewServeMux()
-		var matchCalled bool
-		mux.HandleFunc("/api/v2/match", func(w http.ResponseWriter, r *http.Request) {
-			matchCalled = true
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"success":true,"isMatched":true,"matches":[{"episodeId":25484,"animeId":1001,"animeTitle":"自动识别动画A","episodeTitle":"第1话"}]}`)
-		})
-		mux.HandleFunc("/api/v2/search/episodes", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"hasMore":false,"animes":[{"animeId":2002,"animeTitle":"手动搜索动画B","episodes":[{"episodeId":99999,"episodeTitle":"第1话"}]}]}`)
-		})
-		mux.HandleFunc("/api/v2/comment/25484", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/xml")
-			fmt.Fprint(w, `<?xml version="1.0"?><i><d p="0.5,1,16777215,user1">自动识别弹幕</d></i>`)
-		})
-		mux.HandleFunc("/api/v2/comment/99999", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/xml")
-			fmt.Fprint(w, `<?xml version="1.0"?><i><d p="0.5,1,16777215,user2">手动搜索弹幕</d></i>`)
-		})
-		official := httptest.NewServer(mux)
-		t.Cleanup(official.Close)
-		overrideDanmakuOfficialBase(t, official.URL)
+	// 官方服务同时提供 match 和 search：
+	// match 会返回 episodeId=25484（动画A）
+	// search 会根据关键词返回 episodeId=99999（动画B）
+	mux := http.NewServeMux()
+	var matchCalled bool
+	mux.HandleFunc("/api/v2/match", func(w http.ResponseWriter, r *http.Request) {
+		matchCalled = true
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"success":true,"isMatched":true,"matches":[{"episodeId":25484,"animeId":1001,"animeTitle":"自动识别动画A","episodeTitle":"第1话"}]}`)
+	})
+	mux.HandleFunc("/api/v2/search/episodes", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"hasMore":false,"animes":[{"animeId":2002,"animeTitle":"手动搜索动画B","episodes":[{"episodeId":99999,"episodeTitle":"第1话"}]}]}`)
+	})
+	mux.HandleFunc("/api/v2/comment/25484", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		fmt.Fprint(w, `<?xml version="1.0"?><i><d p="0.5,1,16777215,user1">自动识别弹幕</d></i>`)
+	})
+	mux.HandleFunc("/api/v2/comment/99999", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		fmt.Fprint(w, `<?xml version="1.0"?><i><d p="0.5,1,16777215,user2">手动搜索弹幕</d></i>`)
+	})
+	official := httptest.NewServer(mux)
+	t.Cleanup(official.Close)
+	overrideDanmakuOfficialBase(t, official.URL)
 
-		svc := newDanmakuTestService(t)
-		ctx := context.Background()
-		seedDanmakuVideoMedia(t, svc, "mManual", "自动识别动画A", videoPath, 32000, 1)
+	svc := newDanmakuTestService(t)
+	ctx := context.Background()
+	seedDanmakuVideoMedia(t, svc, "mManual", "自动识别动画A", videoPath, 32000, 1)
 
-		// 1) 默认自动识别：命中 Hash 识别
-		resAuto, err := svc.Fetch(ctx, "mManual", "", "")
-		require.NoError(t, err)
-		require.True(t, matchCalled)
-		require.Equal(t, "hash", resAuto.MatchMode)
-		require.Equal(t, int64(25484), resAuto.EpisodeID)
-		require.Contains(t, resAuto.Raw, "自动识别弹幕")
+	// 1) 默认自动识别：命中 Hash 识别
+	resAuto, err := svc.Fetch(ctx, "mManual", "", "")
+	require.NoError(t, err)
+	require.True(t, matchCalled)
+	require.Equal(t, "hash", resAuto.MatchMode)
+	require.Equal(t, int64(25484), resAuto.EpisodeID)
+	require.Contains(t, resAuto.Raw, "自动识别弹幕")
 
-		// 2) 用户传入手动搜索关键词：跳过 Hash 识别，命中搜索结果动画B
-		resManual, err := svc.Fetch(ctx, "mManual", "手动搜索动画B", "")
-		require.NoError(t, err)
-		require.Equal(t, "search", resManual.MatchMode)
-		require.Equal(t, int64(99999), resManual.EpisodeID)
-		require.Equal(t, "手动搜索动画B", resManual.AnimeTitle)
-		require.Contains(t, resManual.Raw, "手动搜索弹幕")
-	}
+	// 2) 用户传入手动搜索关键词：跳过 Hash 识别，命中搜索结果动画B
+	resManual, err := svc.Fetch(ctx, "mManual", "手动搜索动画B", "")
+	require.NoError(t, err)
+	require.Equal(t, "search", resManual.MatchMode)
+	require.Equal(t, int64(99999), resManual.EpisodeID)
+	require.Equal(t, "手动搜索动画B", resManual.AnimeTitle)
+	require.Contains(t, resManual.Raw, "手动搜索弹幕")
+}
+
+// Emby 远程挂载条目：通过伪装 ID 解析出流直链，通过 Range 提取 16MB 前缀计算 hash 并匹配弹幕。
+func TestDanmakuFetchEmbyRemoteHashViaDirectLink(t *testing.T) {
+	content := bytes.Repeat([]byte("emby-remote-video-bytes-9876543210"), 300)
+	sum := md5.Sum(content)
+	wantHash := hex.EncodeToString(sum[:])
+
+	var gotRange string
+	var rangeHits int
+	rangeSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rangeHits++
+		gotRange = r.Header.Get("Range")
+		w.Header().Set("Content-Type", "application/octet-stream")
+		_, _ = w.Write(content)
+	}))
+	t.Cleanup(rangeSrv.Close)
+
+	var seen string
+	official := danmakuOfficialServer(t,
+		`{"success":true,"isMatched":true,"matches":[{"episodeId":25484,"animeId":2001,"animeTitle":"芙莉莲","episodeTitle":"第1话"}]}`,
+		`<?xml version="1.0"?><i><d p="1.2,1,16777215,user1">Emby远程弹幕命中</d></i>`,
+		&seen)
+	overrideDanmakuOfficialBase(t, official.URL)
+
+	remoteMediaID := EncodeEmbyRemoteID("mount-123", "remote-item-456")
+	svc := newDanmakuTestService(t)
+	svc.SetRemoteMediaResolver(func(_ context.Context, encodedID string) (*model.Media, string, error) {
+		require.Equal(t, remoteMediaID, encodedID)
+		return &model.Media{
+			Base:         model.Base{ID: remoteMediaID},
+			Title:        "葬送的芙莉莲",
+			EpisodeTitle: "第1话",
+			EpisodeNum:   1,
+			Path:         "/mnt/emby/anime/Frieren/S01E01.mkv",
+			SizeBytes:    int64(len(content)),
+			DurationSec:  1400,
+		}, rangeSrv.URL, nil
+	})
+
+	ctx := context.Background()
+	res, err := svc.Fetch(ctx, remoteMediaID, "", "")
+	require.NoError(t, err)
+	require.True(t, res.Enabled)
+	require.Equal(t, "hash", res.MatchMode)
+	require.Equal(t, int64(25484), res.EpisodeID)
+	require.Equal(t, "芙莉莲", res.AnimeTitle)
+	require.Contains(t, res.Raw, "Emby远程弹幕命中")
+	require.Contains(t, gotRange, "bytes=0-")
+	require.Contains(t, seen, `"fileHash":"`+wantHash+`"`)
+	require.Contains(t, seen, `"fileName":"`+url.QueryEscape("S01E01")+`"`)
+	require.Equal(t, 1, rangeHits)
+
+	// 第二次拉取验证 hashCache 命中，不重复请求 rangeSrv
+	res2, err := svc.Fetch(ctx, remoteMediaID, "", "")
+	require.NoError(t, err)
+	require.Equal(t, "hash", res2.MatchMode)
+	require.Equal(t, 1, rangeHits)
+}
+
+// Emby 远程直链拉取失败时（如网络异常），能平滑降级走番剧原名/标题关键词搜索。
+func TestDanmakuFetchEmbyRemoteStreamFailedFallsBackToSearch(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v2/search/episodes", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// 文件名搜索 ep01 时无结果，模拟文件名未匹配
+		if r.URL.Query().Get("anime") == "ep01" {
+			fmt.Fprint(w, `{"hasMore":false,"animes":[]}`)
+			return
+		}
+		// 降级到番剧名搜索命中
+		fmt.Fprint(w, `{"hasMore":false,"animes":[{"animeId":3001,"animeTitle":"降级搜索番剧","episodes":[{"episodeId":7799,"episodeTitle":"第1话"}]}]}`)
+	})
+	mux.HandleFunc("/api/v2/comment/7799", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		fmt.Fprint(w, `<?xml version="1.0"?><i><d p="0.8,1,16777215,user1">降级搜索弹幕</d></i>`)
+	})
+	official := httptest.NewServer(mux)
+	t.Cleanup(official.Close)
+	overrideDanmakuOfficialBase(t, official.URL)
+
+	remoteMediaID := EncodeEmbyRemoteID("mount-123", "remote-item-789")
+	svc := newDanmakuTestService(t)
+	// 返回一个不存在的流服务地址模拟 Range 拉取失败
+	svc.SetRemoteMediaResolver(func(_ context.Context, encodedID string) (*model.Media, string, error) {
+		return &model.Media{
+			Base:        model.Base{ID: remoteMediaID},
+			Title:       "降级搜索番剧",
+			EpisodeNum:  1,
+			Path:        "/mnt/emby/anime/fallback/ep01.mkv",
+			DurationSec: 1200,
+		}, "http://127.0.0.1:1/invalid-stream", nil
+	})
+
+	ctx := context.Background()
+	res, err := svc.Fetch(ctx, remoteMediaID, "", "")
+	require.NoError(t, err)
+	require.True(t, res.Enabled)
+	require.Equal(t, "search", res.MatchMode)
+	require.Equal(t, int64(7799), res.EpisodeID)
+	require.Equal(t, "降级搜索番剧", res.AnimeTitle)
+	require.Contains(t, res.Raw, "降级搜索弹幕")
+}

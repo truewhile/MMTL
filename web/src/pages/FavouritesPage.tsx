@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { playbackAPI } from '../api/playback'
 import { MediaCard } from '../components/MediaCard'
 import type { Media } from '../types'
+import { favouriteMediaLink } from '../utils/mediaNavigation'
 
 export function FavouritesPage() {
   const [items, setItems] = useState<Media[]>([])
@@ -66,7 +67,7 @@ export function FavouritesPage() {
         <div className="glass-panel flex flex-col items-center gap-3 p-10 text-center">
           <p className="text-lg text-ink-100">还没有任何收藏</p>
           <p className="text-sm text-sand-500">
-            点击媒体详情页的「收藏」按钮添加喜欢的内容
+            在媒体库或详情页点击「加入收藏」即可添加喜欢的内容
           </p>
         </div>
       )}
@@ -74,7 +75,7 @@ export function FavouritesPage() {
       {items.length > 0 && (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {items.map((m) => (
-            <MediaCard key={m.id} media={m} />
+            <MediaCard key={m.id} media={m} linkTo={favouriteMediaLink(m)} />
           ))}
         </div>
       )}

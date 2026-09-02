@@ -187,6 +187,15 @@ export const strmAPI = {
   cancelPendingUploads: () =>
     api.post<{ canceled: number }>('/admin/strm/uploads/cancel-pending').then((r) => r.data),
 
+  clearDoneUploads: () =>
+    api.post<{ deleted: number }>('/admin/strm/uploads/clear-done').then((r) => r.data),
+
+  clearFinishedUploads: () =>
+    api.post<{ deleted: number }>('/admin/strm/uploads/clear-finished').then((r) => r.data),
+
   clearCanceledUploads: () =>
     api.post<{ deleted: number }>('/admin/strm/uploads/clear-canceled').then((r) => r.data),
+
+  retryFailedUploads: () =>
+    api.post<{ retried: number }>('/admin/strm/uploads/retry-failed').then((r) => r.data),
 }

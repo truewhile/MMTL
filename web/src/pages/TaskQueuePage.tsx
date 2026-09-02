@@ -115,9 +115,9 @@ export function TaskQueuePage() {
       </div>
 
       {/* 内容 */}
-      {type === 'scrape' && <ScraperQueuePage />}
-      {type === 'download' && <StrmQueuePanel kind="download" />}
-      {type === 'upload' && <StrmQueuePanel kind="upload" />}
+      {type === 'scrape' && <ScraperQueuePage embedded />}
+      {type === 'download' && <StrmQueuePanel kind="download" embedded />}
+      {type === 'upload' && <StrmQueuePanel kind="upload" embedded />}
       {type === 'all' && (
         <div className="space-y-10">
           <section>
@@ -125,21 +125,21 @@ export function TaskQueuePage() {
               <Sparkles size={18} className="text-brand-500" />
               刮削队列
             </h2>
-            <ScraperQueuePage />
+            <ScraperQueuePage embedded />
           </section>
           <section>
             <h2 className="mb-2 flex items-center gap-2 font-display text-xl font-bold text-ink-600">
               <Download size={18} className="text-brand-500" />
               下载队列
             </h2>
-            <StrmQueuePanel kind="download" />
+            <StrmQueuePanel kind="download" embedded />
           </section>
           <section>
             <h2 className="mb-2 flex items-center gap-2 font-display text-xl font-bold text-ink-600">
               <Upload size={18} className="text-brand-500" />
               上传队列
             </h2>
-            <StrmQueuePanel kind="upload" />
+            <StrmQueuePanel kind="upload" embedded />
           </section>
         </div>
       )}

@@ -9,8 +9,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ShukeBta/MMTL/internal/config"
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 func TestBuildDSN(t *testing.T) {
@@ -30,10 +30,10 @@ func TestBuildDSN(t *testing.T) {
 				Port:     5432,
 				User:     "postgres",
 				Password: "secretpassword",
-				DBName:   "mmtl_prod",
+				DBName:   "mebox_prod",
 				SSLMode:  "disable",
 			},
-			want: "postgres://postgres:secretpassword@127.0.0.1:5432/mmtl_prod?sslmode=disable",
+			want: "postgres://postgres:secretpassword@127.0.0.1:5432/mebox_prod?sslmode=disable",
 		},
 	}
 
@@ -49,7 +49,7 @@ func TestGetDatabaseStatusHandler(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{}
 	cfg.Database.Type = "sqlite"
-	cfg.Database.DBPath = "./data/mmtl.db"
+	cfg.Database.DBPath = "./data/mebox.db"
 
 	svc := &service.Container{
 		Database: service.NewDatabaseAdminService(cfg, nil, nil, nil),
@@ -89,7 +89,7 @@ func TestSaveDatabaseConfigHandler(t *testing.T) {
 	r := gin.New()
 	r.POST("/api/admin/database/save-config", saveDatabaseConfigHandler(svc))
 
-	body := bytes.NewBufferString(`{"type":"postgres","host":"localhost","port":5432,"user":"admin","password":"pwd","dbname":"mmtl"}`)
+	body := bytes.NewBufferString(`{"type":"postgres","host":"localhost","port":5432,"user":"admin","password":"pwd","dbname":"mebox"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/admin/database/save-config", body)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()

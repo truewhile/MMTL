@@ -8,8 +8,8 @@ type Library struct {
 	Type            string        `gorm:"size:16;not null;default:movie" json:"type"` // movie / tv / anime / music
 	CoverURL        string        `gorm:"size:1024" json:"cover_url,omitempty"`
 	Enabled         bool          `gorm:"default:true" json:"enabled"`
-	SortOrder       int           `gorm:"index;default:0" json:"sort_order"`            // 手动拖拽排序用，越小越靠前
-	CarouselEnabled bool          `gorm:"default:false" json:"carousel_enabled"`        // 是否参与首页海报轮播（默认不参与）
+	SortOrder       int           `gorm:"index;default:0" json:"sort_order"`     // 手动拖拽排序用，越小越靠前
+	CarouselEnabled bool          `gorm:"default:false" json:"carousel_enabled"` // 是否参与首页海报轮播（默认不参与）
 	Roots           []LibraryRoot `gorm:"foreignKey:LibraryID" json:"roots,omitempty"`
 }
 

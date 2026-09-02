@@ -1,6 +1,6 @@
 // 远程 Emby 聚合的 ID 伪装。
 //
-// MMTL 作为 Emby 联邦网关把多个远程 Emby 服务器的媒体库透明聚合到自身的
+// MeBox 作为 Emby 联邦网关把多个远程 Emby 服务器的媒体库透明聚合到自身的
 // Emby API 之下，远程条目完全不落库。为了把本地 ID 与多个远程服务器的 ID
 // 隔离开，远程条目在返回给客户端之前统一被改写为：
 //
@@ -42,7 +42,7 @@ func DecodeEmbyRemoteID(id string) (accountID, remoteID string, ok bool) {
 }
 
 // embyRemoteStringIDs 是条目 JSON 中需要伪装（编码）成远程 ID 的字符串字段。
-// 图片 / 详情 / 播放请求都会以这些字段的值作为 ID 回指 MMTL。
+// 图片 / 详情 / 播放请求都会以这些字段的值作为 ID 回指 MeBox。
 var embyRemoteStringIDs = []string{
 	"Id",
 	"ParentId",

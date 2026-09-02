@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, Fragment, type ReactNode } from 'react'
 import { useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 
@@ -13,6 +13,8 @@ import {
   type SortOrder,
 } from '../utils/mediaSort'
 import { LibraryPageDialogs } from './LibraryPageDialogs'
+import { PageBackButton } from '../components/PageBackButton'
+import { MediaFavouriteButton } from '../components/MediaFavouriteButton'
 import { LibraryPageHeader } from './LibraryPageHeader'
 import { LibraryMediaSections } from './LibraryMediaSections'
 import { LibrarySeriesDetailSection } from './LibrarySeriesDetailSection'
@@ -20,12 +22,17 @@ import { useLibraryData } from './useLibraryData'
 import { useLibraryScanStatus } from './useLibraryScanStatus'
 import { useLibrarySeriesSelection } from './useLibrarySeriesSelection'
 import { useLibraryAdminActions } from './useLibraryAdminActions'
+import { usePermission } from '../hooks/usePermission'
+import { useFavourites } from '../hooks/useFavourites'
 
 export function LibraryPage() {
   const { id = '' } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const location = useLocation()
   const role = useAuthStore((s) => s.user?.role)
+  const canFavorite = usePermission('can_favorite')
+  const { isFavourite, toggleFavourite } = useFavourites()
+  const [favouriteBusyID, setFavouriteBusyID] = useState('')
 
   const [scrapeDialogOpen, setScrapeDialogOpen] = useState(false)
   const [manualSeriesScrapeOpen, setManualSeriesScrapeOpen] = useState(false)
@@ -34,20 +41,23 @@ export function LibraryPage() {
 
   // 排序状态（支持按库记忆）
   const [sortField, setSortField] = useState<SortField>(() => {
-    const saved = localStorage.getItem(`mmtl_lib_sort_field_${id}`) || localStorage.getItem('mmtl_lib_sort_field')
+    const saved = localStorage.getItem(`mebox_lib_sort_field_${id}`) || localStorage.getItem('mebox_lib_sort_field')
     return (saved as SortField) || 'title'
   })
   const [sortOrder, setSortOrder] = useState<SortOrder>(() => {
-    const saved = localStorage.getItem(`mmtl_lib_sort_order_${id}`) || localStorage.getItem('mmtl_lib_sort_order')
+    const saved = localStorage.getItem(`mebox_lib_sort_order_${id}`) || localStorage.getItem('mebox_lib_sort_order')
     return (saved as SortOrder) || 'asc'
   })
   const [randomSeed, setRandomSeed] = useState(() => Date.now())
   const [historyMap, setHistoryMap] = useState<Map<string, string>>(new Map())
 
   useEffect(() => {
+    if (sortField !== 'last_played') return
+    let cancelled = false
     historyAPI
       .list(1000)
       .then((historyItems) => {
+        if (cancelled) return
         const map = new Map<string, string>()
         for (const item of historyItems ?? []) {
           if (item.media_id && item.watched_at) {
@@ -59,17 +69,20 @@ export function LibraryPage() {
         setHistoryMap(map)
       })
       .catch(() => {})
-  }, [])
+    return () => {
+      cancelled = true
+    }
+  }, [sortField])
 
   const handleSortChange = (field: SortField, order: SortOrder) => {
     setSortField(field)
     setSortOrder(order)
     if (id) {
-      localStorage.setItem(`mmtl_lib_sort_field_${id}`, field)
-      localStorage.setItem(`mmtl_lib_sort_order_${id}`, order)
+      localStorage.setItem(`mebox_lib_sort_field_${id}`, field)
+      localStorage.setItem(`mebox_lib_sort_order_${id}`, order)
     }
-    localStorage.setItem('mmtl_lib_sort_field', field)
-    localStorage.setItem('mmtl_lib_sort_order', order)
+    localStorage.setItem('mebox_lib_sort_field', field)
+    localStorage.setItem('mebox_lib_sort_order', order)
     if (field === 'random') {
       setRandomSeed(Date.now())
     }
@@ -162,6 +175,39 @@ export function LibraryPage() {
     setManualMovie,
   })
 
+  const handleToggleFavourite = async (mediaID: string) => {
+    if (!canFavorite || favouriteBusyID) return
+    setFavouriteBusyID(mediaID)
+    try {
+      await toggleFavourite(mediaID)
+    } finally {
+      setFavouriteBusyID('')
+    }
+  }
+
+  const cardActions = (media: Media): ReactNode => {
+    const actions: ReactNode[] = []
+    if (canFavorite) {
+      actions.push(
+        <MediaFavouriteButton
+          key="favourite"
+          variant="compact"
+          favourite={isFavourite(media.id)}
+          disabled={favouriteBusyID === media.id}
+          onToggle={() => {
+            void handleToggleFavourite(media.id)
+          }}
+        />,
+      )
+    }
+    const adminActions = movieActions(media)
+    if (adminActions) {
+      actions.push(<Fragment key="admin-actions">{adminActions}</Fragment>)
+    }
+    if (actions.length === 0) return undefined
+    return <>{actions}</>
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-32">
@@ -175,6 +221,12 @@ export function LibraryPage() {
 
   return (
     <div className="space-y-6">
+      {!selectedSeries && (
+        <div className="hidden lg:block">
+          <PageBackButton to="/libraries" label="全部媒体库" compact />
+        </div>
+      )}
+
       {!selectedSeries && (
         <LibraryPageHeader
           library={library}
@@ -203,7 +255,7 @@ export function LibraryPage() {
         seriesCards={sortedSeriesCards}
         selectedSeries={selectedSeries}
         loading={loading}
-        movieActions={movieActions}
+        cardActions={cardActions}
         onSeriesClick={handleSeriesClick}
       />
 
@@ -216,6 +268,13 @@ export function LibraryPage() {
         loadingEpisodes={loadingSeriesEpisodes}
         playbackFrom={`${location.pathname}${location.search}`}
         isAdmin={role === 'admin'}
+        canFavorite={canFavorite}
+        favourite={selectedSeries ? isFavourite(selectedSeries.rep.id) : false}
+        favouriteBusy={!!selectedSeries && favouriteBusyID === selectedSeries.rep.id}
+        onToggleFavourite={() => {
+          if (!selectedSeries) return
+          void handleToggleFavourite(selectedSeries.rep.id)
+        }}
         seriesToolBusy={seriesToolBusy}
         onBack={clearSelectedSeries}
         onSmartScrape={handleSeriesSmartScrape}

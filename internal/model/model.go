@@ -1,5 +1,5 @@
 // Package model 定义 GORM 数据模型和自动迁移使用的注册表。
-// 每个子系统在 MMTL 中拥有一个表切片；AllModels 返回联合以供 db.AutoMigrate 使用。
+// 每个子系统在 MeBox 中拥有一个表切片；AllModels 返回联合以供 db.AutoMigrate 使用。
 package model
 
 import (
@@ -54,10 +54,10 @@ func AllModels() []interface{} {
 		&StrmAccount{},
 		&StrmSyncPath{},
 		&StrmSyncRecord{},
-			&StrmDownloadTask{},
-			&StrmUploadTask{},
-			&StrmDirCache{},
-			&ScrapeTask{},
-			&EmbyMount{},
-		}
+		&StrmDownloadTask{},
+		&StrmUploadTask{},
+		&StrmDirCache{},
+		&ScrapeTask{},
+		&EmbyMount{},
+	}
 }

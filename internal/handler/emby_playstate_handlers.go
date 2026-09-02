@@ -7,13 +7,18 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 type embyPlayingReq struct {
 	ItemId        string `json:"ItemId"`
+	ItemIDLower   string `json:"itemId"`
+	ID            string `json:"Id"`
+	IDLower       string `json:"id"`
 	PositionTicks int64  `json:"PositionTicks"`
+	PositionLower int64  `json:"positionTicks"`
 	RunTimeTicks  int64  `json:"RunTimeTicks"`
+	RunTimeLower  int64  `json:"runTimeTicks"`
 }
 
 func embyPlayingProgressHandler(svc *service.Container) gin.HandlerFunc {
@@ -25,16 +30,25 @@ func embyPlayingProgressHandler(svc *service.Container) gin.HandlerFunc {
 		}
 		var req embyPlayingReq
 		_ = c.ShouldBindJSON(&req)
-		if req.ItemId == "" {
-			req.ItemId = c.Query("ItemId")
+		itemID := embyFirstNonEmptyString(req.ItemId, req.ItemIDLower, req.ID, req.IDLower)
+		if itemID == "" {
+			itemID = embyFirstNonEmptyString(firstQueryValue(c, "ItemId", "itemId", "Id", "id"))
 		}
-		if req.PositionTicks == 0 {
-			req.PositionTicks, _ = strconv.ParseInt(c.Query("PositionTicks"), 10, 64)
+		pos := req.PositionTicks
+		if pos == 0 {
+			pos = req.PositionLower
 		}
-		if req.RunTimeTicks == 0 {
-			req.RunTimeTicks, _ = strconv.ParseInt(c.Query("RunTimeTicks"), 10, 64)
+		if pos == 0 {
+			pos, _ = strconv.ParseInt(firstQueryValue(c, "PositionTicks", "positionTicks"), 10, 64)
 		}
-		if req.ItemId == "" {
+		runTime := req.RunTimeTicks
+		if runTime == 0 {
+			runTime = req.RunTimeLower
+		}
+		if runTime == 0 {
+			runTime, _ = strconv.ParseInt(firstQueryValue(c, "RunTimeTicks", "runTimeTicks"), 10, 64)
+		}
+		if itemID == "" {
 			c.Status(http.StatusOK)
 			return
 		}
@@ -43,7 +57,10 @@ func embyPlayingProgressHandler(svc *service.Container) gin.HandlerFunc {
 			c.Status(http.StatusUnauthorized)
 			return
 		}
-		_ = svc.Emby.RecordProgress(c.Request.Context(), uid, req.ItemId, req.PositionTicks, req.RunTimeTicks)
+		if err := svc.Emby.RecordProgress(c.Request.Context(), uid, itemID, pos, runTime); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
 		stopped := strings.Contains(strings.ToLower(c.FullPath()+" "+c.Request.URL.Path), "stopped")
 		if svc.Sessions != nil {
 			svc.Sessions.RecordPlayback(c.Request.Context(), uid, "",
@@ -51,9 +68,9 @@ func embyPlayingProgressHandler(svc *service.Container) gin.HandlerFunc {
 				clientInfo.DeviceName,
 				clientInfo.Client,
 				c.ClientIP(),
-				req.ItemId,
-				req.PositionTicks,
-				req.RunTimeTicks,
+				itemID,
+				pos,
+				runTime,
 				stopped)
 		}
 		if svc.Device != nil && !stopped {

@@ -7,15 +7,16 @@ import {
   LayoutSidebars,
   LayoutWorkspace,
 } from './LayoutSections'
+import { MobileBottomNav } from './MobileBottomNav'
+import { isAdminEntrySearch, isPlayerRoute, shouldShowMobileBottomNav } from './layoutNavigation'
 import { useLayoutPermissions } from './useLayoutPermissions'
 import { useLayoutProfiles } from './useLayoutProfiles'
 import { useLayoutSidebar } from './useLayoutSidebar'
 import { useThemeMode } from './useThemeMode'
 
 function isMediaView(pathname: string, search: string): boolean {
-  const params = new URLSearchParams(search)
-  // 从设置/管理后台菜单进入（携带 from=admin 或 from=settings 或 manage=1）时展示左侧栏
-  if (params.get('from') === 'admin' || params.get('from') === 'settings' || params.get('manage') === '1') {
+  // 从设置/管理后台菜单进入时展示左侧栏
+  if (isAdminEntrySearch(search)) {
     return false
   }
 
@@ -24,7 +25,7 @@ function isMediaView(pathname: string, search: string): boolean {
     pathname === '/libraries' ||
     pathname.startsWith('/library') ||
     pathname.startsWith('/media') ||
-    pathname.startsWith('/play') ||
+    isPlayerRoute(pathname) ||
     pathname === '/favourites' ||
     pathname === '/playlists' ||
     pathname.startsWith('/playlist') ||
@@ -50,15 +51,17 @@ export function Layout() {
 
   const showSidebar = !isMediaView(location.pathname, location.search)
   const hideSearch = location.pathname.startsWith('/settings')
-  const isPlayPage = location.pathname.startsWith('/play')
+  const isPlayPage = isPlayerRoute(location.pathname)
+  const showMobileBottomNav = shouldShowMobileBottomNav(location.pathname)
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[var(--app-bg)] text-[var(--app-text)] font-body select-none">
+    <div className="flex h-[100dvh] min-h-0 w-full overflow-hidden bg-[var(--app-bg)] text-[var(--app-text)] font-body select-none">
       <LayoutSidebars
         sidebar={sidebar}
         isAdmin={permissions.isAdmin}
         can={permissions.can}
         showSidebar={showSidebar}
+        sidebarVariant={showSidebar ? 'admin' : 'media'}
       />
       <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
         {!isPlayPage && (
@@ -72,9 +75,13 @@ export function Layout() {
             onLogout={closeProfileAndLogout}
             showSidebar={showSidebar}
             hideSearch={hideSearch}
+            pathname={location.pathname}
           />
         )}
-        <LayoutWorkspace routeKey={location.pathname} />
+        <LayoutWorkspace routeKey={location.pathname} showMobileBottomNav={showMobileBottomNav} />
+        {showMobileBottomNav && (
+          <MobileBottomNav onOpenMenu={() => sidebar.setIsMobileDrawerOpen(true)} />
+        )}
       </div>
     </div>
   )

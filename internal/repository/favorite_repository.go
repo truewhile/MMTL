@@ -6,7 +6,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 // FavoriteRepository persists model.Favorite records.
@@ -23,7 +23,7 @@ func (r *FavoriteRepository) Toggle(ctx context.Context, userID, mediaID string)
 	if err != nil {
 		return false, err
 	}
-		return false, r.db.WithContext(ctx).Unscoped().Delete(&f).Error
+	return false, r.db.WithContext(ctx).Unscoped().Delete(&f).Error
 }
 
 // ListByUser returns all favourite media IDs for a user.

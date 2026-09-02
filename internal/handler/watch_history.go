@@ -17,9 +17,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ShukeBta/MMTL/internal/middleware"
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/middleware"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 // historyListHandler returns the caller's history rows joined with the
@@ -125,6 +125,27 @@ func historyContinueHandler(svc *service.Container) gin.HandlerFunc {
 		for _, r := range rows {
 			m, ok := mIdx[r.MediaID]
 			if !ok {
+				if svc.EmbyRemote != nil && service.IsEmbyRemoteID(r.MediaID) {
+					mountID, remoteID, _ := service.DecodeEmbyRemoteID(r.MediaID)
+					if mount, acct, _ := svc.EmbyRemote.ResolveMount(c.Request.Context(), mountID); mount != nil && acct != nil {
+						if rm, err := svc.EmbyRemote.RemoteMediaDetail(c.Request.Context(), mount, acct, remoteID); err == nil && rm != nil {
+							if mediaVisibleForRequest(c, svc, rm) {
+								out = append(out, gin.H{
+									"history": r,
+									"media":   *rm,
+								})
+							}
+							continue
+						}
+					}
+				}
+				fallback := fallbackHistoryMedia(r.MediaID)
+				if fallback != nil {
+					out = append(out, gin.H{
+						"history": r,
+						"media":   *fallback,
+					})
+				}
 				continue
 			}
 			out = append(out, gin.H{
@@ -133,6 +154,20 @@ func historyContinueHandler(svc *service.Container) gin.HandlerFunc {
 			})
 		}
 		c.JSON(http.StatusOK, out)
+	}
+}
+
+func fallbackHistoryMedia(mediaID string) *model.Media {
+	if mediaID == "" {
+		return nil
+	}
+	title := "媒体"
+	if service.IsEmbyRemoteID(mediaID) {
+		title = "远程媒体"
+	}
+	return &model.Media{
+		Base:  model.Base{ID: mediaID},
+		Title: title,
 	}
 }
 
@@ -163,7 +198,7 @@ func historyDeleteHandler(svc *service.Container) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "status must be completed or incomplete"})
 			return
 		}
-			res := q.Unscoped().Delete(&model.PlaybackHistory{})
+		res := q.Unscoped().Delete(&model.PlaybackHistory{})
 		if err := res.Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

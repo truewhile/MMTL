@@ -42,8 +42,8 @@ export function AdminUsersTable({
   onDeleteUser,
 }: AdminUsersTableProps) {
   return (
-    <div className="glass-panel overflow-x-auto">
-      <table className="w-full text-left text-sm">
+    <div className="glass-panel table-scroll">
+      <table className="min-w-[900px] w-full text-left text-sm">
         <thead className="text-xs uppercase tracking-wider text-sand-500">
           <tr>
             <th className="py-2">用户名</th>

@@ -10,10 +10,10 @@ import (
 
 func TestRenderSystemUpdateCommand(t *testing.T) {
 	status := SystemUpdateStatus{
-		Image:           "ghcr.io/shukebta/mmtl:latest",
+		Image:           "ghcr.io/truewhile/mebox:latest",
 		WatchtowerImage: "containrrr/watchtower:latest",
 		ContainerID:     "abc123def456",
-		ContainerName:   "mmtl",
+		ContainerName:   "mebox",
 	}
 
 	got := renderSystemUpdateCommand(
@@ -27,8 +27,8 @@ func TestRenderSystemUpdateCommand(t *testing.T) {
 	}
 	for _, want := range []string{
 		"containrrr/watchtower:latest",
-		"mmtl",
-		"ghcr.io/shukebta/mmtl:latest",
+		"mebox",
+		"ghcr.io/truewhile/mebox:latest",
 		"abc123def456",
 	} {
 		if !strings.Contains(got, want) {
@@ -39,17 +39,17 @@ func TestRenderSystemUpdateCommand(t *testing.T) {
 
 func TestDefaultSystemUpdateCommandUsesCompose(t *testing.T) {
 	status := SystemUpdateStatus{
-		ComposeDir:     "/opt/mmtl",
+		ComposeDir:     "/opt/mebox",
 		ComposeCommand: "docker compose",
-		ContainerName:  "mmtl",
+		ContainerName:  "mebox",
 	}
 	got := renderSystemUpdateCommand(defaultSystemUpdateCommand(), status)
 	for _, want := range []string{
-		"cd " + shellQuote("/opt/mmtl"),
+		"cd " + shellQuote("/opt/mebox"),
 		"docker compose pull",
 		"docker compose up -d",
 		"docker image prune -f",
-		"docker restart " + shellQuote("mmtl"),
+		"docker restart " + shellQuote("mebox"),
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("default command %q does not contain %q", got, want)
@@ -60,12 +60,12 @@ func TestDefaultSystemUpdateCommandUsesCompose(t *testing.T) {
 	}
 }
 
-func TestComposeTargetInDirMatchesMMTLCompose(t *testing.T) {
+func TestComposeTargetInDirMatchesMeBoxCompose(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "docker-compose.yml"), []byte(`
 services:
-  mmtl:
-    image: ghcr.io/shukebta/mmtl:latest
+  mebox:
+    image: ghcr.io/truewhile/mebox:latest
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -90,8 +90,8 @@ services:
 }
 
 func TestParseContainerInspectLine(t *testing.T) {
-	name, imageID := parseContainerInspectLine("/mmtl|sha256:abc")
-	if name != "mmtl" || imageID != "sha256:abc" {
+	name, imageID := parseContainerInspectLine("/mebox|sha256:abc")
+	if name != "mebox" || imageID != "sha256:abc" {
 		t.Fatalf("parse inspect line = %q %q", name, imageID)
 	}
 
@@ -155,11 +155,11 @@ func TestSystemUpdateOutputDetailsKeepsTail(t *testing.T) {
 }
 
 func TestSystemUpdateStatusIncludesCurrentVersion(t *testing.T) {
-	svc := NewSystemUpdateService(nil, nil, nil, nil, "MMTL-v0.0.99")
+	svc := NewSystemUpdateService(nil, nil, nil, nil, "MeBox-v0.0.99")
 
 	status := svc.Status(context.Background())
-	if status.CurrentVersion != "MMTL-v0.0.99" {
-		t.Fatalf("current_version = %q, want MMTL-v0.0.99", status.CurrentVersion)
+	if status.CurrentVersion != "MeBox-v0.0.99" {
+		t.Fatalf("current_version = %q, want MeBox-v0.0.99", status.CurrentVersion)
 	}
 }
 

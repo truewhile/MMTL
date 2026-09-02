@@ -6,8 +6,8 @@ import (
 	"path"
 	"strings"
 
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/repository"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/repository"
 )
 
 // CloudMountInfo 是云盘挂载库的规范标识（因网盘后端已移除，仅保留类型以兼容

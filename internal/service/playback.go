@@ -9,23 +9,34 @@ package service
 import (
 	"context"
 	"errors"
+	"sort"
 	"time"
 
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/repository"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/repository"
 )
 
 // PlaybackService bundles history / favourite / playlist business logic.
 type PlaybackService struct {
-	log  *zap.Logger
-	repo *repository.Container
+	log    *zap.Logger
+	repo   *repository.Container
+	remote *EmbyRemoteService
 }
 
 // NewPlaybackService is the constructor.
 func NewPlaybackService(log *zap.Logger, repo *repository.Container) *PlaybackService {
 	return &PlaybackService{log: log, repo: repo}
+}
+
+// SetEmbyRemote wires the remote Emby service for hydrating mounted remote items.
+func (p *PlaybackService) SetEmbyRemote(remote *EmbyRemoteService) *PlaybackService {
+	if p != nil {
+		p.remote = remote
+	}
+	return p
 }
 
 // ─── History ────────────────────────────────────────────────────────────────
@@ -37,16 +48,59 @@ func (p *PlaybackService) RecordProgress(ctx context.Context, userID, mediaID st
 	if userID == "" || mediaID == "" {
 		return errors.New("missing user or media")
 	}
-	completed := duration > 0 && position >= duration-30_000
+	dur := p.resolvePlaybackDuration(ctx, userID, mediaID, duration)
+	completed := dur > 0 && position >= dur-30_000
 	h := &model.PlaybackHistory{
 		UserID:     userID,
 		MediaID:    mediaID,
 		PositionMs: position,
-		DurationMs: duration,
+		DurationMs: dur,
 		WatchedAt:  time.Now(),
 		Completed:  completed,
 	}
 	return p.repo.History.Upsert(ctx, h)
+}
+
+// GetProgress returns the saved resume row for one media item, or nil when absent.
+func (p *PlaybackService) GetProgress(ctx context.Context, userID, mediaID string) (*model.PlaybackHistory, error) {
+	if userID == "" || mediaID == "" {
+		return nil, errors.New("missing user or media")
+	}
+	var row model.PlaybackHistory
+	err := p.repo.DB.WithContext(ctx).
+		Where("user_id = ? AND media_id = ?", userID, mediaID).
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (p *PlaybackService) resolvePlaybackDuration(ctx context.Context, userID, mediaID string, duration int64) int64 {
+	if duration > 0 {
+		return duration
+	}
+	var existing model.PlaybackHistory
+	if err := p.repo.DB.WithContext(ctx).
+		Where("user_id = ? AND media_id = ?", userID, mediaID).
+		First(&existing).Error; err == nil && existing.DurationMs > 0 {
+		return existing.DurationMs
+	}
+	if m, _ := p.repo.Media.FindByID(ctx, mediaID); m != nil && m.DurationSec > 0 {
+		return int64(m.DurationSec) * 1000
+	}
+	if p.remote != nil && IsEmbyRemoteID(mediaID) {
+		mountID, remoteID, _ := DecodeEmbyRemoteID(mediaID)
+		if mount, acct, _ := p.remote.ResolveMount(ctx, mountID); mount != nil && acct != nil {
+			if rm, err := p.remote.RemoteMediaDetail(ctx, mount, acct, remoteID); err == nil && rm != nil && rm.DurationSec > 0 {
+				return int64(rm.DurationSec) * 1000
+			}
+		}
+	}
+	return duration
 }
 
 // HistoryItem joins the playback row with its media so the API consumer
@@ -84,9 +138,19 @@ func (p *PlaybackService) RecentHistory(ctx context.Context, userID string, limi
 		if m, ok := mediaByID[rows[i].MediaID]; ok {
 			media := m
 			items = append(items, HistoryItem{PlaybackHistory: rows[i], Media: &media})
-		} else {
-			items = append(items, HistoryItem{PlaybackHistory: rows[i]})
+			continue
 		}
+		if p.remote != nil && IsEmbyRemoteID(rows[i].MediaID) {
+			mountID, remoteID, _ := DecodeEmbyRemoteID(rows[i].MediaID)
+			if mount, acct, _ := p.remote.ResolveMount(ctx, mountID); mount != nil && acct != nil {
+				if rm, err := p.remote.RemoteMediaDetail(ctx, mount, acct, remoteID); err == nil && rm != nil {
+					media := *rm
+					items = append(items, HistoryItem{PlaybackHistory: rows[i], Media: &media})
+					continue
+				}
+			}
+		}
+		items = append(items, HistoryItem{PlaybackHistory: rows[i]})
 	}
 	return items, nil
 }
@@ -107,14 +171,47 @@ func (p *PlaybackService) ListFavourites(ctx context.Context, userID string) ([]
 	if len(favs) == 0 {
 		return nil, nil
 	}
-	ids := make([]string, len(favs))
-	for i, f := range favs {
-		ids[i] = f.MediaID
+	sort.Slice(favs, func(i, j int) bool {
+		return favs[i].CreatedAt.After(favs[j].CreatedAt)
+	})
+
+	localIDs := make([]string, 0, len(favs))
+	for _, fav := range favs {
+		if !IsEmbyRemoteID(fav.MediaID) {
+			localIDs = append(localIDs, fav.MediaID)
+		}
 	}
-	var out []model.Media
-	err = p.repo.DB.Where("id IN ?", ids).
-		Order("created_at desc").Find(&out).Error
-	return out, err
+	mediaByID := map[string]model.Media{}
+	if len(localIDs) > 0 {
+		var mediaRows []model.Media
+		if err := p.repo.DB.WithContext(ctx).Where("id IN ?", localIDs).Find(&mediaRows).Error; err != nil {
+			return nil, err
+		}
+		for _, media := range mediaRows {
+			mediaByID[media.ID] = media
+		}
+	}
+
+	out := make([]model.Media, 0, len(favs))
+	for _, fav := range favs {
+		if media, ok := mediaByID[fav.MediaID]; ok {
+			out = append(out, media)
+			continue
+		}
+		if p.remote != nil && IsEmbyRemoteID(fav.MediaID) {
+			mountID, remoteID, _ := DecodeEmbyRemoteID(fav.MediaID)
+			mount, acct, _ := p.remote.ResolveMount(ctx, mountID)
+			if mount == nil || acct == nil {
+				continue
+			}
+			remoteMedia, err := p.remote.RemoteMediaDetail(ctx, mount, acct, remoteID)
+			if err != nil || remoteMedia == nil {
+				continue
+			}
+			out = append(out, *remoteMedia)
+		}
+	}
+	return out, nil
 }
 
 // ─── Playlists ──────────────────────────────────────────────────────────────

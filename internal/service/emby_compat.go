@@ -3,7 +3,7 @@
 // EmbyService produces JSON envelopes shaped like the most-consumed
 // Emby-API endpoints so existing players (Infuse / Yamby / Hills /
 // Senplayer / Kodi NextPVR extension / iOS native clients) can talk to
-// MMTL without a custom plugin.
+// MeBox without a custom plugin.
 //
 // The shim is read-mostly: items, images, playback are fully covered;
 // 播放进度上报 / 收藏切换 是写路径但走我们自己的 PlaybackHistory /
@@ -17,14 +17,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ShukeBta/MMTL/internal/config"
-	"github.com/ShukeBta/MMTL/internal/repository"
+	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/repository"
 	"go.uber.org/zap"
 )
 
 // 用一个固定的 ServerId 字符串。Emby 客户端会缓存这个 id，第一次见到
 // 该 id 后会把所有派生数据（cookie/收藏/历史）和它绑定。
-const embyServerID = "mmtl-001"
+const embyServerID = "mebox-001"
 
 // embyCompatVersion deliberately reports an Emby 4.x server. Official Emby
 // clients reject Jellyfin-style 10.x identities as unsupported/too old during
@@ -153,12 +153,23 @@ func (e *EmbyService) Items(ctx context.Context, p ItemsParams) (map[string]any,
 			if mount == nil || acct == nil {
 				return emptyItemsEnvelope(p.StartIndex), nil
 			}
-			return e.remote.RemoteItems(ctx, mount, acct, p)
+			out, err := e.remote.RemoteItems(ctx, mount, acct, p)
+			if err != nil {
+				return nil, err
+			}
+			if err := e.mergeRemoteUserData(ctx, p.UserID, out); err != nil {
+				return nil, err
+			}
+			return out, nil
 		}
 		// 全局搜索：无 ParentId 且带搜索词 → 聚合本地 + 全部远程。
 		if p.ParentID == "" && p.SearchTerm != "" {
 			return e.aggregatedSearch(ctx, p)
 		}
+	}
+
+	if containsEmbyFilter(p.Filters, "IsResumable") {
+		return e.resumableItems(ctx, p)
 	}
 
 	if len(p.IDs) > 0 {
@@ -273,6 +284,9 @@ func (e *EmbyService) aggregatedSearch(ctx context.Context, p ItemsParams) (map[
 						zap.String("account", acct.Name), zap.Error(rerr))
 				}
 				continue
+			}
+			if err := e.mergeRemoteUserData(ctx, p.UserID, remote); err != nil {
+				return nil, err
 			}
 			if raw, ok := remote["Items"].([]any); ok {
 				results = append(results, remoteResult{items: raw})

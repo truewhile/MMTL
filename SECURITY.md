@@ -1,13 +1,13 @@
 # 安全策略
 
-MMTL 是自托管媒体系统，常部署在 NAS、家庭网络、Docker、反向代理和第三方下载器环境中。安全问题通常会同时涉及应用代码、容器配置、路径映射、站点 Cookie / API Key、下载器凭据和外部访问入口。请按本策略报告和处理安全问题。
+MeBox 是自托管媒体系统，常部署在 NAS、家庭网络、Docker、反向代理和第三方下载器环境中。安全问题通常会同时涉及应用代码、容器配置、路径映射、站点 Cookie / API Key、下载器凭据和外部访问入口。请按本策略报告和处理安全问题。
 
 ## 支持范围
 
 我们优先支持以下版本和部署方式的安全修复：
 
 - 当前 `main` 分支。
-- 最新发布镜像：`ghcr.io/shukebta/mmtl:latest`。
+- 最新发布镜像：`ghcr.io/truewhile/mebox:latest`。
 - README 中推荐的 Docker Compose 第一档、第二档、第三档部署方式。
 
 历史版本、私有魔改镜像、未公开补丁分支和非标准部署仍可报告，但维护者可能要求先在最新 `main` 或最新镜像中复现。
@@ -16,7 +16,7 @@ MMTL 是自托管媒体系统，常部署在 NAS、家庭网络、Docker、反�
 
 请不要在公开 Issue、PR、讨论区或群聊中披露可利用细节。优先使用 GitHub Security Advisory 私密报告：
 
-<https://github.com/ShukeBta/MMTL/security/advisories/new>
+<https://github.com/truewhile/MeBox/security/advisories/new>
 
 如果无法使用 GitHub 私密报告，可以先通过项目 README 中的社区入口联系维护者，说明“需要私下报告安全问题”，不要直接贴出利用细节、密钥或完整日志。
 
@@ -68,14 +68,14 @@ MMTL 是自托管媒体系统，常部署在 NAS、家庭网络、Docker、反�
 
 ## 自托管安全基线
 
-部署 MMTL 时建议：
+部署 MeBox 时建议：
 
 - 首次登录后立即修改默认 `admin / admin123`。
 - 不要把 PostgreSQL、Redis、OpenSearch、qBittorrent WebUI 暴露到公网。
 - 反向代理公网访问时启用 HTTPS，并限制管理后台访问来源。
 - 使用强随机的 JWT / 加密密钥，妥善备份 `./data` 和数据库。
 - 不要在 Issue、PR、截图或日志中公开站点 Cookie、API Key、Passkey、下载器密码。
-- Docker `volumes` 只挂载 MMTL 需要访问的目录，媒体库目录需要写入时再授予写权限。
+- Docker `volumes` 只挂载 MeBox 需要访问的目录，媒体库目录需要写入时再授予写权限。
 - 定期更新镜像，并在升级前备份 `./postgres` 和 `./data`。
 
 ## 安全修复 PR

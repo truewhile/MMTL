@@ -8,14 +8,14 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MMTL/internal/config"
+	"github.com/truewhile/MeBox/internal/config"
 )
 
 func installSQLiteWriteGate(db *gorm.DB) {
 	if db == nil {
 		return
 	}
-	const lockedKey = "mmtl:sqlite_write_locked"
+	const lockedKey = "mebox:sqlite_write_locked"
 	gate := newSQLiteWriteGate()
 	lock := func(tx *gorm.DB) {
 		ctx := context.Background()
@@ -39,14 +39,14 @@ func installSQLiteWriteGate(db *gorm.DB) {
 		}
 		lock(tx)
 	}
-	_ = db.Callback().Create().Before("gorm:create").Register("mmtl:sqlite_write_lock", lock)
-	_ = db.Callback().Create().After("gorm:create").Register("mmtl:sqlite_write_unlock", unlock)
-	_ = db.Callback().Update().Before("gorm:update").Register("mmtl:sqlite_write_lock", lock)
-	_ = db.Callback().Update().After("gorm:update").Register("mmtl:sqlite_write_unlock", unlock)
-	_ = db.Callback().Delete().Before("gorm:delete").Register("mmtl:sqlite_write_lock", lock)
-	_ = db.Callback().Delete().After("gorm:delete").Register("mmtl:sqlite_write_unlock", unlock)
-	_ = db.Callback().Raw().Before("gorm:raw").Register("mmtl:sqlite_write_lock", rawLock)
-	_ = db.Callback().Raw().After("gorm:raw").Register("mmtl:sqlite_write_unlock", unlock)
+	_ = db.Callback().Create().Before("gorm:create").Register("mebox:sqlite_write_lock", lock)
+	_ = db.Callback().Create().After("gorm:create").Register("mebox:sqlite_write_unlock", unlock)
+	_ = db.Callback().Update().Before("gorm:update").Register("mebox:sqlite_write_lock", lock)
+	_ = db.Callback().Update().After("gorm:update").Register("mebox:sqlite_write_unlock", unlock)
+	_ = db.Callback().Delete().Before("gorm:delete").Register("mebox:sqlite_write_lock", lock)
+	_ = db.Callback().Delete().After("gorm:delete").Register("mebox:sqlite_write_unlock", unlock)
+	_ = db.Callback().Raw().Before("gorm:raw").Register("mebox:sqlite_write_lock", rawLock)
+	_ = db.Callback().Raw().After("gorm:raw").Register("mebox:sqlite_write_unlock", unlock)
 }
 
 func isReadOnlySQL(sql string) bool {
@@ -114,7 +114,10 @@ func buildSQLiteDSN(cfg *config.Config) string {
 	if cfg.Database.CacheSize != 0 {
 		dsn += fmt.Sprintf("&_pragma=cache_size(%d)", cfg.Database.CacheSize)
 	}
-	dsn += "&_pragma=temp_store(MEMORY)&_pragma=mmap_size(268435456)"
+	dsn += "&_pragma=temp_store(MEMORY)&_pragma=mmap_size(536870912)"
+	if cfg.Database.WALMode {
+		dsn += "&_pragma=wal_autocheckpoint(1000)"
+	}
 	return dsn
 }
 

@@ -3,11 +3,13 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 
 	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 // MediaRepository persists model.Media records.
@@ -87,6 +89,18 @@ func (r *MediaRepository) ListByLibraryFiltered(ctx context.Context, libraryID s
 }
 
 func (r *MediaRepository) ListByLibrariesFiltered(ctx context.Context, libraryIDs []string, offset, limit int, filter MediaQueryFilter) ([]model.Media, int64, error) {
+	items, total, err := r.listByLibrariesFiltered(ctx, libraryIDs, offset, limit, filter, true)
+	return items, total, err
+}
+
+// ListByLibrariesFilteredNoCount skips the COUNT query when the caller already
+// knows totals or only needs a bounded slice (e.g. home-page previews).
+func (r *MediaRepository) ListByLibrariesFilteredNoCount(ctx context.Context, libraryIDs []string, offset, limit int, filter MediaQueryFilter) ([]model.Media, error) {
+	items, _, err := r.listByLibrariesFiltered(ctx, libraryIDs, offset, limit, filter, false)
+	return items, err
+}
+
+func (r *MediaRepository) listByLibrariesFiltered(ctx context.Context, libraryIDs []string, offset, limit int, filter MediaQueryFilter, withCount bool) ([]model.Media, int64, error) {
 	var items []model.Media
 	var total int64
 	if len(libraryIDs) == 0 {
@@ -99,8 +113,10 @@ func (r *MediaRepository) ListByLibrariesFiltered(ctx context.Context, libraryID
 		q = q.Where("library_id IN ?", libraryIDs)
 	}
 	q = applyMediaQueryFilter(q, filter)
-	if err := q.Count(&total).Error; err != nil {
-		return nil, 0, err
+	if withCount {
+		if err := q.Count(&total).Error; err != nil {
+			return nil, 0, err
+		}
 	}
 	// 多级排序消除"随机"观感:
 	//  1. release_date desc — 精确上映/首播日期新→旧
@@ -112,6 +128,75 @@ func (r *MediaRepository) ListByLibrariesFiltered(ctx context.Context, libraryID
 	err := q.Order("release_date DESC, year DESC, updated_at DESC, created_at DESC, id DESC").
 		Offset(offset).Limit(limit).Find(&items).Error
 	return items, total, err
+}
+
+type rankedMediaRow struct {
+	model.Media
+	MmtlRN int `gorm:"column:mebox_rn"`
+}
+
+// ListRecentByLibraries returns up to perLibrary recent items for each library
+// in a single query using a window function (avoids N+1 on home preview).
+func (r *MediaRepository) ListRecentByLibraries(ctx context.Context, libraryIDs []string, perLibrary int, filter MediaQueryFilter) (map[string][]model.Media, error) {
+	out := make(map[string][]model.Media, len(libraryIDs))
+	if len(libraryIDs) == 0 || perLibrary <= 0 {
+		return out, nil
+	}
+
+	var libClause string
+	var args []interface{}
+	if len(libraryIDs) == 1 {
+		libClause = "library_id = ?"
+		args = append(args, libraryIDs[0])
+	} else {
+		libClause = "library_id IN ?"
+		args = append(args, libraryIDs)
+	}
+	where := "deleted_at IS NULL AND " + libClause
+	if filterSQL, filterArgs := mediaQueryFilterSQL(filter); filterSQL != "" {
+		where += " AND " + filterSQL
+		args = append(args, filterArgs...)
+	}
+	args = append(args, perLibrary)
+
+	sql := fmt.Sprintf(`
+		SELECT * FROM (
+			SELECT *, ROW_NUMBER() OVER (
+				PARTITION BY library_id
+				ORDER BY release_date DESC, year DESC, updated_at DESC, created_at DESC, id DESC
+			) AS mebox_rn
+			FROM media
+			WHERE %s
+		) ranked
+		WHERE mebox_rn <= ?
+	`, where)
+
+	var rows []rankedMediaRow
+	if err := r.db.WithContext(ctx).Raw(sql, args...).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out[row.LibraryID] = append(out[row.LibraryID], row.Media)
+	}
+	return out, nil
+}
+
+func mediaQueryFilterSQL(filter MediaQueryFilter) (string, []interface{}) {
+	var parts []string
+	var args []interface{}
+	if !filter.IncludeNSFW {
+		parts = append(parts, "nsfw = ?")
+		args = append(args, false)
+	}
+	if len(filter.HiddenLibraryIDs) > 0 {
+		parts = append(parts, "library_id NOT IN ?")
+		args = append(args, filter.HiddenLibraryIDs)
+	}
+	if len(filter.AllowedLibraryIDs) > 0 {
+		parts = append(parts, "library_id IN ?")
+		args = append(args, filter.AllowedLibraryIDs)
+	}
+	return strings.Join(parts, " AND "), args
 }
 
 type libraryCountRow struct {

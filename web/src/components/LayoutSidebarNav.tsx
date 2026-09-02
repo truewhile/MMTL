@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react'
-import { NavLink } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ChevronDown } from 'lucide-react'
 import clsx from 'clsx'
+
+import { isSidebarLinkActive } from './layoutNavigation'
 
 type SidebarGroupProps = {
   id: string
@@ -79,44 +81,41 @@ type SidebarLinkProps = {
 }
 
 export function SidebarLink({ to, icon, label, end, collapsed, child }: SidebarLinkProps) {
+  const location = useLocation()
+  const isActive = isSidebarLinkActive(to, location.pathname, location.search, end)
+
   return (
-    <NavLink
+    <Link
       to={to}
-      end={end}
-      className={({ isActive }) =>
-        clsx(
-          'relative flex items-center gap-3.5 rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-300 group',
-          child && 'py-2.5 text-[13px]',
-          isActive
-            ? 'bg-[var(--app-active-bg)] text-[var(--app-active-text)] shadow-sm'
-            : 'text-[var(--app-muted)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)]',
-        )
-      }
-    >
-      {({ isActive }) => (
-        <>
-          <span className={clsx(
-            'flex h-5 w-5 shrink-0 items-center justify-center transition-transform duration-300 group-hover:scale-110',
-            isActive ? 'text-[var(--app-active-icon)]' : 'text-[var(--app-muted)] group-hover:text-[var(--app-subtle)]',
-          )}>
-            {icon}
-          </span>
-          {!collapsed && (
-            <motion.span
-              initial={{ opacity: 0, x: -5 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="truncate whitespace-nowrap"
-            >
-              {label}
-            </motion.span>
-          )}
-          {collapsed && (
-            <div className="pointer-events-none absolute left-full z-50 ml-3 whitespace-nowrap rounded-xl bg-[var(--app-tooltip-bg)] px-2.5 py-1.5 text-xs font-semibold text-[var(--app-tooltip-text)] opacity-0 shadow-lg transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
-              {label}
-            </div>
-          )}
-        </>
+      aria-current={isActive ? 'page' : undefined}
+      className={clsx(
+        'relative flex items-center gap-3.5 rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-300 group',
+        child && 'py-2.5 text-[13px]',
+        isActive
+          ? 'bg-[var(--app-active-bg)] text-[var(--app-active-text)] shadow-sm'
+          : 'text-[var(--app-muted)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)]',
       )}
-    </NavLink>
+    >
+      <span className={clsx(
+        'flex h-5 w-5 shrink-0 items-center justify-center transition-transform duration-300 group-hover:scale-110',
+        isActive ? 'text-[var(--app-active-icon)]' : 'text-[var(--app-muted)] group-hover:text-[var(--app-subtle)]',
+      )}>
+        {icon}
+      </span>
+      {!collapsed && (
+        <motion.span
+          initial={{ opacity: 0, x: -5 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="truncate whitespace-nowrap"
+        >
+          {label}
+        </motion.span>
+      )}
+      {collapsed && (
+        <div className="pointer-events-none absolute left-full z-50 ml-3 whitespace-nowrap rounded-xl bg-[var(--app-tooltip-bg)] px-2.5 py-1.5 text-xs font-semibold text-[var(--app-tooltip-text)] opacity-0 shadow-lg transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+          {label}
+        </div>
+      )}
+    </Link>
   )
 }

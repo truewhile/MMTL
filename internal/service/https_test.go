@@ -50,11 +50,11 @@ func TestResolveSSLMaterial(t *testing.T) {
 	}
 
 	cases := []struct {
-		name   string
+		name    string
 		content string
-		path   string
-		want   string
-		err    bool
+		path    string
+		want    string
+		err     bool
 	}{
 		{name: "content only", content: certPEM, want: certPEM},
 		{name: "path only", path: path, want: certPEM},

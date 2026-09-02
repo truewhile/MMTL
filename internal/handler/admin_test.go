@@ -11,9 +11,9 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/repository"
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/repository"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 func TestDeleteUserRefusesRecentRealtimeSession(t *testing.T) {
@@ -44,10 +44,10 @@ func TestDeleteUserRefusesRecentRealtimeSession(t *testing.T) {
 	if w.Code != http.StatusConflict {
 		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
 	}
-		if found, _ := repos.User.FindByID(t.Context(), viewer.ID); found == nil {
-			t.Fatal("recent realtime user should not be deleted")
-		}
+	if found, _ := repos.User.FindByID(t.Context(), viewer.ID); found == nil {
+		t.Fatal("recent realtime user should not be deleted")
 	}
+}
 
 func TestUpdateUserLibraries(t *testing.T) {
 	gin.SetMode(gin.TestMode)

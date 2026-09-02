@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/repository"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/repository"
 )
 
 func TestNormalizeLocalLibraryPathsRewritesRelativeDockerMediaRoot(t *testing.T) {
@@ -16,7 +16,7 @@ func TestNormalizeLocalLibraryPathsRewritesRelativeDockerMediaRoot(t *testing.T)
 	if err := os.MkdirAll(containerLibrary, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("MMTL_MEDIA_CONTAINER_DIR", containerRoot)
+	t.Setenv("MEBOX_MEDIA_CONTAINER_DIR", containerRoot)
 
 	db := newServiceTestDB(t, &model.Library{}, &model.LibraryRoot{}, &model.Media{})
 	repos := repository.New(db)

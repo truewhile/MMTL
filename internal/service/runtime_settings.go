@@ -7,8 +7,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/config"
-	"github.com/ShukeBta/MMTL/internal/repository"
+	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/repository"
 )
 
 func ApplyRuntimeSettings(ctx context.Context, cfg *config.Config, repos *repository.Container, log *zap.Logger) {
@@ -110,6 +110,13 @@ func ApplyRuntimeSetting(cfg *config.Config, key, value string) {
 		cfg.App.SSLCertPath = strings.TrimSpace(value)
 	case "https.key_path":
 		cfg.App.SSLKeyPath = strings.TrimSpace(value)
+	case "cache.images_max_size_mb":
+		if n, err := strconv.Atoi(value); err == nil {
+			if n < 0 {
+				n = 0
+			}
+			cfg.Cache.ImagesMaxSizeMB = n
+		}
 	}
 }
 

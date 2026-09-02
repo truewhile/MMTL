@@ -7,8 +7,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/ShukeBta/MMTL/internal/middleware"
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/middleware"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 func embySessionsHandler(svc *service.Container) gin.HandlerFunc {
@@ -29,7 +29,7 @@ func embySessionsHandler(svc *service.Container) gin.HandlerFunc {
 			}
 			row := gin.H{
 				"Id":                    sess.ID,
-				"ServerId":              "mmtl-001",
+				"ServerId":              "mebox-001",
 				"Client":                sess.Client,
 				"DeviceId":              sess.DeviceID,
 				"DeviceName":            sess.DeviceName,
@@ -41,7 +41,17 @@ func embySessionsHandler(svc *service.Container) gin.HandlerFunc {
 				"SupportsRemoteControl": true,
 			}
 			if itemID != "" && sess.IsPlaying {
-				row["NowPlayingItem"] = gin.H{"Id": itemID}
+				nowPlaying := gin.H{"Id": itemID}
+				if svc.Emby != nil {
+					if item, _ := svc.Emby.Item(c.Request.Context(), itemID, sess.UserID); item != nil {
+						for _, key := range []string{"Name", "Type", "RunTimeTicks", "PrimaryImageItemId", "ImageTags", "SeriesName", "SeasonName", "IndexNumber", "ParentIndexNumber"} {
+							if val, ok := item[key]; ok && val != nil {
+								nowPlaying[key] = val
+							}
+						}
+					}
+				}
+				row["NowPlayingItem"] = nowPlaying
 			}
 			out = append(out, row)
 		}

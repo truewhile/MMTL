@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowRight, Film, FolderOpen, Library as LibraryIcon, Music, PlayCircle, RefreshCw, Sparkles, Tv } from 'lucide-react'
+import { ArrowRight, Film, FolderOpen, Library as LibraryIcon, Music, Pin, PlayCircle, RefreshCw, Sparkles, Tv } from 'lucide-react'
 
 import { imageURL } from '../api/client'
 import { EpisodeArtworkToggle } from '../components/EpisodeArtworkToggle'
@@ -9,6 +9,7 @@ import { MediaCard } from '../components/MediaCard'
 import { seriesCardLink } from '../utils/groupSeries'
 import { libraryDisplayPath } from './libraryDisplayModel'
 import { libraryArtworkItems, type LibraryPreview } from './librariesPageModel'
+import { isLibraryPinned } from '../utils/pinnedLibraries'
 
 const TYPE_ICONS: Record<string, ReactNode> = {
   movie: <Film size={18} />,
@@ -48,36 +49,44 @@ export function LibrariesHeader({
   onManageLibraries: () => void
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-4">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
       <div>
-        <h1 className="font-display text-3xl font-bold text-ink-600">媒体库</h1>
-        <p className="mt-1 text-sm text-ink-50">
+        <h1 className="font-display text-2xl font-bold text-ink-600 sm:text-3xl">媒体库</h1>
+        <p className="mt-1 text-xs text-ink-50 sm:text-sm">
           共 {previewCount} 个目录 · {total.toLocaleString()} 个条目。每个目录直接展示最新入库内容。
         </p>
       </div>
-      <div className="flex flex-wrap items-center gap-3">
-        {repairMsg && <span className="text-xs text-ink-50">{repairMsg}</span>}
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+        {repairMsg && <span className="w-full text-xs text-ink-50">{repairMsg}</span>}
         <EpisodeArtworkToggle
           checked={repairEpisodeArtwork}
           onChange={onRepairEpisodeArtworkChange}
           title="关闭后仍会获取主海报和每集文字元数据，只跳过每集图片"
-          className="h-10"
+          className="h-9 sm:h-10 text-xs sm:text-sm"
         />
         <button
           type="button"
           onClick={onRepairRescrape}
           disabled={repairing}
-          className="btn-outline disabled:cursor-not-allowed disabled:opacity-60"
+          className="btn-outline !px-3 !py-1.5 text-xs sm:!px-4 sm:!py-2.5 sm:text-sm disabled:cursor-not-allowed disabled:opacity-60"
           title="从媒体路径回填缺失/错误的外部 ID，再批量重刮整库"
         >
           <RefreshCw size={14} className={repairing ? 'animate-spin' : ''} />
           {repairing ? '正在启动…' : '全库修复+重刮'}
         </button>
-        <Link to="/scraper/queue" className="btn-outline inline-flex items-center gap-1.5" title="查看正在进行的刮削任务与进度">
+        <Link
+          to="/scraper/queue"
+          className="btn-outline inline-flex items-center gap-1.5 !px-3 !py-1.5 text-xs sm:!px-4 sm:!py-2.5 sm:text-sm"
+          title="查看正在进行的刮削任务与进度"
+        >
           <Sparkles size={14} className="text-brand-500" />
           <span>刮削队列</span>
         </Link>
-        <button type="button" onClick={onManageLibraries} className="btn-outline">
+        <button
+          type="button"
+          onClick={onManageLibraries}
+          className="btn-outline !px-3 !py-1.5 text-xs sm:!px-4 sm:!py-2.5 sm:text-sm"
+        >
           管理媒体库
         </button>
       </div>
@@ -94,15 +103,28 @@ export function LibrariesEmptyState() {
   )
 }
 
-export function LibrariesContent({ previews }: { previews: LibraryPreview[] }) {
+export function LibrariesContent({
+  previews,
+  pinnedIds,
+  onTogglePin,
+}: {
+  previews: LibraryPreview[]
+  pinnedIds: string[]
+  onTogglePin: (libraryId: string) => void
+}) {
+  const pinnedCount = previews.filter((preview) => isLibraryPinned(preview.library.id, pinnedIds)).length
+
   return (
     <>
       <section className="space-y-4">
         <div>
           <h2 className="font-display text-2xl font-bold text-ink-600">媒体库入口</h2>
-          <p className="text-sm text-ink-50">按目录进入完整媒体库；下方每个目录也会直接展示最新内容。</p>
+          <p className="text-sm text-ink-50">
+            按目录进入完整媒体库；下方每个目录也会直接展示最新内容。
+            {pinnedCount > 0 ? ` 已置顶 ${pinnedCount} 个媒体库。` : ' 点击卡片右上角图钉可置顶常用媒体库。'}
+          </p>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
           {previews.map((preview, index) => (
             <motion.div
               key={preview.library.id}
@@ -110,7 +132,11 @@ export function LibrariesContent({ previews }: { previews: LibraryPreview[] }) {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.03 }}
             >
-              <LibraryEntryCard preview={preview} />
+              <LibraryEntryCard
+                preview={preview}
+                pinned={isLibraryPinned(preview.library.id, pinnedIds)}
+                onTogglePin={() => onTogglePin(preview.library.id)}
+              />
             </motion.div>
           ))}
         </div>
@@ -124,7 +150,10 @@ export function LibrariesContent({ previews }: { previews: LibraryPreview[] }) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.03 }}
           >
-            <LibraryShelf preview={preview} />
+            <LibraryShelf
+              preview={preview}
+              pinned={isLibraryPinned(preview.library.id, pinnedIds)}
+            />
           </motion.div>
         ))}
       </section>
@@ -132,7 +161,15 @@ export function LibrariesContent({ previews }: { previews: LibraryPreview[] }) {
   )
 }
 
-function LibraryEntryCard({ preview }: { preview: LibraryPreview }) {
+function LibraryEntryCard({
+  preview,
+  pinned,
+  onTogglePin,
+}: {
+  preview: LibraryPreview
+  pinned: boolean
+  onTogglePin: () => void
+}) {
   const library = preview.library
   const artwork = library.cover_url
     ? [{ src: library.cover_url, version: library.updated_at }]
@@ -140,11 +177,36 @@ function LibraryEntryCard({ preview }: { preview: LibraryPreview }) {
   const displayPath = libraryDisplayPath(library.path)
 
   return (
-    <Link
-      to={`/library/${library.id}`}
-      className="group flex overflow-hidden rounded-3xl border border-sand-200 bg-white p-3 shadow-card transition-all hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-card-hover"
+    <div
+      className={
+        'group relative flex overflow-hidden rounded-2xl sm:rounded-3xl border bg-white p-2.5 sm:p-3 shadow-card transition-all hover:-translate-y-0.5 hover:shadow-card-hover ' +
+        (pinned ? 'border-brand-300 ring-1 ring-brand-100' : 'border-sand-200 hover:border-brand-200')
+      }
     >
-      <div className={`grid h-24 w-36 shrink-0 gap-1 overflow-hidden rounded-2xl bg-[linear-gradient(135deg,#fff7ed,#f8fafc)] ${artwork.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+      <button
+        type="button"
+        onClick={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          onTogglePin()
+        }}
+        className={
+          'absolute right-2 top-2 z-10 rounded-full border p-1.5 transition ' +
+          (pinned
+            ? 'border-brand-200 bg-brand-50 text-brand-600 hover:bg-brand-100'
+            : 'border-sand-200 bg-white/95 text-sand-500 opacity-0 hover:bg-gray-50 hover:text-brand-600 group-hover:opacity-100')
+        }
+        title={pinned ? '取消置顶' : '置顶媒体库'}
+        aria-label={pinned ? '取消置顶' : '置顶媒体库'}
+        aria-pressed={pinned}
+      >
+        <Pin size={14} className={pinned ? 'fill-current' : ''} />
+      </button>
+      <Link
+        to={`/library/${library.id}`}
+        className="flex min-w-0 flex-1"
+      >
+      <div className={`grid h-20 w-24 sm:h-24 sm:w-36 shrink-0 gap-1 overflow-hidden rounded-xl sm:rounded-2xl bg-[linear-gradient(135deg,#fff7ed,#f8fafc)] ${artwork.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
         {artwork.length > 0 ? (
           artwork.map(({ src, version }, index) => (
             <img
@@ -159,50 +221,62 @@ function LibraryEntryCard({ preview }: { preview: LibraryPreview }) {
           ))
         ) : (
           <div className="col-span-2 flex h-full items-center justify-center text-brand-500">
-            {TYPE_ICONS[library.type] ?? <FolderOpen size={34} />}
+            {TYPE_ICONS[library.type] ?? <FolderOpen size={28} className="sm:h-8 sm:w-8" />}
           </div>
         )}
       </div>
-      <div className="flex min-w-0 flex-1 flex-col justify-between px-4 py-1">
+      <div className="flex min-w-0 flex-1 flex-col justify-between px-3 sm:px-4 py-0.5 sm:py-1">
         <div>
-          <div className="mb-1 inline-flex rounded-full bg-sand-100 px-2 py-0.5 text-[10px] font-bold text-sand-600">
-            {TYPE_LABELS[library.type] ?? library.type}
+          <div className="mb-1 flex items-center justify-between gap-1.5 pr-8">
+            <span className="inline-flex rounded-full bg-sand-100 px-2 py-0.5 text-[10px] font-bold text-sand-600">
+              {TYPE_LABELS[library.type] ?? library.type}
+            </span>
+            <span className="text-[11px] font-semibold text-sand-500 sm:hidden">
+              {preview.total.toLocaleString()} 个条目
+            </span>
           </div>
-          <h2 className="truncate font-display text-xl font-black text-ink-600 group-hover:text-brand-600">
+          <h2 className="line-clamp-2 font-display text-sm font-bold leading-tight text-ink-600 group-hover:text-brand-600 sm:truncate sm:text-xl sm:font-black">
             {library.name}
+            {pinned ? <span className="ml-1.5 align-middle text-[10px] font-bold text-brand-600">置顶</span> : null}
           </h2>
-          <p className="mt-1 line-clamp-1 break-all text-xs text-ink-50" title={library.path}>
+          <p className="mt-0.5 line-clamp-1 break-all text-[11px] text-ink-50 sm:mt-1 sm:text-xs" title={library.path}>
             {displayPath}
           </p>
         </div>
-        <div className="flex items-center justify-between text-xs font-bold">
-          <span className="text-sand-600">{preview.total.toLocaleString()} 个条目</span>
-          <span className="text-brand-600">浏览全部</span>
+        <div className="mt-1 flex items-center justify-between text-xs font-bold sm:mt-0">
+          <span className="hidden text-sand-600 sm:inline">{preview.total.toLocaleString()} 个条目</span>
+          <span className="ml-auto inline-flex items-center gap-0.5 text-[11px] text-brand-600 sm:text-xs">
+            浏览全部 <ArrowRight size={12} />
+          </span>
         </div>
       </div>
-    </Link>
+      </Link>
+    </div>
   )
 }
 
-function LibraryShelf({ preview }: { preview: LibraryPreview }) {
+function LibraryShelf({ preview, pinned }: { preview: LibraryPreview; pinned?: boolean }) {
   const library = preview.library
   const cards = preview.cards.slice(0, 10)
   const displayPath = libraryDisplayPath(library.path)
 
   return (
-    <section className="rounded-[1.7rem] border border-sand-200 bg-white/75 p-4 shadow-card">
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+    <section className="rounded-2xl sm:rounded-[1.7rem] border border-sand-200 bg-white/75 p-3.5 sm:p-4 shadow-card">
+      <div className="mb-3 sm:mb-4 flex flex-wrap items-end justify-between gap-2 sm:gap-3">
         <div className="min-w-0">
-          <div className="mb-1 inline-flex items-center gap-2 rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-bold text-brand-700">
+          <div className="mb-1 inline-flex items-center gap-1.5 sm:gap-2 rounded-full bg-brand-50 px-2 sm:px-2.5 py-0.5 sm:py-1 text-[10px] sm:text-[11px] font-bold text-brand-700">
             {TYPE_ICONS[library.type] ?? <LibraryIcon size={14} />}
             {TYPE_LABELS[library.type] ?? library.type}
           </div>
-          <h2 className="truncate font-display text-2xl font-black text-ink-600">{library.name}</h2>
+          <h2 className="line-clamp-2 font-display text-xl sm:text-2xl font-black text-ink-600 sm:truncate">
+            {library.name}
+            {pinned ? <span className="ml-2 align-middle text-xs font-bold text-brand-600">置顶</span> : null}
+          </h2>
           <p className="mt-1 line-clamp-1 break-all text-xs text-ink-50">
             <span title={library.path}>{displayPath}</span> · {preview.total.toLocaleString()} 个条目 · 最新 {cards.length} 部
           </p>
         </div>
-        <Link to={`/library/${library.id}`} className="btn-outline shrink-0">
+        <Link to={`/library/${library.id}`} className="btn-outline !px-3 !py-1.5 text-xs sm:!px-4 sm:!py-2.5 sm:text-sm shrink-0">
           浏览全部
           <ArrowRight size={14} />
         </Link>

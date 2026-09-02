@@ -9,8 +9,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
+
+type seriesCardsCacheValue struct {
+	Cards []SeriesCard `json:"cards"`
+	Total int64        `json:"total"`
+}
 
 type SeriesCard struct {
 	Key       string      `json:"key"`
@@ -25,12 +30,25 @@ type seriesCardGroup struct {
 }
 
 func (s *MediaService) ListLibrarySeriesCards(ctx context.Context, libraryID string, visibility MediaVisibility) ([]SeriesCard, int64, error) {
+	visibility = ExpandMediaVisibilityForMergedCloudLibraries(ctx, s.repo, visibility)
+	cacheKey := s.seriesCardsCacheKey(libraryID, visibility)
+	var cached seriesCardsCacheValue
+	if s.cache != nil && s.cache.GetJSON(ctx, cacheKey, &cached) {
+		return cached.Cards, cached.Total, nil
+	}
 	rows, _, err := s.listAllMediaVisible(ctx, libraryID, visibility)
 	if err != nil {
 		return nil, 0, err
 	}
 	cards := groupMediaSeriesCards(rows)
-	return cards, int64(len(cards)), nil
+	if cards == nil {
+		cards = []SeriesCard{}
+	}
+	total := int64(len(cards))
+	if s.cache != nil {
+		s.cache.SetJSON(ctx, cacheKey, seriesCardsCacheValue{Cards: cards, Total: total}, time.Duration(s.mediaCacheTTLSeconds())*time.Second)
+	}
+	return cards, total, nil
 }
 
 func (s *MediaService) ListRecentSeriesCards(ctx context.Context, limit int, visibility MediaVisibility) ([]SeriesCard, error) {

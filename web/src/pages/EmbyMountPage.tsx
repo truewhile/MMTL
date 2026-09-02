@@ -2,8 +2,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import {
+  ArrowDown,
+  ArrowUp,
   Check,
   Globe,
+  GripVertical,
   Loader2,
   Pencil,
   Plus,
@@ -22,6 +25,12 @@ import type { StrmAccount } from '../types/strm'
 import type { EmbyMount, RemoteEmbyView } from '../types/emby'
 import { apiErrorMessage } from './StrmManagePage'
 import { confirmAction } from '../components/confirmAction'
+import {
+  defaultEmbyRemoteLines,
+  encodeEmbyRemoteConfigLines,
+  normalizeEmbyRemoteLines,
+  type EmbyRemoteLine,
+} from '../utils/embyRemoteLines'
 
 const inputCls = 'input-base w-full'
 
@@ -37,21 +46,50 @@ function AccountDialog({
   onSaved: () => void
 }) {
   const [name, setName] = useState(existing?.name ?? '')
-  const [url, setUrl] = useState('')
+  const [lines, setLines] = useState<EmbyRemoteLine[]>(() => defaultEmbyRemoteLines(existing?.emby_lines))
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [token, setToken] = useState('')
   const [enabled, setEnabled] = useState(existing?.enabled ?? true)
   const [saving, setSaving] = useState(false)
 
-  const canSave = () => url !== '' && (token !== '' || password !== '')
+  const normalizedLines = normalizeEmbyRemoteLines(lines)
+  const canSave = () => normalizedLines.length > 0 && (token !== '' || password !== '' || !!existing?.has_credential)
+
+  const updateLine = (index: number, patch: Partial<EmbyRemoteLine>) => {
+    setLines((prev) => prev.map((line, i) => (i === index ? { ...line, ...patch } : line)))
+  }
+
+  const addLine = () => {
+    setLines((prev) => [...prev, { name: `线路 ${prev.length + 1}`, url: '' }])
+  }
+
+  const removeLine = (index: number) => {
+    setLines((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)))
+  }
+
+  const moveLine = (index: number, direction: 'up' | 'down') => {
+    setLines((prev) => {
+      const target = direction === 'up' ? index - 1 : index + 1
+      if (target < 0 || target >= prev.length) return prev
+      const next = [...prev]
+      const [moved] = next.splice(index, 1)
+      next.splice(target, 0, moved)
+      return next
+    })
+  }
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
+    const readyLines = normalizeEmbyRemoteLines(lines)
+    if (readyLines.length === 0) {
+      toast.error('请至少填写一条有效的 Emby 线路地址')
+      return
+    }
     setSaving(true)
     try {
       const config: Record<string, string> = {
-        ...(url ? { url } : {}),
+        ...encodeEmbyRemoteConfigLines(readyLines),
         ...(username ? { username } : {}),
         ...(password ? { password } : {}),
         ...(token ? { token } : {}),
@@ -66,7 +104,7 @@ function AccountDialog({
         toast.success('Emby 账号已更新')
       } else {
         if (!canSave()) {
-          toast.error('请填写 Emby 地址与密码（或 API Key）')
+          toast.error('请填写线路地址与密码（或 API Key）')
           return
         }
         await strmAPI.createAccount({ name: name || 'Emby 服务器', provider: 'emby_remote', config })
@@ -82,11 +120,11 @@ function AccountDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-3xl border border-sand-200 bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-sand-200 bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-5 flex items-center justify-between">
           <div>
             <h3 className="font-display text-xl font-bold text-ink-600">{existing ? '编辑 Emby 账号' : '添加 Emby 账号'}</h3>
-            <p className="text-xs text-sand-500">连接远程 Emby 服务器（Jellyfin 暂不支持）</p>
+            <p className="text-xs text-sand-500">可配置内网、外网等多条线路，连接失败时按顺序自动切换</p>
           </div>
           <button onClick={onClose} className="rounded-lg p-1.5 text-sand-500 hover:bg-gray-100">
             <X size={18} />
@@ -97,17 +135,49 @@ function AccountDialog({
             <span className="mb-1 block font-semibold text-ink-600">账号名称</span>
             <input className={inputCls} value={name} placeholder="例如：家庭影院" onChange={(e) => setName(e.target.value)} />
           </label>
-          <label className="block text-sm">
-            <span className="mb-1 block font-semibold text-ink-600">Emby 服务地址</span>
-            <input
-              className={inputCls}
-              value={url}
-              placeholder="http://192.168.1.10:8096"
-              onChange={(e) => setUrl(e.target.value)}
-              disabled={!!existing}
-            />
-          </label>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold text-ink-600">接入线路</span>
+              <button type="button" onClick={addLine} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-semibold text-ink-100 hover:bg-gray-50">
+                <Plus size={12} />
+                添加线路
+              </button>
+            </div>
+            {lines.map((line, index) => (
+              <div key={`line-${index}`} className="space-y-2 rounded-2xl border border-sand-200 bg-gray-50/70 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wide text-sand-500">
+                    线路 {index + 1}
+                    {existing?.emby_active_line === index ? ' · 当前优先' : index === 0 ? ' · 默认优先' : ''}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button type="button" onClick={() => moveLine(index, 'up')} disabled={index === 0} className="rounded-lg border border-gray-200 p-1 text-ink-100 hover:bg-white disabled:opacity-30">
+                      <ArrowUp size={12} />
+                    </button>
+                    <button type="button" onClick={() => moveLine(index, 'down')} disabled={index === lines.length - 1} className="rounded-lg border border-gray-200 p-1 text-ink-100 hover:bg-white disabled:opacity-30">
+                      <ArrowDown size={12} />
+                    </button>
+                    <button type="button" onClick={() => removeLine(index)} disabled={lines.length <= 1} className="rounded-lg border border-gray-200 p-1 text-red-500 hover:bg-red-50 disabled:opacity-30">
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </div>
+                <input
+                  className={inputCls}
+                  value={line.name}
+                  placeholder="线路名称，如：内网 / 外网 / IPv6"
+                  onChange={(e) => updateLine(index, { name: e.target.value })}
+                />
+                <input
+                  className={inputCls}
+                  value={line.url}
+                  placeholder="http://192.168.1.10:8096 或 https://emby.example.com"
+                  onChange={(e) => updateLine(index, { url: e.target.value })}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="block text-sm">
               <span className="mb-1 block font-semibold text-ink-600">用户名</span>
               <input className={inputCls} value={username} onChange={(e) => setUsername(e.target.value)} />
@@ -301,6 +371,89 @@ export function EmbyMountPage() {
   const [accountDialog, setAccountDialog] = useState<StrmAccount | null | 'new'>(null)
   const [mountDialogFor, setMountDialogFor] = useState<StrmAccount | null>(null)
   const [testingID, setTestingID] = useState<string | null>(null)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
+  const [reordering, setReordering] = useState(false)
+
+  const applyReorder = async (nextMounts: EmbyMount[]) => {
+    const prevMounts = mounts
+    const updated = nextMounts.map((m, idx) => ({ ...m, sort_order: idx }))
+    setMounts(updated)
+    setReordering(true)
+    try {
+      await embyAPI.reorderMounts(updated.map((m) => m.id))
+      toast.success('媒体库顺序已更新')
+    } catch (err) {
+      setMounts(prevMounts)
+      toast.error(apiErrorMessage(err))
+    } finally {
+      setReordering(false)
+    }
+  }
+
+  const moveMount = (m: EmbyMount, direction: 'up' | 'down') => {
+    const acctMounts = mounts.filter((item) => item.account_id === m.account_id)
+    const idx = acctMounts.findIndex((item) => item.id === m.id)
+    if (idx < 0) return
+    if (direction === 'up' && idx === 0) return
+    if (direction === 'down' && idx === acctMounts.length - 1) return
+
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1
+    const newAcctMounts = [...acctMounts]
+    const [moved] = newAcctMounts.splice(idx, 1)
+    newAcctMounts.splice(targetIdx, 0, moved)
+
+    let acctPointer = 0
+    const nextMounts = mounts.map((item) => {
+      if (item.account_id === m.account_id) {
+        return newAcctMounts[acctPointer++]
+      }
+      return item
+    })
+    applyReorder(nextMounts)
+  }
+
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', id)
+    setDraggingId(id)
+  }
+
+  const handleDragOver = (e: React.DragEvent, overId: string) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (dragOverId !== overId) {
+      setDragOverId(overId)
+    }
+  }
+
+  const handleDrop = (e: React.DragEvent, overId: string, accountId: string) => {
+    e.preventDefault()
+    const fromId = draggingId || e.dataTransfer.getData('text/plain')
+    setDraggingId(null)
+    setDragOverId(null)
+    if (!fromId || fromId === overId) {
+      return
+    }
+    const acctMounts = mounts.filter((item) => item.account_id === accountId)
+    const fromIdx = acctMounts.findIndex((item) => item.id === fromId)
+    const toIdx = acctMounts.findIndex((item) => item.id === overId)
+    if (fromIdx < 0 || toIdx < 0) {
+      return
+    }
+    const newAcctMounts = [...acctMounts]
+    const [moved] = newAcctMounts.splice(fromIdx, 1)
+    newAcctMounts.splice(toIdx, 0, moved)
+
+    let acctPointer = 0
+    const nextMounts = mounts.map((item) => {
+      if (item.account_id === accountId) {
+        return newAcctMounts[acctPointer++]
+      }
+      return item
+    })
+    applyReorder(nextMounts)
+  }
 
   const load = useCallback(async () => {
     const [accts, mts] = await Promise.all([
@@ -392,7 +545,7 @@ export function EmbyMountPage() {
             </span>
           </h1>
           <p className="text-sm text-ink-50">
-            添加远程 Emby 服务器后，按需挂载其媒体库到本项目；播放默认直连原 Emby，可对单个媒体库开启本机代理
+            添加远程 Emby 服务器后，按需挂载其媒体库到本项目；可为同一服务器配置多条线路并自动切换
           </p>
         </div>
         <button onClick={() => setAccountDialog('new')} className="neon-button">
@@ -426,6 +579,9 @@ export function EmbyMountPage() {
                     <p className="font-display text-lg font-bold text-ink-600">{acct.name}</p>
                     <p className="text-xs text-sand-500">
                       {acct.has_credential ? '凭据已配置' : '待补全凭据'}
+                      {acct.emby_lines && acct.emby_lines.length > 0
+                        ? ` · ${acct.emby_lines.length} 条线路`
+                        : ''}
                       {acct.last_test_result ? ` · 最近测试：${acct.last_test_ok ? '正常' : acct.last_test_result}` : ''}
                     </p>
                   </div>
@@ -454,8 +610,33 @@ export function EmbyMountPage() {
                   </p>
                 ) : (
                   <div className="space-y-2">
-                    {acctMounts.map((m) => (
-                      <div key={m.id} className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${m.enabled ? 'border-sand-200 bg-gray-50/60' : 'border-gray-100 bg-gray-50 opacity-60'}`}>
+                    {acctMounts.map((m, index) => (
+                      <div
+                        key={m.id}
+                        onDragOver={(e) => handleDragOver(e, m.id)}
+                        onDrop={(e) => handleDrop(e, m.id, acct.id)}
+                        className={`flex items-center gap-3 rounded-xl border px-3 py-3 transition-colors ${
+                          draggingId === m.id
+                            ? 'border-dashed border-brand-400 bg-brand-50/20 opacity-50'
+                            : dragOverId === m.id
+                              ? 'border-brand-400 bg-brand-50/30'
+                              : m.enabled
+                                ? 'border-sand-200 bg-gray-50/60'
+                                : 'border-gray-100 bg-gray-50 opacity-60'
+                        }`}
+                      >
+                        <div
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, m.id)}
+                          onDragEnd={() => {
+                            setDraggingId(null)
+                            setDragOverId(null)
+                          }}
+                          className="shrink-0 cursor-grab active:cursor-grabbing text-sand-400 hover:text-ink-600 p-0.5"
+                          title="按住拖拽调整顺序"
+                        >
+                          <GripVertical size={16} />
+                        </div>
                         <Tv size={16} className="shrink-0 text-brand-500" />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold text-ink-600">
@@ -465,6 +646,24 @@ export function EmbyMountPage() {
                             {m.collection_type || 'mixed'}
                             {m.proxy_play ? ' · 本机代理播放' : ' · 直连播放'}
                           </p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => moveMount(m, 'up')}
+                            disabled={index === 0 || reordering}
+                            className="rounded-lg border border-gray-200 p-1.5 text-ink-100 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="上移"
+                          >
+                            <ArrowUp size={13} />
+                          </button>
+                          <button
+                            onClick={() => moveMount(m, 'down')}
+                            disabled={index === acctMounts.length - 1 || reordering}
+                            className="rounded-lg border border-gray-200 p-1.5 text-ink-100 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="下移"
+                          >
+                            <ArrowDown size={13} />
+                          </button>
                         </div>
                         <button
                           onClick={() => toggleMountProxy(m, !m.proxy_play)}

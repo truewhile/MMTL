@@ -39,8 +39,8 @@ export function APIConfigsPanel() {
       )}
 
       {!loading && (
-        <div className="glass-panel overflow-hidden">
-          <table className="w-full text-left text-sm">
+        <div className="glass-panel table-scroll">
+          <table className="min-w-[640px] w-full text-left text-sm">
             <thead className="border-b border-gray-200 text-xs uppercase tracking-wider text-sand-500">
               <tr>
                 <th className="px-4 py-3">服务</th>

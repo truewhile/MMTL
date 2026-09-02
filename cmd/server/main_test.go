@@ -12,23 +12,23 @@ import (
 )
 
 func TestEffectiveVersionPrefersBuildVersion(t *testing.T) {
-	t.Setenv("MMTL_VERSION", "MMTL-v0.1.15")
+	t.Setenv("MEBOX_VERSION", "MeBox-v0.1.15")
 
-	if got := effectiveVersion("MMTL-v0.1.16"); got != "MMTL-v0.1.16" {
-		t.Fatalf("effectiveVersion = %q, want MMTL-v0.1.16", got)
+	if got := effectiveVersion("MeBox-v0.1.16"); got != "MeBox-v0.1.16" {
+		t.Fatalf("effectiveVersion = %q, want MeBox-v0.1.16", got)
 	}
 }
 
 func TestEffectiveVersionUsesEnvWhenBuildVersionIsDev(t *testing.T) {
-	t.Setenv("MMTL_VERSION", " MMTL-v0.1.16 ")
+	t.Setenv("MEBOX_VERSION", " MeBox-v0.1.16 ")
 
-	if got := effectiveVersion("dev"); got != "MMTL-v0.1.16" {
-		t.Fatalf("effectiveVersion = %q, want MMTL-v0.1.16", got)
+	if got := effectiveVersion("dev"); got != "MeBox-v0.1.16" {
+		t.Fatalf("effectiveVersion = %q, want MeBox-v0.1.16", got)
 	}
 }
 
 func TestEffectiveVersionDefaultsToDev(t *testing.T) {
-	t.Setenv("MMTL_VERSION", "")
+	t.Setenv("MEBOX_VERSION", "")
 
 	if got := effectiveVersion(""); got != "dev" {
 		t.Fatalf("effectiveVersion = %q, want dev", got)
@@ -85,7 +85,7 @@ func TestServeSPAServesAssetsImmutableAndBypassesAPIRoutes(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(webDir, "assets", "app.js"), []byte("console.log('ok')"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(webDir, "brand", "mmtl-logo.svg"), []byte("<svg></svg>"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(webDir, "brand", "mebox-logo.svg"), []byte("<svg></svg>"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(webDir, "artwork-cache-sw.js"), []byte("self.addEventListener('fetch', () => {})"), 0o644); err != nil {
@@ -105,7 +105,7 @@ func TestServeSPAServesAssetsImmutableAndBypassesAPIRoutes(t *testing.T) {
 		t.Fatalf("asset Cache-Control = %q, want immutable", got)
 	}
 
-	brandReq := httptest.NewRequest(http.MethodGet, "/brand/mmtl-logo.svg", nil)
+	brandReq := httptest.NewRequest(http.MethodGet, "/brand/mebox-logo.svg", nil)
 	brandResp := httptest.NewRecorder()
 	router.ServeHTTP(brandResp, brandReq)
 	if brandResp.Code != http.StatusOK {

@@ -15,7 +15,7 @@ func (c *Config) normalize() error {
 		c.App.DataDir = "./data"
 	}
 	if c.Database.DBPath == "" {
-		c.Database.DBPath = filepath.Join(c.App.DataDir, "mmtl.db")
+		c.Database.DBPath = filepath.Join(c.App.DataDir, "mebox.db")
 	}
 	if c.Database.Type == "" {
 		c.Database.Type = "auto"
@@ -44,15 +44,18 @@ func (c *Config) normalize() error {
 	if c.Cache.CacheDir == "" {
 		c.Cache.CacheDir = filepath.Join(c.App.DataDir, "cache")
 	}
+	if c.Cache.ImagesMaxSizeMB < 0 {
+		c.Cache.ImagesMaxSizeMB = 0
+	}
 	if c.Cache.RedisPrefix == "" {
-		c.Cache.RedisPrefix = "mmtl"
+		c.Cache.RedisPrefix = "mebox"
 	}
 	if c.Cache.MediaTTLSeconds < 1 {
 		c.Cache.MediaTTLSeconds = 15
 	}
 	c.Search.Backend = strings.ToLower(strings.TrimSpace(c.Search.Backend))
 	if c.Search.Index == "" {
-		c.Search.Index = "mmtl_media"
+		c.Search.Index = "mebox_media"
 	}
 	if c.Secrets.JWTSecret == "" {
 		// 持久化自动生成的密钥以在操作员忘记配置时保持会话稳定。

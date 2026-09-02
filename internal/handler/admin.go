@@ -10,8 +10,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 func listUsersHandler(svc *service.Container) gin.HandlerFunc {
@@ -31,7 +31,66 @@ func listUsersHandler(svc *service.Container) gin.HandlerFunc {
 		for i := range users {
 			users[i].PopulateComputedFields()
 		}
-		c.JSON(http.StatusOK, users)
+		maxUsers, err := service.LoadMaxUsers(c.Request.Context(), svc.Repo)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"users":        users,
+			"max_users":    maxUsers,
+			"current_users": len(users),
+		})
+	}
+}
+
+type updateUserLimitReq struct {
+	MaxUsers int `json:"max_users" binding:"required"`
+}
+
+func getUserLimitHandler(svc *service.Container) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		maxUsers, err := service.LoadMaxUsers(c.Request.Context(), svc.Repo)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		currentUsers, err := svc.Repo.User.Count(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"max_users":     maxUsers,
+			"current_users": currentUsers,
+		})
+	}
+}
+
+func updateUserLimitHandler(svc *service.Container) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req updateUserLimitReq
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if err := service.SaveMaxUsers(c.Request.Context(), svc.Repo, req.MaxUsers); err != nil {
+			if errors.Is(err, service.ErrInvalidMaxUsers) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		currentUsers, err := svc.Repo.User.Count(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"max_users":     req.MaxUsers,
+			"current_users": currentUsers,
+		})
 	}
 }
 
@@ -192,77 +251,77 @@ func updateUserStatusHandler(svc *service.Container) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-			if req.IsActive {
-				_ = svc.Repo.UserDevice.SetKickedByUser(c.Request.Context(), userID, false)
-			} else {
-				_ = svc.Repo.UserDevice.SetKickedByUser(c.Request.Context(), userID, true)
-			}
-			updated, err := svc.Repo.User.FindByID(c.Request.Context(), userID)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-			updated.PopulateComputedFields()
-			c.JSON(http.StatusOK, updated)
+		if req.IsActive {
+			_ = svc.Repo.UserDevice.SetKickedByUser(c.Request.Context(), userID, false)
+		} else {
+			_ = svc.Repo.UserDevice.SetKickedByUser(c.Request.Context(), userID, true)
 		}
+		updated, err := svc.Repo.User.FindByID(c.Request.Context(), userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		updated.PopulateComputedFields()
+		c.JSON(http.StatusOK, updated)
 	}
+}
 
-	type adminUpdateUserLibrariesReq struct {
-		AllowedLibraryIDs *[]string `json:"allowed_library_ids"`
-	}
+type adminUpdateUserLibrariesReq struct {
+	AllowedLibraryIDs *[]string `json:"allowed_library_ids"`
+}
 
-	func updateUserLibrariesHandler(svc *service.Container) gin.HandlerFunc {
-		return func(c *gin.Context) {
-			var req adminUpdateUserLibrariesReq
-			if err := c.ShouldBindJSON(&req); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
-			userID := c.Param("id")
-			user, err := svc.Repo.User.FindByID(c.Request.Context(), userID)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-			if user == nil {
-				c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
-				return
-			}
+func updateUserLibrariesHandler(svc *service.Container) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req adminUpdateUserLibrariesReq
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		userID := c.Param("id")
+		user, err := svc.Repo.User.FindByID(c.Request.Context(), userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if user == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
 
-			var rawJSON string
-			if req.AllowedLibraryIDs != nil && len(*req.AllowedLibraryIDs) > 0 {
-				var cleanIDs []string
-				for _, id := range *req.AllowedLibraryIDs {
-					trimmed := strings.TrimSpace(id)
-					if trimmed != "" {
-						cleanIDs = append(cleanIDs, trimmed)
-					}
-				}
-				if len(cleanIDs) > 0 {
-					data, err := json.Marshal(cleanIDs)
-					if err != nil {
-						c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-						return
-					}
-					rawJSON = string(data)
+		var rawJSON string
+		if req.AllowedLibraryIDs != nil && len(*req.AllowedLibraryIDs) > 0 {
+			var cleanIDs []string
+			for _, id := range *req.AllowedLibraryIDs {
+				trimmed := strings.TrimSpace(id)
+				if trimmed != "" {
+					cleanIDs = append(cleanIDs, trimmed)
 				}
 			}
-
-			updates := map[string]any{"allowed_library_ids": rawJSON}
-			if err := svc.Repo.User.UpdateFields(c.Request.Context(), userID, updates); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
+			if len(cleanIDs) > 0 {
+				data, err := json.Marshal(cleanIDs)
+				if err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+					return
+				}
+				rawJSON = string(data)
 			}
-
-			updated, err := svc.Repo.User.FindByID(c.Request.Context(), userID)
-			if err != nil || updated == nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to reload user"})
-				return
-			}
-			updated.PopulateComputedFields()
-			c.JSON(http.StatusOK, updated)
 		}
+
+		updates := map[string]any{"allowed_library_ids": rawJSON}
+		if err := svc.Repo.User.UpdateFields(c.Request.Context(), userID, updates); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		updated, err := svc.Repo.User.FindByID(c.Request.Context(), userID)
+		if err != nil || updated == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to reload user"})
+			return
+		}
+		updated.PopulateComputedFields()
+		c.JSON(http.StatusOK, updated)
 	}
+}
 
 func annotateProtectedUsers(ctx context.Context, svc *service.Container, users []model.User) error {
 	firstAdmin, err := svc.Repo.User.FirstAdmin(ctx)
@@ -288,7 +347,12 @@ func writeUserMutationError(c *gin.Context, svc *service.Container, err error) {
 	case errors.Is(err, service.ErrUsernameTaken):
 		c.JSON(http.StatusConflict, gin.H{"error": "username already taken"})
 	case errors.Is(err, service.ErrUserLimitReached):
-		c.JSON(http.StatusBadRequest, gin.H{"error": "user limit reached", "max_users": service.UserLimit})
+		maxUsers, loadErr := service.LoadMaxUsers(c.Request.Context(), svc.Repo)
+		if loadErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": loadErr.Error()})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": "user limit reached", "max_users": maxUsers})
 	default:
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 	}

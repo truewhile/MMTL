@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 // KickDevice marks a device as kicked so the next request from it is rejected

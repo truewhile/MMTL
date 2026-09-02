@@ -3,7 +3,7 @@ package handler
 import (
 	"github.com/gin-gonic/gin"
 
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 func registerAuthedUISurfaceRoutes(authed *gin.RouterGroup, svc *service.Container) {
@@ -71,6 +71,7 @@ func registerAuthedFavoriteAndMediaActionRoutes(authed *gin.RouterGroup, svc *se
 
 func registerAuthedPlaybackExtraRoutes(authed *gin.RouterGroup, svc *service.Container) {
 	authed.GET("/playback/:id/info", playbackInfoHandler(svc))
+	authed.GET("/playback/:id/resume", playbackResumeHandler(svc))
 	authed.POST("/playback/:id/progress", playbackProgressHandler(svc))
 	authed.GET("/playback/:id/external-players", externalPlayersHandler(svc))
 	authed.GET("/playback/:id/external-url", externalURLHandler(svc))

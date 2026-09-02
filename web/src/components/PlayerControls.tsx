@@ -324,7 +324,7 @@ export function PlayerControls({
       onMouseLeave={() => setControlsHovered(false)}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center gap-2.5 text-white">
+      <div className="flex flex-wrap items-center gap-2 text-white sm:flex-nowrap sm:gap-2.5">
         {/* 上一集 */}
         <button
           onClick={onPrevEpisode}
@@ -362,24 +362,25 @@ export function PlayerControls({
           <SkipForward size={18} />
         </button>
 
-        <input
-          type="range"
-          min={0}
-          max={duration || 0}
-          step={0.1}
-          value={displayTime}
-          onMouseDown={handleSeekStart}
-          onTouchStart={handleSeekStart}
-          onChange={(e) => handleSeekChange(Number(e.target.value))}
-          onMouseUp={(e) => handleSeekEnd(Number((e.target as HTMLInputElement).value))}
-          onTouchEnd={(e) => handleSeekEnd(Number((e.target as HTMLInputElement).value))}
-          className="min-w-0 flex-1 cursor-pointer accent-rose-500"
-          aria-label="播放进度"
-        />
-
-        <span className="shrink-0 font-mono text-xs tabular-nums text-white/85">
-          {formatTime(displayTime)} / {formatTime(duration)}
-        </span>
+        <div className="order-2 flex min-w-0 basis-full items-center gap-2 sm:order-none sm:basis-auto sm:flex-1">
+          <input
+            type="range"
+            min={0}
+            max={duration || 0}
+            step={0.1}
+            value={displayTime}
+            onMouseDown={handleSeekStart}
+            onTouchStart={handleSeekStart}
+            onChange={(e) => handleSeekChange(Number(e.target.value))}
+            onMouseUp={(e) => handleSeekEnd(Number((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => handleSeekEnd(Number((e.target as HTMLInputElement).value))}
+            className="min-w-0 flex-1 cursor-pointer accent-rose-500"
+            aria-label="播放进度"
+          />
+          <span className="shrink-0 font-mono text-[10px] tabular-nums text-white/85 sm:text-xs">
+            {formatTime(displayTime)} / {formatTime(duration)}
+          </span>
+        </div>
 
         {pipSupported && (
           <button
@@ -456,7 +457,7 @@ export function PlayerControls({
             title={hasPlaylist ? '选集列表' : '当前无更多剧集'}
           >
             <ListVideo size={15} />
-            选集
+              <span className="hidden sm:inline">选集</span>
           </button>
         )}
 
@@ -472,7 +473,7 @@ export function PlayerControls({
           title="弹幕设置"
         >
           <MessageSquareText size={15} />
-          弹幕
+          <span className="hidden sm:inline">弹幕</span>
           {danmakuEnabled && <span className="h-1.5 w-1.5 rounded-full bg-lime-400" />}
         </button>
 
@@ -490,7 +491,7 @@ export function PlayerControls({
           step={0.05}
           value={muted ? 0 : volume}
           onChange={(e) => changeVolume(Number(e.target.value))}
-          className="w-16 accent-rose-500"
+          className="hidden w-16 accent-rose-500 sm:block"
           aria-label="音量"
         />
 

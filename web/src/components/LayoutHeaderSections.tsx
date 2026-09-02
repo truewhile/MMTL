@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Film, LoaderCircle, Menu, Search, Star, X } from 'lucide-react'
+import { ArrowLeft, Film, LoaderCircle, Menu, Search, Star, X } from 'lucide-react'
 
 import { imageURL } from '../api/client'
 import { mediaAPI } from '../api/library'
 import type { Media, PlayProfile, User } from '../types'
+import { resolveHeaderBack } from './layoutNavigation'
 import { LayoutThemeToggle } from './LayoutThemeToggle'
 import { LayoutUserMenu } from './LayoutUserMenu'
 import type { useLayoutProfiles } from './useLayoutProfiles'
@@ -29,6 +30,7 @@ type LayoutHeaderProps = {
   onLogout: () => void
   showSidebar?: boolean
   hideSearch?: boolean
+  pathname?: string
 }
 
 export function LayoutHeader({
@@ -41,11 +43,26 @@ export function LayoutHeader({
   onLogout,
   showSidebar,
   hideSearch,
+  pathname = '',
 }: LayoutHeaderProps) {
+  const navigate = useNavigate()
+  const headerBack = resolveHeaderBack(pathname)
+
   return (
-    <header className="relative flex h-20 shrink-0 items-center justify-between gap-4 border-b border-[var(--app-border)] bg-[var(--app-header-bg)] px-4 backdrop-blur-md z-30 md:px-8">
-      {/* Left: Mobile Menu button or Brand Logo */}
-      <div className="flex items-center gap-3 shrink-0">
+    <header className="relative z-30 flex h-16 shrink-0 items-center justify-between gap-2 border-b border-[var(--app-border)] bg-[var(--app-header-bg)] px-3 backdrop-blur-md sm:h-20 sm:gap-4 sm:px-4 md:px-8">
+      {/* Left: back / menu / brand */}
+      <div className="flex items-center gap-2 shrink-0 sm:gap-3">
+        {headerBack ? (
+          <button
+            type="button"
+            onClick={() => navigate(headerBack.to)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--app-border)] px-2.5 py-2 text-xs font-semibold text-[var(--app-subtle)] transition-colors hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] lg:hidden"
+            title={headerBack.label}
+          >
+            <ArrowLeft size={16} />
+            <span className="max-w-[4.5rem] truncate sm:max-w-none">{headerBack.label}</span>
+          </button>
+        ) : null}
         <button
           onClick={onOpenMobileDrawer}
           className="rounded-xl border border-[var(--app-border)] p-2.5 text-[var(--app-muted)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] transition-colors lg:hidden"
@@ -53,25 +70,20 @@ export function LayoutHeader({
         >
           <Menu size={18} />
         </button>
-        <Link
-          to="/"
-          className={`flex items-center gap-2.5 transition-transform hover:scale-105 ${
-            showSidebar ? 'lg:hidden' : ''
-          }`}
-        >
+        <Link to="/" className={`flex items-center gap-2.5 transition-transform hover:scale-105 ${showSidebar ? 'lg:hidden' : 'hidden sm:flex'}`}>
           <img
             src="/brand/logo-192.png"
-            alt="MMTL"
+            alt="MeBox"
             className="h-9 w-9 rounded-xl object-contain shadow-sm"
           />
           <span className="hidden font-display text-lg font-black tracking-tight text-[var(--app-text)] sm:inline-block">
-            MMTL
+            MeBox
           </span>
         </Link>
       </div>
 
       {/* Middle: Search Box */}
-      <div className="flex-1 max-w-xl mx-auto">
+      <div className="flex min-w-0 flex-1 max-w-xl mx-auto">
         {!hideSearch && <LayoutHeaderSearch />}
       </div>
 
@@ -155,8 +167,8 @@ function LayoutHeaderSearch() {
     <div ref={containerRef} className="relative w-full">
       <div className="relative flex items-center">
         <Search
-          size={16}
-          className="absolute left-3.5 text-[var(--app-muted)] pointer-events-none transition-colors group-focus-within:text-brand-500"
+          size={15}
+          className="absolute left-3 text-[var(--app-muted)] pointer-events-none transition-colors group-focus-within:text-brand-500 sm:left-3.5 sm:text-[16px]"
         />
         <input
           type="text"
@@ -169,8 +181,8 @@ function LayoutHeaderSearch() {
             if (results.length > 0) setIsOpen(true)
           }}
           onKeyDown={handleKeyDown}
-          placeholder="搜索电影、剧集、演员…"
-          className="w-full h-10 pl-10 pr-9 rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel)] text-sm text-[var(--app-text)] placeholder:text-[var(--app-muted)] shadow-sm outline-none transition-all duration-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:bg-[var(--app-panel-elevated)]"
+          placeholder="搜索媒体…"
+          className="w-full h-9 sm:h-10 pl-8 sm:pl-10 pr-8 sm:pr-9 rounded-xl sm:rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel)] text-xs sm:text-sm text-[var(--app-text)] placeholder:text-[var(--app-muted)] shadow-sm outline-none transition-all duration-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:bg-[var(--app-panel-elevated)]"
         />
         {loading ? (
           <LoaderCircle size={15} className="absolute right-3.5 text-brand-500 animate-spin" />
@@ -288,8 +300,10 @@ function LayoutHeaderActions({
 }: LayoutHeaderActionsProps) {
   return (
     <div className="flex shrink-0 items-center gap-2 sm:gap-3 md:gap-4">
-      <LayoutThemeToggle mode={themeMode} onChange={onThemeChange} />
-      <span className="hidden h-6 w-px bg-[var(--app-border)] sm:block" />
+      <div className="hidden items-center gap-3 sm:flex md:gap-4">
+        <LayoutThemeToggle mode={themeMode} onChange={onThemeChange} />
+        <span className="h-6 w-px bg-[var(--app-border)]" />
+      </div>
       <LayoutUserMenu
         user={user}
         isOpen={isProfileOpen}
@@ -301,6 +315,8 @@ function LayoutHeaderActions({
         onUseDefaultProfile={onUseDefaultProfile}
         onSwitchProfile={onSwitchProfile}
         onLogout={onLogout}
+        themeMode={themeMode}
+        onThemeChange={onThemeChange}
       />
     </div>
   )

@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import clsx from 'clsx'
 
 import { LayoutSidebarContent, type LayoutSidebarContentProps } from './LayoutSidebarContent'
+import { isPlayerRoute } from './layoutNavigation'
 import { RouteErrorBoundary } from './RouteErrorBoundary'
 import type { useLayoutSidebar } from './useLayoutSidebar'
 
@@ -25,10 +26,12 @@ type LayoutSidebarsProps = Omit<
 > & {
   sidebar: LayoutSidebarState
   showSidebar: boolean
+  sidebarVariant?: 'media' | 'admin'
 }
 
 type LayoutWorkspaceProps = {
   routeKey: string
+  showMobileBottomNav?: boolean
 }
 
 export { LayoutHeader } from './LayoutHeaderSections'
@@ -37,7 +40,7 @@ export function LayoutDesktopSidebar({ children, isSidebarOpen }: LayoutSidebarP
   return (
     <aside
       className={clsx(
-        'hidden lg:flex flex-col h-full shrink-0 transition-all duration-300 ease-out',
+        'hidden lg:flex min-h-0 h-full shrink-0 flex-col transition-all duration-300 ease-out',
         isSidebarOpen ? 'w-64' : 'w-20',
       )}
     >
@@ -63,7 +66,7 @@ export function LayoutMobileSidebar({ children, isOpen, onClose }: LayoutMobileS
             animate={{ x: 0 }}
             exit={{ x: '-100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-            className="relative flex w-64 max-w-xs flex-col h-full z-10 shadow-xl"
+            className="relative z-10 flex h-full min-h-0 w-64 max-w-xs flex-col overflow-hidden shadow-xl"
           >
             {children}
           </motion.div>
@@ -78,6 +81,7 @@ export function LayoutSidebars({
   isAdmin,
   can,
   showSidebar,
+  sidebarVariant = 'admin',
 }: LayoutSidebarsProps) {
   const content = (
     <LayoutSidebarContent
@@ -87,6 +91,7 @@ export function LayoutSidebars({
       can={can}
       onToggleSidebar={sidebar.toggleSidebar}
       onCloseMobileDrawer={() => sidebar.setIsMobileDrawerOpen(false)}
+      variant={sidebarVariant}
     />
   )
 
@@ -116,8 +121,12 @@ export function LayoutSidebars({
   )
 }
 
-export function LayoutWorkspace({ routeKey }: LayoutWorkspaceProps) {
-  if (routeKey.startsWith('/play')) {
+export function LayoutWorkspace({ routeKey, showMobileBottomNav = false }: LayoutWorkspaceProps) {
+  const bottomPad = showMobileBottomNav
+    ? 'pb-[calc(3.75rem+env(safe-area-inset-bottom,0px))] lg:pb-10'
+    : ''
+
+  if (isPlayerRoute(routeKey)) {
     return (
       <main className="flex flex-1 h-full w-full overflow-hidden">
         <RouteErrorBoundary>
@@ -128,7 +137,7 @@ export function LayoutWorkspace({ routeKey }: LayoutWorkspaceProps) {
   }
 
   return (
-    <main className="flex-1 overflow-y-auto px-4 py-6 md:px-8 md:py-10">
+    <main className={clsx('flex-1 overflow-y-auto px-4 py-6 md:px-8 md:py-10', bottomPad)}>
       <div className="max-w-7xl mx-auto">
         <AnimatePresence mode="wait">
           <motion.div

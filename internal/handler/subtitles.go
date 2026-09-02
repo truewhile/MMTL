@@ -6,12 +6,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 func listSubtitlesHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		tracks, err := svc.Subtitle.Discover(c.Request.Context(), c.Param("id"))
+		id := c.Param("id")
+		if svc.EmbyRemote != nil && service.IsEmbyRemoteID(id) {
+			c.JSON(http.StatusOK, gin.H{"tracks": []service.SubtitleTrack{}})
+			return
+		}
+		tracks, err := svc.Subtitle.Discover(c.Request.Context(), id)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 			return

@@ -42,11 +42,11 @@ func TestDecodeEmbyRemoteIDRejectsLocalUUIDs(t *testing.T) {
 
 func TestRewriteEmbyRemoteIDs(t *testing.T) {
 	payload := map[string]any{
-		"Id":           "item-1",
-		"ParentId":     "folder-1",
-		"SeriesId":     "series-1",
-		"SeasonId":     "season-1",
-		"PrimaryImageItemId": "item-1",
+		"Id":                   "item-1",
+		"ParentId":             "folder-1",
+		"SeriesId":             "series-1",
+		"SeasonId":             "season-1",
+		"PrimaryImageItemId":   "item-1",
 		"DisplayPreferencesId": "folder-1",
 		"ImageTags": map[string]any{
 			"Primary": "item-1",
@@ -58,8 +58,8 @@ func TestRewriteEmbyRemoteIDs(t *testing.T) {
 		// MediaSource 的 Id 保持原样（客户端仅作为 MediaSourceId 查询参数）。
 		"MediaSources": []any{
 			map[string]any{
-				"Id":               "ms-9",
-				"DirectStreamUrl":  "/Videos/item-1/stream",
+				"Id":              "ms-9",
+				"DirectStreamUrl": "/Videos/item-1/stream",
 				"MediaStreams": []any{
 					map[string]any{"Type": "Subtitle", "DeliveryUrl": "/Videos/item-1/Subtitles/2/Stream.srt"},
 				},

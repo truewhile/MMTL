@@ -1,12 +1,14 @@
-import { isRemoteEmbyID } from '../utils/remoteEmby'
 import { ArrowLeft, Heart, Play, RefreshCw } from 'lucide-react'
 import { Link } from 'react-router-dom'
+
+import { PageBackButton } from '../components/PageBackButton'
 
 import { ExternalPlayerButton } from '../components/ExternalPlayerButton'
 import { ManualScrapeDialog } from '../components/ManualScrapeDialog'
 import { MetadataEditDialog } from '../components/MetadataEditDialog'
 import { OrganizeMediaDialog } from '../components/OrganizeMediaDialog'
 import type { Media } from '../types'
+import { isDirectStreamMedia } from './playerPageModel'
 import { MediaDetailAdminPanel } from './MediaDetailAdminPanel'
 import { MediaDetailPoster } from './MediaDetailArtwork'
 import { MediaDetailMetadata } from './MediaDetailMetadata'
@@ -63,8 +65,11 @@ export function MediaDetailLoading() {
 
 export function MediaDetailMissing() {
   return (
-    <div className="text-center py-24 bg-white rounded-2xl border border-gray-200">
-      <p className="text-gray-500">媒体资源已被移除或不存在</p>
+    <div className="space-y-4 py-12 text-center">
+      <PageBackButton label="返回上一页" className="mx-auto" />
+      <div className="rounded-2xl border border-gray-200 bg-white py-16">
+        <p className="text-gray-500">媒体资源已被移除或不存在</p>
+      </div>
     </div>
   )
 }
@@ -96,7 +101,7 @@ export function MediaDetailPlaybackActions({
         <span>立即播放</span>
       </Link>
 
-      {!isRemoteEmbyID(media.id) && (
+      {!isDirectStreamMedia(media) && (
         <Link
         to={`/play/${media.id}?mode=hls`}
         state={{ from: `/media/${media.id}` }}

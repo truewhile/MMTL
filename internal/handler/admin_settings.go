@@ -10,8 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 type settingReq struct {
@@ -63,6 +63,9 @@ func updateSettingHandler(svc *service.Container) gin.HandlerFunc {
 		}
 		if req.Key == "transcode.hw_enabled" || req.Key == "transcode.hw_accel" || req.Key == "transcoder.hardware_accel" || req.Key == "transcoder.encoder" {
 			svc.Transcoder.StopAll()
+		}
+		if req.Key == "cache.images_max_size_mb" && svc.Scheduler != nil {
+			_ = svc.Scheduler.RunNowAsync(c.Request.Context(), "image_cache_cleanup")
 		}
 		c.Status(http.StatusNoContent)
 	}

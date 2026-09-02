@@ -6,11 +6,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 // Item 单条目详情。
 func (e *EmbyService) Item(ctx context.Context, mediaID, userID string) (map[string]any, error) {
+	if e == nil {
+		return nil, nil
+	}
 	// 远程 Emby 条目：不查本地库，直接向远程转发（保持远程最新元数据）。
 	if e.remote != nil && IsEmbyRemoteID(mediaID) {
 		mountID, remoteID, _ := DecodeEmbyRemoteID(mediaID)
@@ -18,7 +21,14 @@ func (e *EmbyService) Item(ctx context.Context, mediaID, userID string) (map[str
 		if mount == nil || acct == nil {
 			return nil, nil
 		}
-		return e.remote.RemoteItem(ctx, mount, acct, remoteID)
+		out, err := e.remote.RemoteItem(ctx, mount, acct, remoteID)
+		if err != nil || out == nil {
+			return out, err
+		}
+		if err := e.mergeRemoteUserData(ctx, userID, out); err != nil {
+			return nil, err
+		}
+		return out, nil
 	}
 	if lib, err := e.repo.Library.FindByID(ctx, mediaID); err != nil {
 		return nil, err
@@ -91,7 +101,14 @@ func (e *EmbyService) LatestItems(ctx context.Context, userID, parentID string, 
 		if mount == nil || acct == nil {
 			return nil, nil
 		}
-		return e.remote.RemoteLatest(ctx, mount, acct, remoteParent, limit)
+		out, err := e.remote.RemoteLatest(ctx, mount, acct, remoteParent, limit)
+		if err != nil {
+			return nil, err
+		}
+		if err := e.mergeRemoteUserData(ctx, userID, out); err != nil {
+			return nil, err
+		}
+		return out, nil
 	}
 	cacheKey := e.embyLatestCacheKey(userID, parentID, limit)
 	var cached embyLatestCacheValue
@@ -160,41 +177,88 @@ func (e *EmbyService) latestSeriesItemsForLibrary(ctx context.Context, userID, l
 
 // ResumeItems 列出有未完成播放进度的媒体。
 func (e *EmbyService) ResumeItems(ctx context.Context, userID string, limit int) (map[string]any, error) {
-	if limit <= 0 || limit > 100 {
-		limit = 20
+	return e.resumableItems(ctx, ItemsParams{UserID: userID, Limit: limit})
+}
+
+// resumableItems 返回未完成播放进度的媒体（包含本地媒体与挂载的远程媒体），支持分页。
+func (e *EmbyService) resumableItems(ctx context.Context, p ItemsParams) (map[string]any, error) {
+	if p.Limit <= 0 || p.Limit > 100 {
+		p.Limit = 50
 	}
+	if p.StartIndex < 0 {
+		p.StartIndex = 0
+	}
+	if strings.TrimSpace(p.UserID) == "" {
+		return map[string]any{"Items": []any{}, "TotalRecordCount": int64(0), "StartIndex": p.StartIndex}, nil
+	}
+
 	var hist []model.PlaybackHistory
 	if err := e.repo.DB.WithContext(ctx).
-		Where("user_id = ? AND completed = ? AND position_ms > 0", userID, false).
-		Order("watched_at desc").Limit(limit).Find(&hist).Error; err != nil {
+		Where("user_id = ? AND completed = ? AND position_ms > 0", p.UserID, false).
+		Order("watched_at desc").Find(&hist).Error; err != nil {
 		return nil, err
 	}
 	if len(hist) == 0 {
-		return map[string]any{"Items": []any{}, "TotalRecordCount": 0}, nil
+		return map[string]any{"Items": []any{}, "TotalRecordCount": int64(0), "StartIndex": p.StartIndex}, nil
 	}
-	ids := make([]string, 0, len(hist))
-	posByID := map[string]int64{}
+
+	localIDs := make([]string, 0, len(hist))
 	for _, h := range hist {
-		ids = append(ids, h.MediaID)
-		posByID[h.MediaID] = h.PositionMs
-	}
-	var medias []model.Media
-	q := e.repo.DB.WithContext(ctx).Where("id IN ?", ids)
-	q = e.applyUserMediaVisibility(ctx, q, userID)
-	if err := q.Find(&medias).Error; err != nil {
-		return nil, err
+		if !IsEmbyRemoteID(h.MediaID) {
+			localIDs = append(localIDs, h.MediaID)
+		}
 	}
 	byID := map[string]*model.Media{}
-	for i := range medias {
-		byID[medias[i].ID] = &medias[i]
+	if len(localIDs) > 0 {
+		var medias []model.Media
+		q := e.repo.DB.WithContext(ctx).Where("id IN ?", localIDs)
+		q = e.applyUserMediaVisibility(ctx, q, p.UserID)
+		if err := q.Find(&medias).Error; err != nil {
+			return nil, err
+		}
+		for i := range medias {
+			byID[medias[i].ID] = &medias[i]
+		}
 	}
+
 	items := make([]map[string]any, 0, len(hist))
 	for _, h := range hist {
 		if m, ok := byID[h.MediaID]; ok {
-			items = append(items, e.itemPayload(ctx, m, false, posByID[h.MediaID]))
+			if p.ParentID != "" && m.LibraryID != p.ParentID && m.SeriesID != p.ParentID {
+				continue
+			}
+			items = append(items, e.itemPayload(ctx, m, false, h.PositionMs))
+			continue
 		}
+		if e.remote == nil || !IsEmbyRemoteID(h.MediaID) {
+			continue
+		}
+		mountID, remoteID, _ := DecodeEmbyRemoteID(h.MediaID)
+		mount, acct, err := e.remote.ResolveMount(ctx, mountID)
+		if err != nil || mount == nil || acct == nil {
+			continue
+		}
+		item, err := e.remote.RemoteItem(ctx, mount, acct, remoteID)
+		if err != nil || item == nil {
+			continue
+		}
+		if p.ParentID != "" {
+			parentID, _ := item["ParentId"].(string)
+			seriesID, _ := item["SeriesId"].(string)
+			if parentID != p.ParentID && seriesID != p.ParentID && mountID != p.ParentID {
+				continue
+			}
+		}
+		item["UserData"] = mergedRemoteUserData(item["UserData"], &h)
+		items = append(items, item)
 	}
-	return map[string]any{"Items": items, "TotalRecordCount": len(items)}, nil
+
+	total := int64(len(items))
+	if p.StartIndex >= len(items) {
+		return map[string]any{"Items": []map[string]any{}, "TotalRecordCount": total, "StartIndex": p.StartIndex}, nil
+	}
+	end := minInt(p.StartIndex+p.Limit, len(items))
+	return map[string]any{"Items": items[p.StartIndex:end], "TotalRecordCount": total, "StartIndex": p.StartIndex}, nil
 }
 
 func (e *EmbyService) itemPayload(ctx context.Context, m *model.Media, fav bool, posMs int64) map[string]any {

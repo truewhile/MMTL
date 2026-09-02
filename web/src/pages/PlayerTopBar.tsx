@@ -4,6 +4,8 @@ import type { PlayerMode } from './playerPageModel'
 
 type PlayerTopBarProps = {
   directOnly: boolean
+  isDirectStream?: boolean
+  directStreamLabel?: string
   mode: PlayerMode
   onBack: () => void
   onToggleMode: () => void
@@ -11,6 +13,8 @@ type PlayerTopBarProps = {
 
 export function PlayerTopBar({
   directOnly,
+  isDirectStream,
+  directStreamLabel,
   mode,
   onBack,
   onToggleMode,
@@ -25,7 +29,14 @@ export function PlayerTopBar({
       </button>
 
       <div className="pointer-events-auto flex items-center gap-2">
-        {directOnly ? (
+        {isDirectStream ? (
+          <span
+            className="flex items-center gap-2 rounded-full border border-white/15 bg-black/70 px-4 py-2 text-sm font-medium text-white shadow-xl backdrop-blur"
+            title={directStreamLabel ? `${directStreamLabel}，默认直连播放，不进行转码` : '远程直连播放，不进行转码'}
+          >
+            <Sparkles size={14} /> {directStreamLabel || '直连播放'}
+          </span>
+        ) : directOnly ? (
           <span
             className="flex items-center gap-2 rounded-full border border-white/15 bg-black/70 px-4 py-2 text-sm font-medium text-white shadow-xl backdrop-blur"
             title="宿主机不转码，由客户端本地解码直连"

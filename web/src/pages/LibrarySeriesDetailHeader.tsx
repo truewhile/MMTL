@@ -4,6 +4,7 @@ import { ArrowLeft, Database, FileText, Film, FolderInput, Pencil, Play, Search,
 
 import { imageURL } from '../api/client'
 import { ExternalPlayerButton } from '../components/ExternalPlayerButton'
+import { MediaFavouriteButton } from '../components/MediaFavouriteButton'
 import type { Media } from '../types'
 import { seriesTitle, type SeriesCard } from '../utils/groupSeries'
 
@@ -13,6 +14,10 @@ type LibrarySeriesDetailHeaderProps = {
   allEpisodes: Media[]
   playbackFrom: string
   isAdmin: boolean
+  canFavorite: boolean
+  favourite: boolean
+  favouriteBusy: boolean
+  onToggleFavourite: () => void
   seriesToolBusy: string
   onBack: () => void
   onSmartScrape: () => void
@@ -30,6 +35,10 @@ export function LibrarySeriesDetailHeader({
   allEpisodes,
   playbackFrom,
   isAdmin,
+  canFavorite,
+  favourite,
+  favouriteBusy,
+  onToggleFavourite,
   seriesToolBusy,
   onBack,
   onSmartScrape,
@@ -75,15 +84,24 @@ export function LibrarySeriesDetailHeader({
             {series.rep.overview || '暂无简介'}
           </p>
 
-          {firstEpisode && (
-            <div className="flex flex-wrap gap-2">
-              <Link to={`/play/${firstEpisode.id}`} state={{ from: playbackFrom }} className="btn-primary inline-flex">
-                <Play size={16} fill="currentColor" />
-                从第一集开始播放
-              </Link>
-              <ExternalPlayerButton mediaId={firstEpisode.id} label="外部播放器播放" />
-            </div>
-          )}
+          <div className="flex flex-wrap gap-2">
+            {firstEpisode && (
+              <>
+                <Link to={`/play/${firstEpisode.id}`} state={{ from: playbackFrom }} className="btn-primary inline-flex">
+                  <Play size={16} fill="currentColor" />
+                  从第一集开始播放
+                </Link>
+                <ExternalPlayerButton mediaId={firstEpisode.id} label="外部播放器播放" />
+              </>
+            )}
+            {canFavorite && (
+              <MediaFavouriteButton
+                favourite={favourite}
+                disabled={favouriteBusy}
+                onToggle={onToggleFavourite}
+              />
+            )}
+          </div>
 
           {isAdmin && allEpisodes.length > 0 && !isRemoteEmbyID(series.rep.id) && (
             <div className="rounded-2xl border border-sand-200 bg-white/80 p-4 shadow-sm">

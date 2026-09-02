@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/config"
+	"github.com/truewhile/MeBox/internal/config"
 )
 
 func TestFFmpegTargetForPlatform(t *testing.T) {
@@ -78,4 +78,3 @@ func TestStartInstallRejectsConcurrent(t *testing.T) {
 	svc.running = false
 	svc.mu.Unlock()
 }
-

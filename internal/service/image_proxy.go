@@ -2,7 +2,7 @@
 //
 // Some deployments cannot reach image.tmdb.org directly (GFW, internal-only
 // networks). ImageProxy fronts a remote image URL so the browser only ever
-// talks to the MMTL origin. The proxy:
+// talks to the MeBox origin. The proxy:
 //
 //   - validates the URL scheme is http/https,
 //   - streams bytes through with a small disk cache under cache/images,
@@ -20,7 +20,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/config"
+	"github.com/truewhile/MeBox/internal/config"
 )
 
 // ImageProxy fetches and caches remote images on behalf of the browser.
@@ -83,4 +83,13 @@ func (p *ImageProxy) libraryRoots() []string {
 	p.libRootsCache = p.libraryRootsFn()
 	p.libRootsAt = time.Now()
 	return p.libRootsCache
+}
+
+// Prune removes oldest cached images until disk usage is within the configured limit.
+func (p *ImageProxy) Prune() (PruneImageCacheResult, error) {
+	if p.cfg == nil || p.cfg.Cache.ImagesMaxSizeMB <= 0 {
+		return PruneImageCacheResult{}, nil
+	}
+	maxBytes := int64(p.cfg.Cache.ImagesMaxSizeMB) * 1024 * 1024
+	return PruneImageCache(p.cacheDir, maxBytes)
 }

@@ -9,8 +9,13 @@ import { AdminUserLibrariesDialog } from '../components/AdminUserLibrariesDialog
 import { AdminUsersForm } from './AdminUsersForm'
 import { AdminUsersTable } from './AdminUsersTable'
 
+const DEFAULT_MAX_USERS = 20
+
 export function AdminUsersPanel() {
   const [users, setUsers] = useState<User[]>([])
+  const [maxUsers, setMaxUsers] = useState(DEFAULT_MAX_USERS)
+  const [maxUsersDraft, setMaxUsersDraft] = useState(String(DEFAULT_MAX_USERS))
+  const [savingLimit, setSavingLimit] = useState(false)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [editingID, setEditingID] = useState<string | null>(null)
@@ -19,7 +24,10 @@ export function AdminUsersPanel() {
   const [configuringLibrariesUser, setConfiguringLibrariesUser] = useState<User | null>(null)
 
   const refresh = async () => {
-    setUsers(await adminAPI.listUsers())
+    const data = await adminAPI.listUsers()
+    setUsers(data.users)
+    setMaxUsers(data.max_users)
+    setMaxUsersDraft(String(data.max_users))
   }
   useEffect(() => {
     refresh().catch(() => undefined)
@@ -27,9 +35,34 @@ export function AdminUsersPanel() {
     return () => window.clearInterval(timer)
   }, [])
 
-  const maxUsers = 20
   const userLimitReached = users.length >= maxUsers
-  const userLimitLabel = String(maxUsers)
+
+  const handleSaveMaxUsers = async () => {
+    const next = Number(maxUsersDraft)
+    if (!Number.isFinite(next) || next < 1) {
+      toast.error('用户上限至少为 1')
+      return
+    }
+    if (next > 10000) {
+      toast.error('用户上限不能超过 10000')
+      return
+    }
+    if (next === maxUsers) return
+    setSavingLimit(true)
+    try {
+      const data = await adminAPI.updateUserLimit(next)
+      setMaxUsers(data.max_users)
+      setMaxUsersDraft(String(data.max_users))
+      toast.success(`用户上限已更新为 ${data.max_users} 人`)
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+        '保存用户上限失败'
+      toast.error(msg)
+    } finally {
+      setSavingLimit(false)
+    }
+  }
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault()
@@ -132,10 +165,14 @@ export function AdminUsersPanel() {
     <div className="space-y-6">
       <AdminUsersForm
         usersCount={users.length}
-        userLimitLabel={userLimitLabel}
+        maxUsers={maxUsers}
+        maxUsersDraft={maxUsersDraft}
+        savingLimit={savingLimit}
         username={username}
         password={password}
         userLimitReached={userLimitReached}
+        onMaxUsersDraftChange={setMaxUsersDraft}
+        onSaveMaxUsers={handleSaveMaxUsers}
         onUsernameChange={setUsername}
         onPasswordChange={setPassword}
         onSubmit={handleCreate}
@@ -173,7 +210,7 @@ function userCreateErrorMessage(err: unknown): string | undefined {
   const data = (err as { response?: { data?: { error?: string; max_users?: number } } })?.response?.data
   if (!data?.error) return undefined
   if (data.error === 'user limit reached' && data.max_users != null) {
-    return `用户数量已达到授权上限：${data.max_users} 人`
+    return `用户数量已达到上限：${data.max_users} 人`
   }
   return data.error
 }

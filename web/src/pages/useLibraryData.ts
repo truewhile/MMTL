@@ -58,7 +58,7 @@ export function useLibraryData(libraryID: string, selectedSeries: SeriesCard | n
 
     const loadAll = async () => {
       if (isSeriesLibrary) {
-        const collected = await loadAllSeriesCards(libraryID, (next) => {
+        const collected = await loadAllSeriesCards(libraryID, library.is_remote_emby, (next) => {
           if (cancelled) return
           setTotal(next.total)
           if (next.firstPage) {
@@ -70,7 +70,7 @@ export function useLibraryData(libraryID: string, selectedSeries: SeriesCard | n
         return
       }
 
-      const collected = await loadAllMedia(libraryID, (next) => {
+      const collected = await loadAllMedia(libraryID, library.is_remote_emby, (next) => {
         if (cancelled) return
         setTotal(next.total)
         if (next.firstPage) {
@@ -145,11 +145,22 @@ function isSeriesLibraryType(type?: string) {
   return type === 'tv' || type === 'anime' || type === 'variety'
 }
 
+function yieldToBrowser(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof requestIdleCallback !== 'undefined') {
+      requestIdleCallback(() => resolve(), { timeout: 48 })
+    } else {
+      setTimeout(resolve, 0)
+    }
+  })
+}
+
 async function loadAllSeriesCards(
   libraryID: string,
+  isRemoteEmby: boolean | undefined,
   onPage: (state: { items: SeriesCard[]; total: number; firstPage: boolean }) => void,
 ) {
-  const pageSize = 500
+  const pageSize = isRemoteEmby ? 100 : 500
   let page = 1
   let collected: SeriesCard[] = []
   for (;;) {
@@ -160,15 +171,17 @@ async function loadAllSeriesCards(
     onPage({ items: collected, total: data.total ?? collected.length, firstPage: page === 1 })
     if (collected.length >= (data.total ?? 0) || pageItems.length < pageSize) break
     page += 1
+    await yieldToBrowser()
   }
   return { items: collected }
 }
 
 async function loadAllMedia(
   libraryID: string,
+  isRemoteEmby: boolean | undefined,
   onPage: (state: { items: Media[]; total: number; firstPage: boolean }) => void,
 ) {
-  const pageSize = 2000
+  const pageSize = isRemoteEmby ? 100 : 2000
   let page = 1
   let collected: Media[] = []
   for (;;) {
@@ -179,6 +192,7 @@ async function loadAllMedia(
     onPage({ items: collected, total: data.total ?? collected.length, firstPage: page === 1 })
     if (collected.length >= (data.total ?? 0) || pageItems.length < pageSize) break
     page += 1
+    await yieldToBrowser()
   }
   return { items: collected }
 }

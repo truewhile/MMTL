@@ -8,12 +8,18 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 func hlsPlaylistHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		m, err := svc.Media.GetMedia(c.Request.Context(), c.Param("id"))
+		id := c.Param("id")
+		// 远程 Emby 挂载媒体与 STRM 一样，默认直连播放，不进行转码。
+		if svc.EmbyRemote != nil && service.IsEmbyRemoteID(id) {
+			c.JSON(http.StatusConflict, gin.H{"error": "transcode disabled"})
+			return
+		}
+		m, err := svc.Media.GetMedia(c.Request.Context(), id)
 		if err != nil || m == nil || !mediaVisibleForRequest(c, svc, m) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 			return
@@ -43,7 +49,12 @@ func hlsPlaylistHandler(svc *service.Container) gin.HandlerFunc {
 
 func hlsSegmentHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		m, err := svc.Media.GetMedia(c.Request.Context(), c.Param("id"))
+		id := c.Param("id")
+		if svc.EmbyRemote != nil && service.IsEmbyRemoteID(id) {
+			c.JSON(http.StatusConflict, gin.H{"error": "transcode disabled"})
+			return
+		}
+		m, err := svc.Media.GetMedia(c.Request.Context(), id)
 		if err != nil || m == nil || !mediaVisibleForRequest(c, svc, m) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 			return

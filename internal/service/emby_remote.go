@@ -1,13 +1,13 @@
 // EmbyRemoteService 是「远程 Emby 联邦聚合」核心：把挂载的远程 Emby 服务器
-// 作为外部媒体源，通过 MMTL 的 Emby 兼容 API 透出。
+// 作为外部媒体源，通过 MeBox 的 Emby 兼容 API 透出。
 //
 // 设计要点：
 //   - 远程媒体的元数据完全不落库：每次请求实时向远程 Emby 拉取；
 //   - 条目 ID 用 embyremote~{accountID}~{remoteID} 伪装（见 emby_remote_ids.go），
 //     客户端拿伪装 ID 回来时按账号路由回远程；
 //   - 播放分流由账号级 proxy_play 配置决定：
-//     不代理（默认）= MediaSource 下发热门远程绝对 URL，播放字节完全不经过 MMTL；
-//     代理 = 下发 MMTL 本地 /Videos/{encoded} 端点，由 ProxyVideoStream 反向拉流。
+//     不代理（默认）= MediaSource 下发热门远程绝对 URL，播放字节完全不经过 MeBox；
+//     代理 = 下发 MeBox 本地 /Videos/{encoded} 端点，由 ProxyVideoStream 反向拉流。
 //
 // 配置复用 STRM 账号体系（StrmAccount.Provider = emby_remote），CRUD/加密/连通
 // 测试全部走既有 /admin/strm/accounts 接口，不需要新增数据表。
@@ -15,6 +15,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,9 +30,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/config"
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/repository"
+	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/repository"
 )
 
 // embyRemoteHTTPTimeout 远程 Emby 常规 API 请求超时（流式代理不在此列）。
@@ -54,12 +56,14 @@ func (t *embyRemoteTransport) RoundTrip(req *http.Request) (*http.Response, erro
 
 // EmbyRemoteConfig 是一个远程 Emby 账号的解密配置。
 type EmbyRemoteConfig struct {
-	BaseURL      string // http://host:8096（无需 /emby 后缀）
+	BaseURL      string           // 当前生效线路地址（http://host:8096，无需 /emby 后缀）
+	Lines        []EmbyRemoteLine // 全部线路，按优先级排列
+	ActiveLine   int              // 当前生效线路下标
 	Username     string
 	Password     string
 	Token        string // api_key（手动填写或自动认证获得）
 	RemoteUserID string // 远程用户 Id（自动认证后回填）
-	ProxyPlay    bool   // true=播放流量经 MMTL 反向代理；false=客户端直连远程
+	ProxyPlay    bool   // true=播放流量经 MeBox 反向代理；false=客户端直连远程
 }
 
 // EmbyRemoteService 提供对远程 Emby 服务器的读写封装。
@@ -69,6 +73,7 @@ type EmbyRemoteService struct {
 	repo   *repository.Container
 	crypto *CryptoService
 	http   *http.Client
+	cache  *RuntimeCacheService
 }
 
 // NewEmbyRemoteService 构造远程 Emby 聚合服务。
@@ -82,6 +87,32 @@ func NewEmbyRemoteService(cfg *config.Config, log *zap.Logger, repo *repository.
 			Timeout:   embyRemoteHTTPTimeout,
 			Transport: &embyRemoteTransport{base: http.DefaultTransport},
 		},
+	}
+}
+
+func (r *EmbyRemoteService) SetRuntimeCache(cache *RuntimeCacheService) *EmbyRemoteService {
+	if r != nil {
+		r.cache = cache
+	}
+	return r
+}
+
+func (r *EmbyRemoteService) remoteMediaCacheTTL() time.Duration {
+	seconds := 15
+	if r != nil && r.cfg != nil && r.cfg.Cache.MediaTTLSeconds > 0 {
+		seconds = r.cfg.Cache.MediaTTLSeconds
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+func (r *EmbyRemoteService) remoteCacheKey(parts ...string) string {
+	sum := sha1.Sum([]byte(strings.Join(parts, "|")))
+	return "media:embyremote:" + hex.EncodeToString(sum[:])
+}
+
+func (r *EmbyRemoteService) invalidateRemoteMediaCache(ctx context.Context) {
+	if r != nil && r.cache != nil {
+		r.cache.DeletePrefix(ctx, "media:embyremote:")
 	}
 }
 
@@ -143,6 +174,7 @@ func (r *EmbyRemoteService) CreateMount(ctx context.Context, m *model.EmbyMount)
 	if err := r.repo.EmbyMount.Create(ctx, m); err != nil {
 		return nil, err
 	}
+	r.invalidateRemoteMediaCache(ctx)
 	return m, nil
 }
 
@@ -172,6 +204,7 @@ func (r *EmbyRemoteService) CreateMounts(ctx context.Context, mounts []*model.Em
 	if err := r.repo.EmbyMount.CreateInBatches(ctx, fresh, 50); err != nil {
 		return 0, err
 	}
+	r.invalidateRemoteMediaCache(ctx)
 	return len(fresh), nil
 }
 
@@ -187,12 +220,29 @@ func (r *EmbyRemoteService) UpdateMount(ctx context.Context, id string, m *model
 	if err := r.repo.EmbyMount.Update(ctx, existing); err != nil {
 		return nil, err
 	}
+	r.invalidateRemoteMediaCache(ctx)
 	return existing, nil
 }
 
 // DeleteMount 删除挂载。
 func (r *EmbyRemoteService) DeleteMount(ctx context.Context, id string) error {
-	return r.repo.EmbyMount.Delete(ctx, id)
+	err := r.repo.EmbyMount.Delete(ctx, id)
+	if err == nil {
+		r.invalidateRemoteMediaCache(ctx)
+	}
+	return err
+}
+
+// ReorderMounts 批量重排挂载媒体库顺序。
+func (r *EmbyRemoteService) ReorderMounts(ctx context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if err := r.repo.EmbyMount.SetSortOrder(ctx, ids); err != nil {
+		return err
+	}
+	r.invalidateRemoteMediaCache(ctx)
+	return nil
 }
 
 // FullMountAccount 把账号的全部远程媒体库（View）挂载进来（幂等，已存在跳过）。
@@ -274,8 +324,14 @@ func (r *EmbyRemoteService) configOf(acct *model.StrmAccount) (*EmbyRemoteConfig
 			return nil, fmt.Errorf("decode emby account config: %w", err)
 		}
 	}
+	lines, activeLine, err := ParseEmbyRemoteLines(raw)
+	if err != nil {
+		return nil, err
+	}
 	cfg := &EmbyRemoteConfig{
-		BaseURL:      strings.TrimRight(strings.TrimSpace(raw["url"]), "/"),
+		BaseURL:      lines[activeLine].URL,
+		Lines:        lines,
+		ActiveLine:   activeLine,
 		Username:     strings.TrimSpace(raw["username"]),
 		Password:     r.crypto.Decrypt(raw["password"]),
 		Token:        firstNonEmptyStr(r.crypto.Decrypt(raw["api_key"]), r.crypto.Decrypt(raw["token"])),
@@ -284,9 +340,6 @@ func (r *EmbyRemoteService) configOf(acct *model.StrmAccount) (*EmbyRemoteConfig
 	}
 	if cfg.BaseURL == "" {
 		return nil, errors.New("缺少 Emby 地址")
-	}
-	if !strings.HasPrefix(cfg.BaseURL, "http://") && !strings.HasPrefix(cfg.BaseURL, "https://") {
-		return nil, errors.New("Emby 地址必须以 http:// 或 https:// 开头")
 	}
 	return cfg, nil
 }
@@ -318,6 +371,29 @@ func (r *EmbyRemoteService) ensureToken(ctx context.Context, acct *model.StrmAcc
 	if strings.TrimSpace(cfg.Username) == "" || strings.TrimSpace(cfg.Password) == "" {
 		return errors.New("缺少 Emby 凭据：请填写 api_key 或 用户名/密码")
 	}
+	var lastErr error
+	for _, lineIdx := range r.lineOrder(cfg) {
+		lineCfg := r.withLine(cfg, lineIdx)
+		err := r.ensureTokenOnLine(ctx, acct, lineCfg)
+		if err == nil {
+			cfg.Token = lineCfg.Token
+			cfg.RemoteUserID = lineCfg.RemoteUserID
+			cfg.BaseURL = lineCfg.BaseURL
+			r.adoptWorkingLine(ctx, acct, cfg, lineIdx)
+			return r.persistToken(ctx, acct, cfg)
+		}
+		lastErr = err
+		if !isEmbyLineFailoverError(err) {
+			return err
+		}
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return errors.New("Emby 线路认证失败")
+}
+
+func (r *EmbyRemoteService) ensureTokenOnLine(ctx context.Context, acct *model.StrmAccount, cfg *EmbyRemoteConfig) error {
 	body, _ := json.Marshal(map[string]string{"Username": cfg.Username, "Pw": cfg.Password})
 	endpoint := r.embyBase(cfg) + "/Users/AuthenticateByName"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(body)))
@@ -325,7 +401,7 @@ func (r *EmbyRemoteService) ensureToken(ctx context.Context, acct *model.StrmAcc
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Emby-Authorization", `MediaBrowser Client="MMTL", Device="MMTL-Federated", DeviceId="mmtl-federated", Version="1.0"`)
+	req.Header.Set("X-Emby-Authorization", `MediaBrowser Client="MeBox", Device="MeBox-Federated", DeviceId="mebox-federated", Version="1.0"`)
 	resp, err := r.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("连接远程 Emby 失败: %w", err)
@@ -351,7 +427,7 @@ func (r *EmbyRemoteService) ensureToken(ctx context.Context, acct *model.StrmAcc
 	if login.User.Id != "" {
 		cfg.RemoteUserID = login.User.Id
 	}
-	return r.persistToken(ctx, acct, cfg)
+	return nil
 }
 
 // persistToken 把认证得到的 token / user id 加密写回账号配置（下次请求免登录）。
@@ -377,11 +453,35 @@ func (r *EmbyRemoteService) persistToken(ctx context.Context, acct *model.StrmAc
 }
 
 // doGet 向远程 Emby 发起带 api_key 的 GET，把响应 JSON 解码到 out。
-// 401 时自动重认证一次再重试（凭据过期场景）。
+// 401 时自动重认证一次再重试（凭据过期场景）。连接失败时按线路优先级自动切换。
 func (r *EmbyRemoteService) doGet(ctx context.Context, acct *model.StrmAccount, cfg *EmbyRemoteConfig, path string, q url.Values, out any) error {
-	for attempt := 0; attempt < 2; attempt++ {
-		if err := r.ensureToken(ctx, acct, cfg); err != nil {
+	var lastErr error
+	for _, lineIdx := range r.lineOrder(cfg) {
+		lineCfg := r.withLine(cfg, lineIdx)
+		err := r.doGetOnLine(ctx, acct, cfg, lineCfg, path, q, out)
+		if err == nil {
+			r.adoptWorkingLine(ctx, acct, cfg, lineIdx)
+			return nil
+		}
+		lastErr = err
+		if !isEmbyLineFailoverError(err) {
 			return err
+		}
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return errors.New("远程 Emby 请求失败")
+}
+
+func (r *EmbyRemoteService) doGetOnLine(ctx context.Context, acct *model.StrmAccount, master *EmbyRemoteConfig, cfg *EmbyRemoteConfig, path string, q url.Values, out any) error {
+	for attempt := 0; attempt < 2; attempt++ {
+		if strings.TrimSpace(cfg.Token) == "" {
+			if err := r.ensureTokenOnLine(ctx, acct, cfg); err != nil {
+				return err
+			}
+			master.Token = cfg.Token
+			master.RemoteUserID = cfg.RemoteUserID
 		}
 		endpoint := r.embyBase(cfg) + path
 		if q != nil {
@@ -404,15 +504,15 @@ func (r *EmbyRemoteService) doGet(ctx context.Context, acct *model.StrmAccount, 
 			return readErr
 		}
 		if resp.StatusCode == http.StatusUnauthorized && attempt == 0 {
-			// token 失效：清空后重认证重试一次。
 			cfg.Token = ""
+			master.Token = ""
 			if acct != nil {
-raw := map[string]string{}
-			_ = json.Unmarshal([]byte(acct.Config), &raw)
-			delete(raw, "api_key")
-			enc, _ := json.Marshal(raw)
-			acct.Config = string(enc)
-			_ = r.repo.StrmAccount.Update(ctx, acct)
+				raw := map[string]string{}
+				_ = json.Unmarshal([]byte(acct.Config), &raw)
+				delete(raw, "api_key")
+				enc, _ := json.Marshal(raw)
+				acct.Config = string(enc)
+				_ = r.repo.StrmAccount.Update(ctx, acct)
 			}
 			continue
 		}
@@ -457,12 +557,23 @@ func (r *EmbyRemoteService) RemoteViews(ctx context.Context, acct *model.StrmAcc
 	if err != nil {
 		return nil, err
 	}
+	cacheKey := r.remoteCacheKey("views", acct.ID, r.remoteUserID(cfg))
+	var cached []map[string]any
+	if r.cache != nil && r.cache.GetJSON(ctx, cacheKey, &cached) {
+		return cached, nil
+	}
 	q := url.Values{"api_key": {cfg.Token}}
 	var body struct {
 		Items []map[string]any `json:"Items"`
 	}
 	if err := r.doGet(ctx, acct, cfg, "/Users/"+url.PathEscape(r.remoteUserID(cfg))+"/Views", q, &body); err != nil {
 		return nil, err
+	}
+	if body.Items == nil {
+		body.Items = []map[string]any{}
+	}
+	if r.cache != nil {
+		r.cache.SetJSON(ctx, cacheKey, body.Items, r.remoteMediaCacheTTL())
 	}
 	return body.Items, nil
 }
@@ -588,7 +699,7 @@ func (r *EmbyRemoteService) RemoteLatest(ctx context.Context, mount *model.EmbyM
 }
 
 // RemotePlaybackInfo 拉取远程 PlaybackInfo，并按挂载的 proxy_play 配置重写
-// 播放 URL：不代理=指向远程绝对地址（播放字节不过 MMTL）；代理=指向 MMTL
+// 播放 URL：不代理=指向远程绝对地址（播放字节不过 MeBox）；代理=指向 MeBox
 // 本地 /Videos/{encodedID} 端点（由 ProxyVideoStream 反代）。
 func (r *EmbyRemoteService) RemotePlaybackInfo(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, remoteID, userID string) (map[string]any, error) {
 	cfg, err := r.configOf(acct)
@@ -608,7 +719,7 @@ func (r *EmbyRemoteService) RemotePlaybackInfo(ctx context.Context, mount *model
 
 // rewritePlayURLs 按挂载代理模式重写载荷内 MediaSources 的播放地址。
 // 远程 Emby 的 PlaybackInfo 通常不返回 DirectStreamUrl（客户端靠它拼
-// /Videos/{Id}/stream），因此这里总是强制构造播放地址，完全由 MMTL 掌控
+// /Videos/{Id}/stream），因此这里总是强制构造播放地址，完全由 MeBox 掌控
 // 直连（远程绝对 URL）或代理（本地 /Videos/{encoded}）的最终去向。
 func (r *EmbyRemoteService) rewritePlayURLs(value any, mount *model.EmbyMount, cfg *EmbyRemoteConfig, remoteID string) {
 	encoded := EncodeEmbyRemoteID(mount.ID, remoteID)
@@ -724,9 +835,39 @@ func (r *EmbyRemoteService) ProxyVideoStream(ctx context.Context, w http.Respons
 	if err != nil {
 		return err
 	}
-	if err := r.ensureToken(ctx, acct, cfg); err != nil {
-		return err
+	var lastErr error
+	for _, lineIdx := range r.lineOrder(cfg) {
+		lineCfg := r.withLine(cfg, lineIdx)
+		lineCfg.Token = cfg.Token
+		lineCfg.RemoteUserID = cfg.RemoteUserID
+		if strings.TrimSpace(lineCfg.Token) == "" {
+			if err := r.ensureToken(ctx, acct, lineCfg); err != nil {
+				lastErr = err
+				if isEmbyLineFailoverError(err) {
+					continue
+				}
+				return err
+			}
+			cfg.Token = lineCfg.Token
+			cfg.RemoteUserID = lineCfg.RemoteUserID
+		}
+		err := r.proxyVideoStreamOnLine(ctx, w, req, lineCfg, remoteID)
+		if err == nil {
+			r.adoptWorkingLine(ctx, acct, cfg, lineIdx)
+			return nil
+		}
+		lastErr = err
+		if !isEmbyLineFailoverError(err) {
+			return err
+		}
 	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return errors.New("远程 Emby 视频流请求失败")
+}
+
+func (r *EmbyRemoteService) proxyVideoStreamOnLine(ctx context.Context, w http.ResponseWriter, req *http.Request, cfg *EmbyRemoteConfig, remoteID string) error {
 	endpoint := r.embyBase(cfg) + "/Videos/" + url.PathEscape(remoteID) + "/stream"
 	q := url.Values{}
 	if mediaSourceID := strings.TrimSpace(req.URL.Query().Get("MediaSourceId")); mediaSourceID != "" {
@@ -778,9 +919,39 @@ func (r *EmbyRemoteService) ProxySubtitle(ctx context.Context, w http.ResponseWr
 	if err != nil {
 		return err
 	}
-	if err := r.ensureToken(ctx, acct, cfg); err != nil {
-		return err
+	var lastErr error
+	for _, lineIdx := range r.lineOrder(cfg) {
+		lineCfg := r.withLine(cfg, lineIdx)
+		lineCfg.Token = cfg.Token
+		lineCfg.RemoteUserID = cfg.RemoteUserID
+		if strings.TrimSpace(lineCfg.Token) == "" {
+			if err := r.ensureToken(ctx, acct, lineCfg); err != nil {
+				lastErr = err
+				if isEmbyLineFailoverError(err) {
+					continue
+				}
+				return err
+			}
+			cfg.Token = lineCfg.Token
+			cfg.RemoteUserID = lineCfg.RemoteUserID
+		}
+		err := r.proxySubtitleOnLine(ctx, w, lineCfg, remoteID, index)
+		if err == nil {
+			r.adoptWorkingLine(ctx, acct, cfg, lineIdx)
+			return nil
+		}
+		lastErr = err
+		if !isEmbyLineFailoverError(err) {
+			return err
+		}
 	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return errors.New("远程 Emby 字幕流请求失败")
+}
+
+func (r *EmbyRemoteService) proxySubtitleOnLine(ctx context.Context, w http.ResponseWriter, cfg *EmbyRemoteConfig, remoteID, index string) error {
 	endpoint := r.embyBase(cfg) + "/Videos/" + url.PathEscape(remoteID) + "/Subtitles/" + url.PathEscape(index) + "/Stream"
 	endpoint += "?api_key=" + url.QueryEscape(cfg.Token)
 	upstream, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
@@ -808,7 +979,7 @@ func (r *EmbyRemoteService) ProxySubtitle(ctx context.Context, w http.ResponseWr
 
 // ─── 播放状态透传 ──────────────────────────────────────────────────────────────
 
-// ProxySetPlayed 把「已看/未看」状态透传到远程 Emby（MMTL 本地不落库）。
+// ProxySetPlayed 把「已看/未看」状态透传到远程 Emby（MeBox 本地不落库）。
 func (r *EmbyRemoteService) ProxySetPlayed(ctx context.Context, acct *model.StrmAccount, remoteID string, played bool) error {
 	cfg, err := r.configOf(acct)
 	if err != nil {
@@ -843,6 +1014,39 @@ func (r *EmbyRemoteService) ProxySetFavorite(ctx context.Context, acct *model.St
 }
 
 func (r *EmbyRemoteService) doMutate(ctx context.Context, acct *model.StrmAccount, cfg *EmbyRemoteConfig, method, path string) error {
+	var lastErr error
+	for _, lineIdx := range r.lineOrder(cfg) {
+		lineCfg := r.withLine(cfg, lineIdx)
+		lineCfg.Token = cfg.Token
+		lineCfg.RemoteUserID = cfg.RemoteUserID
+		if strings.TrimSpace(lineCfg.Token) == "" {
+			if err := r.ensureToken(ctx, acct, lineCfg); err != nil {
+				lastErr = err
+				if isEmbyLineFailoverError(err) {
+					continue
+				}
+				return err
+			}
+			cfg.Token = lineCfg.Token
+			cfg.RemoteUserID = lineCfg.RemoteUserID
+		}
+		err := r.doMutateOnLine(ctx, lineCfg, method, path)
+		if err == nil {
+			r.adoptWorkingLine(ctx, acct, cfg, lineIdx)
+			return nil
+		}
+		lastErr = err
+		if !isEmbyLineFailoverError(err) {
+			return err
+		}
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return errors.New("远程 Emby 状态同步失败")
+}
+
+func (r *EmbyRemoteService) doMutateOnLine(ctx context.Context, cfg *EmbyRemoteConfig, method, path string) error {
 	endpoint := r.embyBase(cfg) + path + "?api_key=" + url.QueryEscape(cfg.Token)
 	req, err := http.NewRequestWithContext(ctx, method, endpoint, nil)
 	if err != nil {

@@ -3,7 +3,7 @@ package database
 import (
 	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 // AutoMigrate creates tables for every model registered in the model package.
@@ -20,10 +20,21 @@ func AutoMigrate(db *gorm.DB) error {
 	if err := ensureLibraryRootsCompatibility(db); err != nil {
 		return err
 	}
+	if err := ensureEmbyMountsCompatibility(db); err != nil {
+		return err
+	}
 	if isSQLite(db) {
-		return ensureMediaSearchIndex(db)
+		if err := ensureMediaSearchIndex(db); err != nil {
+			return err
+		}
+		return ensureSQLiteQueryOptimizer(db)
 	}
 	return nil
+}
+
+func ensureSQLiteQueryOptimizer(db *gorm.DB) error {
+	// Refresh planner statistics so indexes on large media tables are used.
+	return db.Exec("ANALYZE").Error
 }
 
 func ensurePostgresColumnCompatibility(db *gorm.DB) error {
@@ -73,6 +84,28 @@ func ensurePerformanceIndexes(db *gorm.DB) error {
 	for _, stmt := range statements {
 		if err := db.Exec(stmt).Error; err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+func ensureEmbyMountsCompatibility(db *gorm.DB) error {
+	if !db.Migrator().HasTable(&model.EmbyMount{}) {
+		return nil
+	}
+	if !db.Migrator().HasColumn(&model.EmbyMount{}, "sort_order") {
+		if err := db.Migrator().AddColumn(&model.EmbyMount{}, "sort_order"); err != nil {
+			return err
+		}
+	}
+	// 针对已有数据：如果存在多个 sort_order=0/NULL 的记录，按创建时间顺序赋予稳定递增的序号
+	var zeroCount int64
+	if err := db.Model(&model.EmbyMount{}).Where("sort_order = 0 OR sort_order IS NULL").Count(&zeroCount).Error; err == nil && zeroCount > 1 {
+		var mounts []model.EmbyMount
+		if err := db.Order("created_at asc, id asc").Find(&mounts).Error; err == nil {
+			for i, m := range mounts {
+				_ = db.Exec("UPDATE emby_mounts SET sort_order = ? WHERE id = ?", i, m.ID).Error
+			}
 		}
 	}
 	return nil

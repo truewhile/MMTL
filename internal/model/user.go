@@ -23,8 +23,8 @@ type User struct {
 	LastLoginAt        *time.Time `json:"last_login_at,omitempty"`
 	// AllowedLibraryIDs 存储管理员为该用户指定的受限可访问媒体库 ID 列表（JSON 字符串）。
 	// 为空时代表不限制（全库可访问）。
-	AllowedLibraryIDs   string     `gorm:"type:text" json:"-"`
-	AllowedLibraryList []string   `gorm:"-" json:"allowed_library_ids,omitempty"`
+	AllowedLibraryIDs  string   `gorm:"type:text" json:"-"`
+	AllowedLibraryList []string `gorm:"-" json:"allowed_library_ids,omitempty"`
 	// ExpiredAt is the account expiry time. Nil means the account never
 	// expires. When set and in the past, the account is treated as expired
 	// (login blocked) until an admin or a redemption code renews it.

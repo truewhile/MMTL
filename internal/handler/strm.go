@@ -8,11 +8,12 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 // ─── 网盘账号 ──────────────────────────────────────────────────────────────────
@@ -28,8 +29,13 @@ type strmAccountView struct {
 	model.StrmAccount
 	HasCredential bool   `json:"has_credential"`
 	ProviderLabel string `json:"provider_label"`
-	// ProxyPlay 仅远程 Emby 挂载账号返回：播放流量是否经过 MMTL 代理（编辑回显用）。
+	// ConfigPreview 非敏感配置字段，供编辑表单回显。
+	ConfigPreview service.StrmAccountConfigPreview `json:"config_preview,omitempty"`
+	// ProxyPlay 仅远程 Emby 挂载账号返回：播放流量是否经过 MeBox 代理（编辑回显用）。
 	ProxyPlay *bool `json:"proxy_play,omitempty"`
+	// EmbyLines 仅远程 Emby 挂载账号返回：多线路配置（不含凭据）。
+	EmbyLines      []service.EmbyRemoteLine `json:"emby_lines,omitempty"`
+	EmbyActiveLine int                      `json:"emby_active_line,omitempty"`
 }
 
 func strmAccountViews(svc *service.Container, accounts []model.StrmAccount) []strmAccountView {
@@ -41,9 +47,16 @@ func strmAccountViews(svc *service.Container, accounts []model.StrmAccount) []st
 			HasCredential: service.HasStrmAccountCredential(&a),
 			ProviderLabel: providerLabelOf(a.Provider),
 		}
+		if svc != nil && svc.Strm != nil {
+			view.ConfigPreview = svc.Strm.StrmAccountConfigPreviewOf(&a)
+		}
 		if a.Provider == model.StrmProviderEmbyRemote && svc != nil && svc.EmbyRemote != nil {
 			if proxyPlay, err := svc.EmbyRemote.ProxyPlayOf(&a); err == nil {
 				view.ProxyPlay = &proxyPlay
+			}
+			if lines, activeLine, err := svc.EmbyRemote.LinesOf(&a); err == nil {
+				view.EmbyLines = lines
+				view.EmbyActiveLine = activeLine
 			}
 		}
 		out = append(out, view)
@@ -117,13 +130,33 @@ func deleteStrmAccountHandler(svc *service.Container) gin.HandlerFunc {
 
 func testStrmAccountHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		acct := svc.Strm.TestStrmAccount(c.Request.Context(), c.Param("id"))
-		if acct == nil {
+		id := c.Param("id")
+		acct, err := svc.Repo.StrmAccount.FindByID(c.Request.Context(), id)
+		if err != nil || acct == nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "网盘账号不存在"})
 			return
 		}
-		views := strmAccountViews(svc, []model.StrmAccount{*acct})
-		c.JSON(http.StatusOK, views[0])
+		now := time.Now()
+		acct.LastTestAt = &now
+		if acct.Provider == model.StrmProviderEmbyRemote && svc.EmbyRemote != nil {
+			if err := svc.EmbyRemote.TestConnection(c.Request.Context(), acct); err != nil {
+				acct.LastTestResult = err.Error()
+				acct.LastTestOK = false
+			} else {
+				acct.LastTestResult = "ok"
+				acct.LastTestOK = true
+			}
+		} else {
+			acct = svc.Strm.TestStrmAccount(c.Request.Context(), id)
+			if acct == nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "网盘账号不存在"})
+				return
+			}
+			c.JSON(http.StatusOK, strmAccountViews(svc, []model.StrmAccount{*acct})[0])
+			return
+		}
+		_ = svc.Repo.StrmAccount.Update(c.Request.Context(), acct)
+		c.JSON(http.StatusOK, strmAccountViews(svc, []model.StrmAccount{*acct})[0])
 	}
 }
 
@@ -504,9 +537,42 @@ func clearCanceledUploadsHandler(svc *service.Container) gin.HandlerFunc {
 	}
 }
 
+func clearDoneUploadsHandler(svc *service.Container) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		n, err := svc.Strm.ClearDoneUploadTasks(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"deleted": n})
+	}
+}
+
+func clearFinishedUploadsHandler(svc *service.Container) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		n, err := svc.Strm.ClearFinishedUploadTasks(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"deleted": n})
+	}
+}
+
 func retryAllFailedDownloadsHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		n, err := svc.Strm.RetryAllFailedDownloadTasks(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"retried": n})
+	}
+}
+
+func retryAllFailedUploadsHandler(svc *service.Container) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		n, err := svc.Strm.RetryAllFailedUploadTasks(c.Request.Context())
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

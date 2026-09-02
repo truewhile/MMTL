@@ -14,26 +14,45 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ShukeBta/MMTL/internal/middleware"
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/middleware"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/service"
 )
+
+func findMediaForPlaybackEndpoint(c *gin.Context, svc *service.Container, id string) (*model.Media, error) {
+	ctx := c.Request.Context()
+	if svc.EmbyRemote != nil && service.IsEmbyRemoteID(id) {
+		mountID, remoteID, _ := service.DecodeEmbyRemoteID(id)
+		mount, acct, _ := svc.EmbyRemote.ResolveMount(ctx, mountID)
+		if mount == nil || acct == nil {
+			return nil, nil
+		}
+		return svc.EmbyRemote.RemoteMediaDetail(ctx, mount, acct, remoteID)
+	}
+	return svc.Repo.Media.FindByID(ctx, id)
+}
 
 // playbackInfoHandler returns the media row + a `stream_url` the React
 // player can hit. Mirrors the Python project's surface.
 func playbackInfoHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		m, err := svc.Repo.Media.FindByID(c.Request.Context(), c.Param("id"))
+		id := c.Param("id")
+		m, err := findMediaForPlaybackEndpoint(c, svc, id)
 		if err != nil || m == nil || !mediaVisibleForRequest(c, svc, m) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "media not found"})
 			return
 		}
 		token := externalPlaybackToken(c, svc, m.ID, m.DurationSec)
 		profileQuery := externalProfileQuery(c)
+		hlsURL := "/api/hls/" + m.ID + "/index.m3u8?token=" + url.QueryEscape(token) + profileQuery
+		if service.IsEmbyRemoteID(m.ID) || service.IsStrmMediaRow(m) {
+			// Emby 远程挂载与 STRM 媒体一样，默认直连播放，不提供转码地址
+			hlsURL = ""
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"media":      m,
 			"stream_url": "/api/stream/" + m.ID + "?token=" + url.QueryEscape(token) + profileQuery,
-			"hls_url":    "/api/hls/" + m.ID + "/index.m3u8?token=" + url.QueryEscape(token) + profileQuery,
+			"hls_url":    hlsURL,
 		})
 	}
 }
@@ -63,12 +82,37 @@ func playbackProgressHandler(svc *service.Container) gin.HandlerFunc {
 	}
 }
 
+func playbackResumeHandler(svc *service.Container) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		uid, _ := c.Get(middleware.CtxUserID)
+		row, err := svc.Playback.GetProgress(c.Request.Context(), toString(uid), c.Param("id"))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if row == nil {
+			c.JSON(http.StatusOK, gin.H{
+				"position_ms": 0,
+				"duration_ms": 0,
+				"completed":   false,
+			})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"position_ms": row.PositionMs,
+			"duration_ms": row.DurationMs,
+			"completed":   row.Completed,
+		})
+	}
+}
+
 // externalPlayersHandler returns the list of external player URI
 // schemes the UI can offer the user. We lookup the media row to
 // produce the per-player launch URL.
 func externalPlayersHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		m, err := svc.Repo.Media.FindByID(c.Request.Context(), c.Param("id"))
+		id := c.Param("id")
+		m, err := findMediaForPlaybackEndpoint(c, svc, id)
 		if err != nil || m == nil || !mediaVisibleForRequest(c, svc, m) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "media not found"})
 			return
@@ -93,7 +137,8 @@ func externalPlayersHandler(svc *service.Container) gin.HandlerFunc {
 // token query string the external player needs.
 func externalURLHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		m, err := svc.Repo.Media.FindByID(c.Request.Context(), c.Param("id"))
+		id := c.Param("id")
+		m, err := findMediaForPlaybackEndpoint(c, svc, id)
 		if err != nil || m == nil || !mediaVisibleForRequest(c, svc, m) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "media not found"})
 			return
@@ -141,7 +186,7 @@ func externalPlaybackURL(c *gin.Context, svc *service.Container, path string) st
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
 		return path
 	}
-	headerOrigin := sanitizedPublicOrigin(c.GetHeader("X-MMTL-Public-Origin"))
+	headerOrigin := sanitizedPublicOrigin(c.GetHeader("X-MeBox-Public-Origin"))
 	if headerOrigin != "" && !isLocalPublicOrigin(headerOrigin) {
 		return joinOriginPath(headerOrigin, path)
 	}

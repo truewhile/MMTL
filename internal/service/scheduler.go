@@ -25,7 +25,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/repository"
+	"github.com/truewhile/MeBox/internal/repository"
 )
 
 // SchedulerService runs the periodic jobs.
@@ -40,6 +40,8 @@ type SchedulerService struct {
 	tasks            *TaskTrackerService
 	cacheDir         string
 	now              func() time.Time
+
+	imagesMaxSizeMBProvider func() int
 
 	mu     sync.Mutex
 	stopCh chan struct{}
@@ -57,6 +59,17 @@ func (s *SchedulerService) SetTaskTracker(tasks *TaskTrackerService) {
 
 func (s *SchedulerService) SetOrganizePipeline(pipeline *OrganizePipelineService) {
 	s.organizePipeline = pipeline
+}
+
+func (s *SchedulerService) SetImagesMaxSizeMBProvider(fn func() int) {
+	s.imagesMaxSizeMBProvider = fn
+}
+
+func (s *SchedulerService) imagesMaxSizeMB() int {
+	if s.imagesMaxSizeMBProvider != nil {
+		return s.imagesMaxSizeMBProvider()
+	}
+	return 0
 }
 
 // scheduledJob is one recurring task.
@@ -119,6 +132,11 @@ func (s *SchedulerService) Start(ctx context.Context) {
 			name:     "recycle_purge",
 			interval: 24 * time.Hour,
 			run:      s.jobPurgeRecycleBin,
+		},
+		{
+			name:     "image_cache_cleanup",
+			interval: 1 * time.Hour,
+			run:      s.jobCleanImageCache,
 		},
 	}
 	for _, j := range s.jobs {

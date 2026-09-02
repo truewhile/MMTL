@@ -7,31 +7,32 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ShukeBta/MMTL/internal/middleware"
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/middleware"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 type createLibraryReq struct {
-	Name              string                     `json:"name"`
-	Path              string                     `json:"path"`
-	Paths             []string                   `json:"paths"`
-	Roots             []service.LibraryRootInput `json:"roots"`
-	Type              string                     `json:"type"`
-	CoverURL          string                     `json:"cover_url"`
-	CreatePerSubfolder bool                      `json:"create_per_subfolder"`
+	Name               string                     `json:"name"`
+	Path               string                     `json:"path"`
+	Paths              []string                   `json:"paths"`
+	Roots              []service.LibraryRootInput `json:"roots"`
+	Type               string                     `json:"type"`
+	CoverURL           string                     `json:"cover_url"`
+	CreatePerSubfolder bool                       `json:"create_per_subfolder"`
 }
 
 // webLibraryPayload 是 /api/libraries 返回的库条目：本地库与远程 Emby 挂载库
 // 统一结构（远程库附加 is_remote_emby / remote_source 只读标记）。
 type webLibraryPayload struct {
 	model.Library
-	IsRemoteEmby bool                `json:"is_remote_emby,omitempty"`
-	RemoteSource string              `json:"remote_source,omitempty"`
-	Total        int64               `json:"total,omitempty"`
+	IsRemoteEmby bool                 `json:"is_remote_emby,omitempty"`
+	RemoteSource string               `json:"remote_source,omitempty"`
+	Total        int64                `json:"total,omitempty"`
 	Cards        []service.SeriesCard `json:"cards,omitempty"`
 }
 
@@ -96,22 +97,42 @@ func listLibrariesHandler(svc *service.Container) gin.HandlerFunc {
 		// 远程 Emby 挂载库追加在本地库之后。
 		if svc.EmbyRemote != nil {
 			if views, err := svc.EmbyRemote.RemoteLibraries(ctx); err == nil {
-				for _, v := range views {
-					wl := webLibraryPayload{Library: v.Library, IsRemoteEmby: true, RemoteSource: v.AccountName}
-					if withPreview {
-						if acct := svc.EmbyRemote.AccountByID(ctx, v.AccountID); acct != nil {
+				remotePayloads := make([]webLibraryPayload, len(views))
+				for i, v := range views {
+					remotePayloads[i] = webLibraryPayload{Library: v.Library, IsRemoteEmby: true, RemoteSource: v.AccountName}
+				}
+				if withPreview && len(views) > 0 {
+					const maxRemotePreviewWorkers = 6
+					sem := make(chan struct{}, maxRemotePreviewWorkers)
+					var wg sync.WaitGroup
+					for i, v := range views {
+						i, v := i, v
+						wg.Add(1)
+						go func() {
+							defer wg.Done()
+							select {
+							case sem <- struct{}{}:
+								defer func() { <-sem }()
+							case <-ctx.Done():
+								return
+							}
+							acct := svc.EmbyRemote.AccountByID(ctx, v.AccountID)
+							if acct == nil {
+								return
+							}
 							tmpMount := &model.EmbyMount{Base: model.Base{ID: v.MountID}}
 							itemTypes := remoteLibraryItemTypes(v.CollectionType)
 							if _, total, err := svc.EmbyRemote.RemoteLibraryMedia(ctx, tmpMount, acct, v.RemoteID, itemTypes, 0, 1); err == nil {
-								wl.Total = total
+								remotePayloads[i].Total = total
 							}
 							if cards, err := svc.EmbyRemote.RemoteLatestCards(ctx, tmpMount, acct, v.RemoteID, limit); err == nil {
-								wl.Cards = cards
+								remotePayloads[i].Cards = cards
 							}
-						}
+						}()
 					}
-					out = append(out, wl)
+					wg.Wait()
 				}
+				out = append(out, remotePayloads...)
 			}
 		}
 		c.JSON(http.StatusOK, out)
@@ -171,38 +192,38 @@ func createLibraryHandler(svc *service.Container) gin.HandlerFunc {
 			}
 		}
 		if len(roots) == 0 && strings.TrimSpace(req.Path) != "" {
-roots = append(roots, service.LibraryRootInput{Path: req.Path})
-	}
-	var l *model.Library
-	if req.CreatePerSubfolder {
-		parent := ""
-		if len(roots) > 0 {
-			parent = roots[0].Path
-		} else if strings.TrimSpace(req.Path) != "" {
-			parent = req.Path
+			roots = append(roots, service.LibraryRootInput{Path: req.Path})
 		}
-		created, err := svc.Media.CreateLibrariesPerSubfolder(c.Request.Context(), parent, req.Type, req.CoverURL)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-		uid, _ := c.Get("ctx_user_id")
-		for i := range created {
-			lib := &created[i]
-			svc.Audit.Record(c.Request.Context(), toString(uid), "library.create", lib.ID, c.ClientIP(), lib.Path)
-			if svc.Watcher != nil {
-				go func() { _ = svc.Watcher.Refresh(context.Background()) }()
+		var l *model.Library
+		if req.CreatePerSubfolder {
+			parent := ""
+			if len(roots) > 0 {
+				parent = roots[0].Path
+			} else if strings.TrimSpace(req.Path) != "" {
+				parent = req.Path
 			}
-			for _, root := range lib.Roots {
-				if root.Enabled {
-					queueLibraryRootScan(svc, lib.ID, root.ID)
+			created, err := svc.Media.CreateLibrariesPerSubfolder(c.Request.Context(), parent, req.Type, req.CoverURL)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			uid, _ := c.Get("ctx_user_id")
+			for i := range created {
+				lib := &created[i]
+				svc.Audit.Record(c.Request.Context(), toString(uid), "library.create", lib.ID, c.ClientIP(), lib.Path)
+				if svc.Watcher != nil {
+					go func() { _ = svc.Watcher.Refresh(context.Background()) }()
+				}
+				for _, root := range lib.Roots {
+					if root.Enabled {
+						queueLibraryRootScan(svc, lib.ID, root.ID)
+					}
 				}
 			}
+			c.JSON(http.StatusCreated, gin.H{"libraries": created})
+			return
 		}
-		c.JSON(http.StatusCreated, gin.H{"libraries": created})
-		return
-	}
-	l, err := svc.Media.CreateLibraryWithRootsAndCover(c.Request.Context(), req.Name, req.Type, req.CoverURL, roots)
+		l, err := svc.Media.CreateLibraryWithRootsAndCover(c.Request.Context(), req.Name, req.Type, req.CoverURL, roots)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -488,8 +509,11 @@ func streamHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		id := c.Param("id")
-		// 远程 Emby 条目：按挂载代理配置分流——代理走 MMTL 反代，否则 302 直连。
+		// 远程 Emby 条目：按挂载代理配置分流——代理走 MeBox 反代，否则 302 直连。
 		if svc.EmbyRemote != nil && service.IsEmbyRemoteID(id) {
+			if !enforceScopedPlaybackToken(c, id) {
+				return
+			}
 			mountID, remoteID, _ := service.DecodeEmbyRemoteID(id)
 			mount, acct, _ := svc.EmbyRemote.ResolveMount(ctx, mountID)
 			if mount == nil || acct == nil {
@@ -509,6 +533,7 @@ func streamHandler(svc *service.Container) gin.HandlerFunc {
 				c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 				return
 			}
+			setRedirectNoStoreHeaders(c)
 			c.Redirect(http.StatusFound, target)
 			return
 		}

@@ -10,7 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 // existingVersionPaths returns existing destination files that represent the
@@ -229,9 +229,9 @@ func (o *OrganizerService) replaceVersions(ctx context.Context, src string, exis
 			o.log.Warn("organize replace remove existing failed",
 				zap.String("path", e), zap.Error(err))
 		}
-			if o.repo != nil && o.repo.DB != nil {
-				_ = o.repo.DB.WithContext(ctx).Unscoped().Where("path = ?", e).Delete(&model.Media{}).Error
-			}
+		if o.repo != nil && o.repo.DB != nil {
+			_ = o.repo.DB.WithContext(ctx).Unscoped().Where("path = ?", e).Delete(&model.Media{}).Error
+		}
 	}
 	// Move staged file + sidecars into the final path.
 	if err := os.Rename(stage, dst); err != nil {

@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/repository"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/repository"
 )
 
 // ServeFile streams the file backing the given media ID using
@@ -86,9 +86,9 @@ func playableSTRMTarget(ctx context.Context, repo *repository.Container, raw str
 	return STRMPlaybackEnabled(ctx, repo)
 }
 
-// isStrmMediaRow 判断媒体行是否为 .strm（远程直链）媒体：STRMURL 非空、
+// IsStrmMediaRow 判断媒体行是否为 .strm（远程直链）媒体：STRMURL 非空、
 // container=strm 或路径以 .strm 结尾。strm 媒体只能直连播放，禁止转码。
-func isStrmMediaRow(m *model.Media) bool {
+func IsStrmMediaRow(m *model.Media) bool {
 	if m == nil {
 		return false
 	}
@@ -99,6 +99,10 @@ func isStrmMediaRow(m *model.Media) bool {
 		return true
 	}
 	return strings.HasSuffix(strings.ToLower(strings.TrimSpace(m.Path)), ".strm")
+}
+
+func isStrmMediaRow(m *model.Media) bool {
+	return IsStrmMediaRow(m)
 }
 
 func isHTTPPlaybackTarget(raw string) bool {

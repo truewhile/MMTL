@@ -13,8 +13,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/config"
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 // tlsPair 记录当前正在服务的证书，用于判断是否需要重新绑定监听。
@@ -27,7 +27,7 @@ type tlsPair struct {
 	version string
 }
 
-// serverManager 负责 MMTL 的 HTTP/HTTPS 监听。HTTPS 设置保存后调用 Reload，
+// serverManager 负责 MeBox 的 HTTP/HTTPS 监听。HTTPS 设置保存后调用 Reload，
 // 在同一个端口上把明文 HTTP 与 TLS 监听热切换，无需重启进程：
 //
 //   - 关闭旧监听释放端口（同一进程内 Windows 不允许重复绑定同一端口）；

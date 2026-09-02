@@ -46,13 +46,13 @@ export function LibraryPageHeader({
   const displayPath = library ? libraryDisplayPath(library.path) : ''
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h1 className="font-display text-3xl font-bold text-ink-600">
+        <h1 className="font-display text-2xl font-bold text-ink-600 sm:text-3xl">
           {library?.name ?? '媒体库'}
           <span className="text-sand-500"> ({itemCount})</span>
         </h1>
-        {library && <p className="text-sm text-ink-50" title={library.path}>{library.type} · {displayPath}</p>}
+        {library && <p className="text-xs text-ink-50 sm:text-sm" title={library.path}>{library.type} · {displayPath}</p>}
         {loadingAllText && <p className="mt-1 text-xs text-sand-500">{loadingAllText}</p>}
         {scanProgress && <p className="mt-1 text-xs text-brand-500">{scanProgress}</p>}
       </div>
@@ -69,18 +69,27 @@ export function LibraryPageHeader({
               checked={scrapeEpisodeArtwork}
               onChange={onScrapeEpisodeArtworkChange}
               title="关闭后仍会获取主海报和每集文字元数据，只跳过每集图片"
-              className="h-9"
+              className="h-9 text-xs sm:text-sm"
             />
-            <button onClick={onScan} disabled={scanning} className="btn-outline">
+            <button
+              onClick={onScan}
+              disabled={scanning}
+              className="btn-outline !px-3 !py-1.5 text-xs sm:!px-4 sm:!py-2.5 sm:text-sm"
+            >
               {scanning ? '扫描中…' : '扫描媒体库'}
             </button>
-            <button onClick={onScrape} disabled={scraping} className="btn-outline" title="对整个媒体库执行刮削元数据">
+            <button
+              onClick={onScrape}
+              disabled={scraping}
+              className="btn-outline !px-3 !py-1.5 text-xs sm:!px-4 sm:!py-2.5 sm:text-sm"
+              title="对整个媒体库执行刮削元数据"
+            >
               {scraping ? '刮削中…' : '整库刮削元数据'}
             </button>
             <button
               onClick={onRepairRescrape}
               disabled={repairing}
-              className="btn-outline"
+              className="btn-outline !px-3 !py-1.5 text-xs sm:!px-4 sm:!py-2.5 sm:text-sm"
               title="回填本库占位符外部 ID 并重刮，修正空 ID / 拆集问题"
             >
               {repairing ? '修复中…' : '修复+重刮整库'}

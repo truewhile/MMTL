@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 // pollutedEpisodeCleanupSettingKey marks that the one-time normalization has run.
