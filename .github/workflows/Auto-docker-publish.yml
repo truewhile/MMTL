@@ -4,9 +4,7 @@ name: AuTo Docker Image
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
-  
+
   # 保留手动触发作为备选
   workflow_dispatch:
     inputs:
