@@ -33,6 +33,11 @@ function publicOriginHeader() {
 }
 
 export const playbackAPI = {
+  getResume: (mediaId: string) =>
+    api
+      .get<{ position_ms: number; duration_ms: number; completed: boolean }>(`/playback/${mediaId}/resume`)
+      .then((r) => r.data),
+
   recordProgress: (mediaId: string, positionMs: number, durationMs: number) =>
     api
       .post('/history', {

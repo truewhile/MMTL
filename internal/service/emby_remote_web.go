@@ -301,7 +301,9 @@ func (r *EmbyRemoteService) MapRemoteItemToMedia(ctx context.Context, mount *mod
 		media.EpisodeNum = 0
 	}
 	if mount != nil && strings.TrimSpace(mount.RemoteViewID) != "" {
-		media.DisplayLibraryID = EncodeEmbyRemoteID(mount.ID, mount.RemoteViewID)
+		libID := EncodeEmbyRemoteID(mount.ID, mount.RemoteViewID)
+		media.DisplayLibraryID = libID
+		media.LibraryID = libID
 	}
 	return media
 }

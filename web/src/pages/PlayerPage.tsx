@@ -262,11 +262,10 @@ export function PlayerPage() {
     setResumePosition(0)
     setInitialSeekDone(false)
     playbackAPI
-      .recentHistory()
-      .then((items) => {
-        const found = items.find((h) => h.media_id === id)
-        if (found && found.position_ms > 2000 && !found.completed) {
-          setResumePosition(found.position_ms / 1000)
+      .getResume(id)
+      .then((progress) => {
+        if (progress.position_ms > 2000 && !progress.completed) {
+          setResumePosition(progress.position_ms / 1000)
         }
       })
       .catch(() => undefined)

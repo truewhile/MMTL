@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 
 	"github.com/ShukeBta/MMTL/internal/model"
 	"github.com/ShukeBta/MMTL/internal/repository"
@@ -47,16 +48,59 @@ func (p *PlaybackService) RecordProgress(ctx context.Context, userID, mediaID st
 	if userID == "" || mediaID == "" {
 		return errors.New("missing user or media")
 	}
-	completed := duration > 0 && position >= duration-30_000
+	dur := p.resolvePlaybackDuration(ctx, userID, mediaID, duration)
+	completed := dur > 0 && position >= dur-30_000
 	h := &model.PlaybackHistory{
 		UserID:     userID,
 		MediaID:    mediaID,
 		PositionMs: position,
-		DurationMs: duration,
+		DurationMs: dur,
 		WatchedAt:  time.Now(),
 		Completed:  completed,
 	}
 	return p.repo.History.Upsert(ctx, h)
+}
+
+// GetProgress returns the saved resume row for one media item, or nil when absent.
+func (p *PlaybackService) GetProgress(ctx context.Context, userID, mediaID string) (*model.PlaybackHistory, error) {
+	if userID == "" || mediaID == "" {
+		return nil, errors.New("missing user or media")
+	}
+	var row model.PlaybackHistory
+	err := p.repo.DB.WithContext(ctx).
+		Where("user_id = ? AND media_id = ?", userID, mediaID).
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (p *PlaybackService) resolvePlaybackDuration(ctx context.Context, userID, mediaID string, duration int64) int64 {
+	if duration > 0 {
+		return duration
+	}
+	var existing model.PlaybackHistory
+	if err := p.repo.DB.WithContext(ctx).
+		Where("user_id = ? AND media_id = ?", userID, mediaID).
+		First(&existing).Error; err == nil && existing.DurationMs > 0 {
+		return existing.DurationMs
+	}
+	if m, _ := p.repo.Media.FindByID(ctx, mediaID); m != nil && m.DurationSec > 0 {
+		return int64(m.DurationSec) * 1000
+	}
+	if p.remote != nil && IsEmbyRemoteID(mediaID) {
+		mountID, remoteID, _ := DecodeEmbyRemoteID(mediaID)
+		if mount, acct, _ := p.remote.ResolveMount(ctx, mountID); mount != nil && acct != nil {
+			if rm, err := p.remote.RemoteMediaDetail(ctx, mount, acct, remoteID); err == nil && rm != nil && rm.DurationSec > 0 {
+				return int64(rm.DurationSec) * 1000
+			}
+		}
+	}
+	return duration
 }
 
 // HistoryItem joins the playback row with its media so the API consumer
