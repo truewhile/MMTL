@@ -31,23 +31,7 @@ services:
       - ./cache:/cache
 
       # 媒体库。网页里添加媒体库时填写 /media 或 /media/子目录。
-      # NAS 示例：source: /vol1/1000/Media
-      # Windows Docker Desktop 示例：source: D:/Media
-      # create_host_path=false 可以避免路径写错时 Docker 自动创建空文件夹。
-      - type: bind
-        source: ./media
-        target: /media
-        bind:
-          create_host_path: false
-
-      # 下载目录。qBittorrent / Transmission 的保存目录建议也对齐到 /downloads。
-      # NAS 示例：source: /vol1/1000/Downloads
-      # Windows Docker Desktop 示例：source: D:/Downloads
-      - type: bind
-        source: ./downloads
-        target: /downloads
-        bind:
-          create_host_path: false
+      - ./media:/media
 
       # 可选：Intel 核显硬解/转码。需要时取消注释，并在后台开启硬件加速。
       # - /dev/dri:/dev/dri
@@ -59,8 +43,8 @@ services:
       TZ: Asia/Shanghai
 
       # Linux/NAS 文件权限。写入文件权限异常时，改成宿主机实际 uid/gid。
-      PUID: "1000"
-      PGID: "1000"
+      PUID: "0"
+      PGID: "0"
 
       MEBOX_APP_HOST: 0.0.0.0
       MEBOX_APP_PORT: 8080
@@ -75,8 +59,6 @@ services:
       # 路径映射保持容器内统一，网页和下载器里优先使用 /media、/downloads。
       MEBOX_MEDIA_DIR: /media
       MEBOX_MEDIA_CONTAINER_DIR: /media
-      MEBOX_DOWNLOAD_DIR: /downloads
-      MEBOX_DOWNLOAD_CONTAINER_DIR: /downloads
 
       # 完整应用日志默认写入 ./data/logs/app.log；排查复杂问题时可临时改成 debug。
       MEBOX_LOGGING_LEVEL: info
