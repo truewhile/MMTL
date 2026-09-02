@@ -34,25 +34,27 @@ export function LayoutSidebarContent({
   const adminItems = visibleSidebarItems({ isAdmin, can, items: LAYOUT_NAV_ITEMS })
 
   return (
-    <div className="flex h-full flex-col border-r border-[var(--app-border)] bg-[var(--app-panel)]">
+    <div className="flex h-full min-h-0 flex-col border-r border-[var(--app-border)] bg-[var(--app-panel)]">
       <LayoutSidebarHeader
         sidebarExpanded={sidebarExpanded}
         onToggleSidebar={onToggleSidebar}
         onCloseMobileDrawer={onCloseMobileDrawer}
       />
-      {variant === 'media' ? (
-        <>
-          <LayoutSidebarNav items={mediaItems} sidebarExpanded={sidebarExpanded} grow />
-          {adminItems.length > 0 && (
-            <div className="border-t border-[var(--app-border)]">
-              <LayoutSidebarSectionLabel sidebarExpanded={sidebarExpanded} label="管理" />
-              <LayoutSidebarNav items={adminItems} sidebarExpanded={sidebarExpanded} />
-            </div>
-          )}
-        </>
-      ) : (
-        <LayoutSidebarNav items={adminItems} sidebarExpanded={sidebarExpanded} grow />
-      )}
+      <div className="min-h-0 flex-1 overflow-y-auto scrollbar-hide">
+        {variant === 'media' ? (
+          <>
+            <LayoutSidebarNav items={mediaItems} sidebarExpanded={sidebarExpanded} />
+            {adminItems.length > 0 && (
+              <div className="border-t border-[var(--app-border)]">
+                <LayoutSidebarSectionLabel sidebarExpanded={sidebarExpanded} label="管理" />
+                <LayoutSidebarNav items={adminItems} sidebarExpanded={sidebarExpanded} compactTop />
+              </div>
+            )}
+          </>
+        ) : (
+          <LayoutSidebarNav items={adminItems} sidebarExpanded={sidebarExpanded} />
+        )}
+      </div>
       <LayoutSidebarHomeBack sidebarExpanded={sidebarExpanded} />
     </div>
   )
@@ -78,7 +80,7 @@ function LayoutSidebarHeader({
   onCloseMobileDrawer: () => void
 }) {
   return (
-    <div className="flex h-20 items-center justify-between border-b border-[var(--app-border)] px-6">
+    <div className="flex h-20 shrink-0 items-center justify-between border-b border-[var(--app-border)] px-6">
       <Link to="/" className="flex items-center gap-3">
         <img
           src="/brand/logo-192.png"
@@ -123,17 +125,17 @@ function LayoutSidebarSectionLabel({
 function LayoutSidebarNav({
   items,
   sidebarExpanded,
-  grow = false,
+  compactTop = false,
 }: {
   items: LayoutNavItem[]
   sidebarExpanded: boolean
-  grow?: boolean
+  compactTop?: boolean
 }) {
   return (
     <nav
       className={clsx(
-        'overflow-y-auto px-4 py-5 space-y-1 scrollbar-hide',
-        grow && 'flex-1',
+        'px-4 py-5 space-y-1',
+        compactTop && 'pt-2',
       )}
     >
       {items.map((item) => {
@@ -155,7 +157,7 @@ function LayoutSidebarNav({
 
 function LayoutSidebarHomeBack({ sidebarExpanded }: { sidebarExpanded: boolean }) {
   return (
-    <div className="border-t border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4">
+    <div className="shrink-0 border-t border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4">
       <Link
         to="/"
         className={clsx(
