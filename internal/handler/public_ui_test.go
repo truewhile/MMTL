@@ -11,9 +11,9 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/repository"
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/repository"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 func TestPublicUIConfigExposesCommunityLinkVisibility(t *testing.T) {

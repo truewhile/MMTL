@@ -18,9 +18,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/service/cloud"
-	"github.com/ShukeBta/MMTL/internal/service/cloud115"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/service/cloud"
+	"github.com/truewhile/MeBox/internal/service/cloud115"
 )
 
 // strmSyncState 是一次同步执行的上下文。

@@ -21,7 +21,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/config"
+	"github.com/truewhile/MeBox/internal/config"
 )
 
 // FanartProvider talks to https://webservice.fanart.tv.
@@ -133,7 +133,7 @@ func (f *FanartProvider) getJSON(ctx context.Context, u string, out any) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "MMTL/0.1")
+	req.Header.Set("User-Agent", "MeBox/0.1")
 	resp, err := f.client.Do(req)
 	if err != nil {
 		return err

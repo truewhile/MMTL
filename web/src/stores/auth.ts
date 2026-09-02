@@ -56,7 +56,7 @@ export const useAuthStore = create<AuthState>()(
       },
     }),
     { 
-      name: 'mmtl-auth',
+      name: 'mebox-auth',
       partialize: (state) => ({ 
         token: state.token, 
         refreshToken: state.refreshToken, 

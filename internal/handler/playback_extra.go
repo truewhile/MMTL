@@ -14,9 +14,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ShukeBta/MMTL/internal/middleware"
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/middleware"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 func findMediaForPlaybackEndpoint(c *gin.Context, svc *service.Container, id string) (*model.Media, error) {
@@ -186,7 +186,7 @@ func externalPlaybackURL(c *gin.Context, svc *service.Container, path string) st
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
 		return path
 	}
-	headerOrigin := sanitizedPublicOrigin(c.GetHeader("X-MMTL-Public-Origin"))
+	headerOrigin := sanitizedPublicOrigin(c.GetHeader("X-MeBox-Public-Origin"))
 	if headerOrigin != "" && !isLocalPublicOrigin(headerOrigin) {
 		return joinOriginPath(headerOrigin, path)
 	}

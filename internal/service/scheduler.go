@@ -25,7 +25,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/repository"
+	"github.com/truewhile/MeBox/internal/repository"
 )
 
 // SchedulerService runs the periodic jobs.

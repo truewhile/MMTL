@@ -17,7 +17,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 // RemoteLibraryView 是一个网页端可见的远程媒体库（对应一个挂载的远程 View）。

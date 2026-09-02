@@ -29,7 +29,7 @@ export interface ExternalPlayer {
 
 function publicOriginHeader() {
   if (typeof window === 'undefined' || !window.location?.origin) return undefined
-  return { 'X-MMTL-Public-Origin': window.location.origin }
+  return { 'X-MeBox-Public-Origin': window.location.origin }
 }
 
 export const playbackAPI = {

@@ -10,8 +10,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/repository"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/repository"
 )
 
 // DeviceService implements device/session tracking and the two decoupled

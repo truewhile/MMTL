@@ -8,9 +8,9 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MMTL/internal/config"
-	"github.com/ShukeBta/MMTL/internal/database"
-	"github.com/ShukeBta/MMTL/internal/repository"
+	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/database"
+	"github.com/truewhile/MeBox/internal/repository"
 )
 
 // DatabaseAdminService manages database configuration, connectivity testing, and migration.

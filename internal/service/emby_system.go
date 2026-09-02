@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 // SystemInfo returns the full Emby identity payload.
@@ -13,7 +13,7 @@ func (e *EmbyService) SystemInfo() map[string]any {
 	return map[string]any{
 		"Id":                     embyServerID,
 		"ServerId":               embyServerID,
-		"ServerName":             "MMTL",
+		"ServerName":             "MeBox",
 		"Version":                embyCompatVersion,
 		"ServerVersion":          embyCompatVersion,
 		"ProductName":            "Emby Server",
@@ -42,7 +42,7 @@ func (e *EmbyService) SystemInfoPublic() map[string]any {
 	return map[string]any{
 		"Id":                     embyServerID,
 		"ServerId":               embyServerID,
-		"ServerName":             "MMTL",
+		"ServerName":             "MeBox",
 		"Version":                embyCompatVersion,
 		"ServerVersion":          embyCompatVersion,
 		"ProductName":            "Emby Server",
@@ -85,7 +85,7 @@ func (e *EmbyService) userPayload(u *model.User) map[string]any {
 		"Id":                        u.ID,
 		"Name":                      u.Username,
 		"ServerId":                  embyServerID,
-		"ServerName":                "MMTL",
+		"ServerName":                "MeBox",
 		"HasPassword":               true,
 		"HasConfiguredPassword":     true,
 		"HasConfiguredEasyPassword": false,

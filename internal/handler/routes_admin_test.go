@@ -6,8 +6,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/config"
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 func TestAdminRouteSurfacesAreRegistered(t *testing.T) {

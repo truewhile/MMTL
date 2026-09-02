@@ -20,8 +20,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/repository"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/repository"
 )
 
 // Danmaku setting keys, managed through the admin settings UI (PUT
@@ -439,7 +439,7 @@ func (s *DanmakuService) fetchBody(ctx context.Context, sourceURL string, follow
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "MMTL/danmaku (+https://github.com/ShukeBta/MMTL)")
+	req.Header.Set("User-Agent", "MeBox/danmaku (+https://github.com/truewhile/MeBox)")
 	req.Header.Set("Accept", "application/json, application/xml, */*")
 	if appID, appKey, ok := s.danmakuCredentials(ctx, sourceURL); ok {
 		// 签名认证：base64(sha256(AppId+Timestamp+Path+Secret))，密钥不出服务器。
@@ -522,7 +522,7 @@ func (s *DanmakuService) hashCachePut(stamp, hash string) {
 }
 
 // danmakuMatchFileName derives the /api/v2/match fileName: base name without
-// the final extension. .strm items are covered too — MMTL strm files drop the
+// the final extension. .strm items are covered too — MeBox strm files drop the
 // video extension ("xxx.strm") while pre-existing ones may keep it
 // ("xxx.mkv.strm") — so a second strip removes a real video extension only
 // (filepath.Ext would misread names like "xxx.第01话" as having an extension).
@@ -636,7 +636,7 @@ func (s *DanmakuService) hashLocalFile(path string) (string, bool) {
 }
 
 // hashStrmTarget computes the video hash behind a .strm indirection:
-// MMTL-internal /api/strm/play URLs are resolved through strmResolve (local
+// MeBox-internal /api/strm/play URLs are resolved through strmResolve (local
 // path read directly, cloud links range-fetched); plain http(s) links are
 // fetched directly. Only the 16MB prefix is ever downloaded.
 func (s *DanmakuService) hashStrmTarget(ctx context.Context, raw string) (string, bool) {
@@ -707,7 +707,7 @@ func (s *DanmakuService) openRangeBody(ctx context.Context, target string, heade
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "MMTL/danmaku (+https://github.com/ShukeBta/MMTL)")
+	req.Header.Set("User-Agent", "MeBox/danmaku (+https://github.com/truewhile/MeBox)")
 	req.Header.Set("Range", fmt.Sprintf("bytes=0-%d", danmakuHashPrefixBytes-1))
 	for k, v := range headers {
 		req.Header.Set(k, v)

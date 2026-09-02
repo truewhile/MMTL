@@ -14,7 +14,7 @@ func TestSaveDatabaseConfig(t *testing.T) {
 		t.Fatalf("chdir: %v", err)
 	}
 
-	dsn := "postgres://admin:pass@127.0.0.1:5432/mmtl?sslmode=disable"
+	dsn := "postgres://admin:pass@127.0.0.1:5432/mebox?sslmode=disable"
 	if err := SaveDatabaseConfig("postgres", dsn); err != nil {
 		t.Fatalf("SaveDatabaseConfig error: %v", err)
 	}

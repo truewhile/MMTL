@@ -3,7 +3,7 @@ package service
 import (
 	"testing"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 // rewriteSubtitleDeliveryURLs 只应改动字幕轨道的 DeliveryUrl，其余媒体流不动。

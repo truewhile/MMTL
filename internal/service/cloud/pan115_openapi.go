@@ -22,7 +22,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ShukeBta/MMTL/internal/service/cloud115"
+	"github.com/truewhile/MeBox/internal/service/cloud115"
 )
 
 // OpenAPI115Provider 暴露 115 开放平台驱动接口。
@@ -112,7 +112,7 @@ func (p *openAPI115Provider) OpenClient() *cloud115.OpenClient { return p.c }
 // io.Reader 无法携带文件名，因此走独立的 named 上传接口。将内容落为临时文件后
 // 重命名为目标文件名，再交给 115 上传（/open/upload/init 的 file_name 取真实文件名）。
 func (p *openAPI115Provider) PutFileNamed(ctx context.Context, parentCID, fileName string, r io.Reader) error {
-	tmp, err := os.CreateTemp("", "mmtl-upload-*")
+	tmp, err := os.CreateTemp("", "mebox-upload-*")
 	if err != nil {
 		return fmt.Errorf("115: 创建临时文件失败：%w", err)
 	}

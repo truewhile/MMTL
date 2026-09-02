@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 // ─── Users / Auth ────────────────────────────────────────────────────────────
@@ -67,7 +67,7 @@ func embyAuthByNameHandler(svc *service.Container) gin.HandlerFunc {
 		embyRememberCompatSession(c, accessToken)
 		c.JSON(http.StatusOK, gin.H{
 			"AccessToken": accessToken,
-			"ServerId":    "mmtl-001",
+			"ServerId":    "mebox-001",
 			"User":        userPayload,
 			"SessionInfo": gin.H{
 				"Id":         resp.User.ID,
@@ -150,12 +150,12 @@ func embyGetUserByIDHandler(svc *service.Container) gin.HandlerFunc {
 
 func embyFallbackUser(id string) gin.H {
 	if strings.TrimSpace(id) == "" {
-		id = "mmtl-user"
+		id = "mebox-user"
 	}
 	return gin.H{
 		"Id":                        id,
-		"Name":                      "MMTL",
-		"ServerId":                  "mmtl-001",
+		"Name":                      "MeBox",
+		"ServerId":                  "mebox-001",
 		"HasPassword":               true,
 		"HasConfiguredPassword":     true,
 		"HasConfiguredEasyPassword": false,

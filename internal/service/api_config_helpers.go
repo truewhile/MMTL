@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 // GetEffectiveConfig 获取生效的 API 配置（数据库配置优先于配置文件）。

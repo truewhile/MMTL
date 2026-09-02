@@ -6,8 +6,8 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MMTL/internal/database"
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/database"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 func TestEmbyMountSortOrderAndReorder(t *testing.T) {

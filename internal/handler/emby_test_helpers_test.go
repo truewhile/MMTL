@@ -6,7 +6,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/ShukeBta/MMTL/internal/middleware"
+	"github.com/truewhile/MeBox/internal/middleware"
 )
 
 func signedTestToken(t *testing.T, secret string) string {
@@ -23,7 +23,7 @@ func signedTestTokenWithPurpose(t *testing.T, secret, purpose string) string {
 		Purpose: purpose,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
-			Issuer:    "mmtl-test",
+			Issuer:    "mebox-test",
 			Subject:   "user-1",
 		},
 	}

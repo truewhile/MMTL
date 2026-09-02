@@ -69,8 +69,8 @@ func embeddedContainerMarkerCandidates(input string) []string {
 		part      string
 		container string
 	}{
-		{part: "/media", container: envOrDefault("MMTL_MEDIA_CONTAINER_DIR", "/media")},
-		{part: "/downloads", container: envOrDefault("MMTL_DOWNLOAD_CONTAINER_DIR", "/downloads")},
+		{part: "/media", container: envOrDefault("MEBOX_MEDIA_CONTAINER_DIR", "/media")},
+		{part: "/downloads", container: envOrDefault("MEBOX_DOWNLOAD_CONTAINER_DIR", "/downloads")},
 	} {
 		part := strings.TrimRight(marker.part, "/")
 		container := strings.TrimRight(filepath.ToSlash(marker.container), "/")
@@ -83,17 +83,17 @@ func embeddedContainerMarkerCandidates(input string) []string {
 
 // describeUnresolvedLibraryPath 把「路径解析失败」变成可操作的诊断信息：列出尝试过的
 // 候选路径与当前的宿主机→容器映射状态。旧库存的是宿主机路径，在新版/容器内常因为缺少
-// MMTL_MEDIA_DIR 映射而扫不出媒体——这条诊断帮助用户直接定位到底哪一步断了。
+// MEBOX_MEDIA_DIR 映射而扫不出媒体——这条诊断帮助用户直接定位到底哪一步断了。
 // 仅用于日志与扫描错误提示，不改变解析逻辑本身。
 func describeUnresolvedLibraryPath(rawPath string) string {
 	rawPath = strings.TrimSpace(rawPath)
 	candidates := mappedPathCandidates(rawPath)
-	mediaHost := strings.TrimSpace(os.Getenv("MMTL_MEDIA_DIR"))
-	mediaContainer := envOrDefault("MMTL_MEDIA_CONTAINER_DIR", "/media")
+	mediaHost := strings.TrimSpace(os.Getenv("MEBOX_MEDIA_DIR"))
+	mediaContainer := envOrDefault("MEBOX_MEDIA_CONTAINER_DIR", "/media")
 	var b strings.Builder
 	fmt.Fprintf(&b, "媒体库路径无法解析为可访问目录：%s（已尝试候选：%s）", rawPath, strings.Join(candidates, " | "))
 	if mediaHost == "" {
-		b.WriteString("；未配置 MMTL_MEDIA_DIR / MMTL_MEDIA_CONTAINER_DIR。若为 Docker 部署且此库为旧宿主机路径，请设置这两个变量把宿主机路径映射到容器内路径，并确认对应 volume 已挂载。")
+		b.WriteString("；未配置 MEBOX_MEDIA_DIR / MEBOX_MEDIA_CONTAINER_DIR。若为 Docker 部署且此库为旧宿主机路径，请设置这两个变量把宿主机路径映射到容器内路径，并确认对应 volume 已挂载。")
 	} else {
 		fmt.Fprintf(&b, "；当前映射 %s → %s。请确认该库路径位于此宿主机目录下，或补充对应的 volume 与路径映射。", mediaHost, mediaContainer)
 	}
@@ -204,8 +204,8 @@ func dockerVolumePathCandidates(path string) []string {
 		env       string
 		container string
 	}{
-		{env: "MMTL_MEDIA_DIR", container: envOrDefault("MMTL_MEDIA_CONTAINER_DIR", "/media")},
-		{env: "MMTL_DOWNLOAD_DIR", container: envOrDefault("MMTL_DOWNLOAD_CONTAINER_DIR", "/downloads")},
+		{env: "MEBOX_MEDIA_DIR", container: envOrDefault("MEBOX_MEDIA_CONTAINER_DIR", "/media")},
+		{env: "MEBOX_DOWNLOAD_DIR", container: envOrDefault("MEBOX_DOWNLOAD_CONTAINER_DIR", "/downloads")},
 	} {
 		container := cleanPathForVolumeMapping(mapping.container)
 		if container == "." || container == "" || strings.HasPrefix(container, ".") {
@@ -247,8 +247,8 @@ func dockerVolumePathCandidates(path string) []string {
 		part      string
 		container string
 	}{
-		{part: "/media", container: envOrDefault("MMTL_MEDIA_CONTAINER_DIR", "/media")},
-		{part: "/downloads", container: envOrDefault("MMTL_DOWNLOAD_CONTAINER_DIR", "/downloads")},
+		{part: "/media", container: envOrDefault("MEBOX_MEDIA_CONTAINER_DIR", "/media")},
+		{part: "/downloads", container: envOrDefault("MEBOX_DOWNLOAD_CONTAINER_DIR", "/downloads")},
 	} {
 		part := strings.TrimRight(marker.part, "/")
 		container := strings.TrimRight(filepath.ToSlash(marker.container), "/")

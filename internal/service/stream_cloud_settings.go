@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/ShukeBta/MMTL/internal/repository"
+	"github.com/truewhile/MeBox/internal/repository"
 )
 
 func CloudPlaybackSettings(ctx context.Context, repo *repository.Container) CloudPlaybackOptions {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 func (e *EmbyService) mediaItems(ctx context.Context, p ItemsParams) (map[string]any, error) {

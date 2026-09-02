@@ -11,10 +11,10 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/ShukeBta/MMTL/internal/config"
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/repository"
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/repository"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 // TestStrmAdminRoutes 冒烟测试 STRM 管理端点注册与 401 拦截。

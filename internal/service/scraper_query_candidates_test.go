@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 func TestScrapeQueryCandidatesPreferSeriesFolderAndCJKTitle(t *testing.T) {

@@ -3,7 +3,7 @@ package database
 import (
 	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 // AutoMigrate creates tables for every model registered in the model package.

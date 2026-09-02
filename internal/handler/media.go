@@ -11,9 +11,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ShukeBta/MMTL/internal/middleware"
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/middleware"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 type createLibraryReq struct {
@@ -509,7 +509,7 @@ func streamHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		id := c.Param("id")
-		// 远程 Emby 条目：按挂载代理配置分流——代理走 MMTL 反代，否则 302 直连。
+		// 远程 Emby 条目：按挂载代理配置分流——代理走 MeBox 反代，否则 302 直连。
 		if svc.EmbyRemote != nil && service.IsEmbyRemoteID(id) {
 			if !enforceScopedPlaybackToken(c, id) {
 				return

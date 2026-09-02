@@ -16,8 +16,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/service/cloud"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/service/cloud"
 )
 
 // overrideDanmakuOfficialBase points the "official" endpoint (match + fallback)
@@ -34,7 +34,7 @@ func overrideDanmakuOfficialBase(t *testing.T, base string) {
 // since the file is smaller than the 16MB prefix).
 func writeDanmakuTestVideo(t *testing.T, name string) (path, wantHash string) {
 	t.Helper()
-	content := bytes.Repeat([]byte("MMTL-danmaku-hash-test-0123456789"), 500)
+	content := bytes.Repeat([]byte("MeBox-danmaku-hash-test-0123456789"), 500)
 	path = filepath.Join(t.TempDir(), name)
 	require.NoError(t, os.WriteFile(path, content, 0o644))
 	sum := md5.Sum(content)

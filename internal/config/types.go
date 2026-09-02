@@ -152,7 +152,7 @@ type AIConfig struct {
 	MaxConcurrent int    `mapstructure:"max_concurrent"`
 }
 
-// LicenseConfig configures the optional MMTL license server bridge.
+// LicenseConfig configures the optional MeBox license server bridge.
 type LicenseConfig struct {
 	ServerURL  string `mapstructure:"server_url"`
 	HMACSecret string `mapstructure:"hmac_secret"`

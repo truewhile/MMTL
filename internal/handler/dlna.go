@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 func dlnaListHandler(svc *service.Container) gin.HandlerFunc {

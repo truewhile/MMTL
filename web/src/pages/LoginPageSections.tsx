@@ -73,7 +73,7 @@ function LoginBrandHeader() {
         animate={{ scale: 1, opacity: 1 }}
         transition={{ delay: 0.15, type: 'spring', stiffness: 200 }}
         src="/brand/logo-192.png"
-        alt="MMTL"
+        alt="MeBox"
         className="mb-4 h-14 w-14 rounded-2xl object-contain shadow-sm"
       />
 
@@ -83,7 +83,7 @@ function LoginBrandHeader() {
         transition={{ delay: 0.25 }}
         className="font-display text-2xl font-extrabold tracking-tight text-gray-900"
       >
-        MMTL
+        MeBox
       </motion.h1>
 
       <motion.p

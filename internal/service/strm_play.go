@@ -14,8 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ShukeBta/MMTL/internal/model"
-	"github.com/ShukeBta/MMTL/internal/service/cloud"
+	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/service/cloud"
 )
 
 // ErrStrmPlayNotFound 表示 strm 播放目标不存在（handler 返回 404）。

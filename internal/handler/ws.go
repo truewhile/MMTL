@@ -15,7 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
-	"github.com/ShukeBta/MMTL/internal/service"
+	"github.com/truewhile/MeBox/internal/service"
 )
 
 var wsUpgrader = websocket.Upgrader{

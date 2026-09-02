@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/repository"
+	"github.com/truewhile/MeBox/internal/repository"
 )
 
 func (c *Container) warmMediaSearchIndex(ctx context.Context) {

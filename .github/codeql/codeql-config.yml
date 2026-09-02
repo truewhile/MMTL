@@ -1,4 +1,4 @@
-name: MMTL CodeQL
+name: MeBox CodeQL
 
 paths-ignore:
   - internal/service/fileid_other.go

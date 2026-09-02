@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ShukeBta/MMTL/internal/config"
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 type OpenSearchMediaBackend struct {
@@ -29,7 +29,7 @@ func NewOpenSearchMediaBackend(cfg config.SearchConfig) *OpenSearchMediaBackend 
 	}
 	index := strings.TrimSpace(cfg.Index)
 	if index == "" {
-		index = "mmtl_media"
+		index = "mebox_media"
 	}
 	return &OpenSearchMediaBackend{
 		baseURL:  strings.TrimRight(strings.TrimSpace(cfg.OpenSearchURL), "/"),

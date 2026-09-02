@@ -83,8 +83,8 @@ jobs:
           
           NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "tag=MMTL-v${NEW_VERSION}" >> $GITHUB_OUTPUT
-          echo "tag=mmtl-v${NEW_VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=MeBox-v${NEW_VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=mebox-v${NEW_VERSION}" >> $GITHUB_OUTPUT
 
       # 3. 更新 VERSION 文件
       - name: Update version file
@@ -129,7 +129,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/mmtl
+          images: ghcr.io/${{ github.repository_owner }}/mebox
           tags: |
             type=raw,value=latest
             type=raw,value=${{ steps.bump_version.outputs.tag }}
@@ -192,7 +192,7 @@ jobs:
           set -eux
           # tag 已由 version-and-publish 推送；若 release 已存在则忽略（--verify-tag 幂等）
           gh release create "$RELEASE_TAG" \
-            --title "MMTL ${{ needs.version-and-publish.outputs.new_version }}" \
+            --title "MeBox ${{ needs.version-and-publish.outputs.new_version }}" \
             --notes "自动化发布 ${{ needs.version-and-publish.outputs.new_version }}" \
             --verify-tag --latest || true
 
@@ -238,16 +238,16 @@ jobs:
         run: |
           CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
             go build -trimpath -ldflags="-s -w -X main.version=${{ needs.version-and-publish.outputs.tag }}" \
-            -o "dist/mmtl-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}" ./cmd/server
+            -o "dist/mebox-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}" ./cmd/server
       - name: Package
         run: |
-          mkdir -p package/mmtl
-          cp "dist/mmtl-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}" package/mmtl/mmtl${{ matrix.ext }}
-          cp README.md package/mmtl/ 2>/dev/null || true
+          mkdir -p package/mebox
+          cp "dist/mebox-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}" package/mebox/mebox${{ matrix.ext }}
+          cp README.md package/mebox/ 2>/dev/null || true
           if [ "${{ matrix.goos }}" = "windows" ]; then
-            (cd package && zip -r "../mmtl_${{ matrix.goos }}_${{ matrix.goarch }}.zip" mmtl)
+            (cd package && zip -r "../mebox_${{ matrix.goos }}_${{ matrix.goarch }}.zip" mebox)
           else
-            tar -czf "mmtl_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz" -C package mmtl
+            tar -czf "mebox_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz" -C package mebox
           fi
       - name: Upload to GitHub Release
         env:
@@ -255,8 +255,8 @@ jobs:
           RELEASE_TAG: ${{ needs.version-and-publish.outputs.tag }}
         run: |
           set -eux
-          PKG="mmtl_${{ matrix.goos }}_${{ matrix.goarch }}.zip"
-          TAR="mmtl_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
+          PKG="mebox_${{ matrix.goos }}_${{ matrix.goarch }}.zip"
+          TAR="mebox_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
           # 并发上传到同一 release 各自文件，--clobber 幂等覆盖
           if [ -f "$PKG" ]; then
             for i in 1 2 3; do gh release upload "$RELEASE_TAG" "$PKG" --clobber && break || sleep 5; done

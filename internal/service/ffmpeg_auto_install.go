@@ -16,7 +16,7 @@ import (
 	"github.com/ulikunitz/xz"
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/config"
+	"github.com/truewhile/MeBox/internal/config"
 )
 
 // ffmpegDownloadTarget 描述某个平台对应的官方构建下载源。
@@ -121,7 +121,7 @@ func installFFmpegTools(ctx context.Context, log *zap.Logger, cfg *config.Config
 		return "", "", fmt.Errorf("创建安装目录失败: %w", err)
 	}
 
-	tempDir, err := os.MkdirTemp("", "mmtl-ffmpeg-*")
+	tempDir, err := os.MkdirTemp("", "mebox-ffmpeg-*")
 	if err != nil {
 		return "", "", fmt.Errorf("创建临时目录失败: %w", err)
 	}
@@ -202,7 +202,7 @@ func downloadFFmpegFile(ctx context.Context, log *zap.Logger, url, dest string) 
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "MMTL/ffmpeg-installer ("+runtime.GOOS+"/"+runtime.GOARCH+")")
+	req.Header.Set("User-Agent", "MeBox/ffmpeg-installer ("+runtime.GOOS+"/"+runtime.GOARCH+")")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err

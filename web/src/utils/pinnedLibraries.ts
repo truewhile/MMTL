@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'mmtl_pinned_libraries'
+const STORAGE_KEY = 'mebox_pinned_libraries'
 
 function parsePinnedIds(raw: string | null): string[] {
   if (!raw) return []

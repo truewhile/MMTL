@@ -9,7 +9,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 // SetFavorite 把 mediaID 标为 userID 的收藏。远程 Emby 条目直接透传到对应
@@ -121,9 +121,9 @@ func (e *EmbyService) RecordProgress(ctx context.Context, userID, mediaID string
 	return err
 }
 
-// mergeRemoteUserData applies the current MMTL user's locally recorded playback
+// mergeRemoteUserData applies the current MeBox user's locally recorded playback
 // state to remote Emby payloads. Remote metadata remains authoritative unless the
-// user has played the item through MMTL.
+// user has played the item through MeBox.
 func (e *EmbyService) mergeRemoteUserData(ctx context.Context, userID string, payload any) error {
 	if strings.TrimSpace(userID) == "" || payload == nil {
 		return nil

@@ -40,13 +40,13 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Database.MaxOpenConns != defaultDatabaseMaxOpenConns {
 		t.Fatalf("expected default MaxOpenConns %d, got %d", defaultDatabaseMaxOpenConns, cfg.Database.MaxOpenConns)
 	}
-	if cfg.Cache.RedisPrefix != "mmtl" {
+	if cfg.Cache.RedisPrefix != "mebox" {
 		t.Fatalf("expected default redis prefix, got %q", cfg.Cache.RedisPrefix)
 	}
 	if cfg.Cache.MediaTTLSeconds != 15 {
 		t.Fatalf("expected default media cache ttl 15, got %d", cfg.Cache.MediaTTLSeconds)
 	}
-	if cfg.Search.Index != "mmtl_media" {
+	if cfg.Search.Index != "mebox_media" {
 		t.Fatalf("expected default search index, got %q", cfg.Search.Index)
 	}
 	if cfg.Database.MaxIdleConns != defaultDatabaseMaxIdleConns {
@@ -74,7 +74,7 @@ func TestLoadDefaults(t *testing.T) {
 	}
 }
 
-// TestEnvOverride checks that MMTL_* env vars override the defaults.
+// TestEnvOverride checks that MEBOX_* env vars override the defaults.
 func TestEnvOverride(t *testing.T) {
 	dir := t.TempDir()
 	wd, _ := os.Getwd()
@@ -83,16 +83,16 @@ func TestEnvOverride(t *testing.T) {
 		t.Fatalf("chdir: %v", err)
 	}
 
-	t.Setenv("MMTL_APP_PORT", "9090")
-	t.Setenv("MMTL_DATABASE_TYPE", "postgres")
-	t.Setenv("MMTL_DATABASE_DSN", "postgres://mmtl:secret@postgres:5432/mmtl?sslmode=disable")
-	t.Setenv("MMTL_CACHE_REDIS_URL", "redis://redis:6379/0")
-	t.Setenv("MMTL_CACHE_MEDIA_TTL_SECONDS", "30")
-	t.Setenv("MMTL_SEARCH_BACKEND", "opensearch")
-	t.Setenv("MMTL_SEARCH_OPENSEARCH_URL", "http://opensearch:9200")
-	t.Setenv("MMTL_LICENSE_SERVER_URL", "https://license.example.com")
-	t.Setenv("MMTL_LICENSE_HMAC_SECRET", "override-secret")
-	t.Setenv("MMTL_LICENSE_PUBLIC_KEY", "override-public-key")
+	t.Setenv("MEBOX_APP_PORT", "9090")
+	t.Setenv("MEBOX_DATABASE_TYPE", "postgres")
+	t.Setenv("MEBOX_DATABASE_DSN", "postgres://mebox:secret@postgres:5432/mebox?sslmode=disable")
+	t.Setenv("MEBOX_CACHE_REDIS_URL", "redis://redis:6379/0")
+	t.Setenv("MEBOX_CACHE_MEDIA_TTL_SECONDS", "30")
+	t.Setenv("MEBOX_SEARCH_BACKEND", "opensearch")
+	t.Setenv("MEBOX_SEARCH_OPENSEARCH_URL", "http://opensearch:9200")
+	t.Setenv("MEBOX_LICENSE_SERVER_URL", "https://license.example.com")
+	t.Setenv("MEBOX_LICENSE_HMAC_SECRET", "override-secret")
+	t.Setenv("MEBOX_LICENSE_PUBLIC_KEY", "override-public-key")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)

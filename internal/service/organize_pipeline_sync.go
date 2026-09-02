@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 func (p *OrganizePipelineService) syncScrapedOrganizedNames(ctx context.Context, opts OrganizeOptions, res *OrganizeResult, path string) {

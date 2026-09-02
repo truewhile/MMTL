@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/ShukeBta/MMTL/internal/config"
+	"github.com/truewhile/MeBox/internal/config"
 )
 
 // Open initialises the configured GORM database. database.type=auto chooses

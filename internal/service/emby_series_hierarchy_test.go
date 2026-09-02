@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 func TestEmbyItemsExposeSeriesSeasonEpisodeHierarchy(t *testing.T) {

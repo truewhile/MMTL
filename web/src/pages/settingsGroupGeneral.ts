@@ -133,14 +133,14 @@ export const generalSettingsGroup: SettingGroup = {
       label: 'SSL 证书路径',
       type: 'text',
       hint: '可选。填写证书文件的绝对路径则优先从文件读取（无需粘贴内容）；留空则使用上方粘贴的证书内容。文件被替换后无需改设置，最长 30 秒内自动热加载新证书。',
-      placeholder: '/etc/ssl/mmtl-cert.pem',
+      placeholder: '/etc/ssl/mebox-cert.pem',
     },
     {
       key: 'https.key_path',
       label: 'SSL 私钥路径',
       type: 'text',
       hint: '可选。填写私钥文件的绝对路径则优先从文件读取；留空则使用上方粘贴的私钥内容。',
-      placeholder: '/etc/ssl/mmtl-key.pem',
+      placeholder: '/etc/ssl/mebox-key.pem',
     },
   ],
 }

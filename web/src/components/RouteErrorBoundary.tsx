@@ -43,7 +43,7 @@ export class RouteErrorBoundary extends Component<{ children: ReactNode }, { has
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('MMTL route crashed', error, info)
+    console.error('MeBox route crashed', error, info)
   }
 
   render() {

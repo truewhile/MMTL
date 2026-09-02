@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ShukeBta/MMTL/internal/model"
+	"github.com/truewhile/MeBox/internal/model"
 )
 
 // TestConnection 测试 API 连接。

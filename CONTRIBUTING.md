@@ -1,6 +1,6 @@
 # 贡献规范
 
-感谢你愿意帮助 MMTL 变得更稳定。这个项目主要面向 NAS、Docker 部署、媒体库整理、订阅下载和多端播放场景；提交 Issue 或 Pull Request 时，请尽量提供可复现、可验证的信息。
+感谢你愿意帮助 MeBox 变得更稳定。这个项目主要面向 NAS、Docker 部署、媒体库整理、订阅下载和多端播放场景；提交 Issue 或 Pull Request 时，请尽量提供可复现、可验证的信息。
 
 ## Issue 提交规范
 
@@ -16,7 +16,7 @@
 - 期望行为：你认为正确结果应该是什么。
 - 复现步骤：从哪个页面、点击什么、填写什么、触发什么任务。
 - 部署方式：Docker 第一档 / 第二档 / 第三档、裸机运行、反代方式等。
-- 环境信息：NAS 型号或系统、Docker / Compose 版本、浏览器、MMTL 镜像版本。
+- 环境信息：NAS 型号或系统、Docker / Compose 版本、浏览器、MeBox 镜像版本。
 - 相关配置：路径映射、下载器保存路径、媒体库路径、站点类型等。请隐藏 Cookie、API Key、密码和 Token。
 - 日志和任务信息：优先提供应用日志、任务队列详情、浏览器控制台错误、网络请求错误。
 
@@ -28,14 +28,14 @@ Docker 部署常用命令：
 
 ```bash
 docker compose ps
-docker compose logs --tail=300 mmtl
-docker compose exec mmtl sh -lc 'ls -la /data/logs || true'
+docker compose logs --tail=300 mebox
+docker compose exec mebox sh -lc 'ls -la /data/logs || true'
 ```
 
 PostgreSQL 部署查询示例：
 
 ```bash
-docker compose exec postgres psql -U mmtl -d mmtl -c "select key,value,updated_at from settings order by updated_at desc limit 30;"
+docker compose exec postgres psql -U mebox -d mebox -c "select key,value,updated_at from settings order by updated_at desc limit 30;"
 ```
 
 请勿公开粘贴以下敏感信息：
