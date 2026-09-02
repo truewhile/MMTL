@@ -11,7 +11,7 @@ type LibraryMediaSectionsProps = {
   seriesCards: SeriesCard[]
   selectedSeries: SeriesCard | null
   loading: boolean
-  movieActions: (media: Media) => ReactNode
+  cardActions: (media: Media) => ReactNode
   onSeriesClick: (series: SeriesCard) => void
 }
 
@@ -21,7 +21,7 @@ export function LibraryMediaSections({
   seriesCards,
   selectedSeries,
   loading,
-  movieActions,
+  cardActions,
   onSeriesClick,
 }: LibraryMediaSectionsProps) {
   return (
@@ -29,7 +29,7 @@ export function LibraryMediaSections({
       {!isSeries && items.length > 0 && (
         <div className="grid grid-cols-3 gap-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8">
           {items.map((media) => (
-            <MediaCard key={media.id} media={media} actions={movieActions(media)} />
+            <MediaCard key={media.id} media={media} actions={cardActions(media)} />
           ))}
         </div>
       )}
@@ -45,6 +45,7 @@ export function LibraryMediaSections({
               key={series.key}
               media={series.rep}
               count={series.count}
+              actions={cardActions(series.rep)}
               onClick={() => onSeriesClick(series)}
             />
           ))}

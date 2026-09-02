@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, Fragment, type ReactNode } from 'react'
 import { useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 
@@ -14,6 +14,7 @@ import {
 } from '../utils/mediaSort'
 import { LibraryPageDialogs } from './LibraryPageDialogs'
 import { PageBackButton } from '../components/PageBackButton'
+import { MediaFavouriteButton } from '../components/MediaFavouriteButton'
 import { LibraryPageHeader } from './LibraryPageHeader'
 import { LibraryMediaSections } from './LibraryMediaSections'
 import { LibrarySeriesDetailSection } from './LibrarySeriesDetailSection'
@@ -21,12 +22,17 @@ import { useLibraryData } from './useLibraryData'
 import { useLibraryScanStatus } from './useLibraryScanStatus'
 import { useLibrarySeriesSelection } from './useLibrarySeriesSelection'
 import { useLibraryAdminActions } from './useLibraryAdminActions'
+import { usePermission } from '../hooks/usePermission'
+import { useFavourites } from '../hooks/useFavourites'
 
 export function LibraryPage() {
   const { id = '' } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const location = useLocation()
   const role = useAuthStore((s) => s.user?.role)
+  const canFavorite = usePermission('can_favorite')
+  const { isFavourite, toggleFavourite } = useFavourites()
+  const [favouriteBusyID, setFavouriteBusyID] = useState('')
 
   const [scrapeDialogOpen, setScrapeDialogOpen] = useState(false)
   const [manualSeriesScrapeOpen, setManualSeriesScrapeOpen] = useState(false)
@@ -169,6 +175,39 @@ export function LibraryPage() {
     setManualMovie,
   })
 
+  const handleToggleFavourite = async (mediaID: string) => {
+    if (!canFavorite || favouriteBusyID) return
+    setFavouriteBusyID(mediaID)
+    try {
+      await toggleFavourite(mediaID)
+    } finally {
+      setFavouriteBusyID('')
+    }
+  }
+
+  const cardActions = (media: Media): ReactNode => {
+    const actions: ReactNode[] = []
+    if (canFavorite) {
+      actions.push(
+        <MediaFavouriteButton
+          key="favourite"
+          variant="compact"
+          favourite={isFavourite(media.id)}
+          disabled={favouriteBusyID === media.id}
+          onToggle={() => {
+            void handleToggleFavourite(media.id)
+          }}
+        />,
+      )
+    }
+    const adminActions = movieActions(media)
+    if (adminActions) {
+      actions.push(<Fragment key="admin-actions">{adminActions}</Fragment>)
+    }
+    if (actions.length === 0) return undefined
+    return <>{actions}</>
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-32">
@@ -216,7 +255,7 @@ export function LibraryPage() {
         seriesCards={sortedSeriesCards}
         selectedSeries={selectedSeries}
         loading={loading}
-        movieActions={movieActions}
+        cardActions={cardActions}
         onSeriesClick={handleSeriesClick}
       />
 
@@ -229,6 +268,13 @@ export function LibraryPage() {
         loadingEpisodes={loadingSeriesEpisodes}
         playbackFrom={`${location.pathname}${location.search}`}
         isAdmin={role === 'admin'}
+        canFavorite={canFavorite}
+        favourite={selectedSeries ? isFavourite(selectedSeries.rep.id) : false}
+        favouriteBusy={!!selectedSeries && favouriteBusyID === selectedSeries.rep.id}
+        onToggleFavourite={() => {
+          if (!selectedSeries) return
+          void handleToggleFavourite(selectedSeries.rep.id)
+        }}
         seriesToolBusy={seriesToolBusy}
         onBack={clearSelectedSeries}
         onSmartScrape={handleSeriesSmartScrape}

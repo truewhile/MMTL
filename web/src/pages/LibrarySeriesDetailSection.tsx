@@ -19,6 +19,10 @@ type LibrarySeriesDetailSectionProps = {
   loadingEpisodes: boolean
   playbackFrom: string
   isAdmin: boolean
+  canFavorite: boolean
+  favourite: boolean
+  favouriteBusy: boolean
+  onToggleFavourite: () => void
   seriesToolBusy: string
   onBack: () => void
   onSmartScrape: () => void
@@ -40,6 +44,10 @@ export function LibrarySeriesDetailSection({
   loadingEpisodes,
   playbackFrom,
   isAdmin,
+  canFavorite,
+  favourite,
+  favouriteBusy,
+  onToggleFavourite,
   seriesToolBusy,
   onBack,
   onSmartScrape,
@@ -66,6 +74,10 @@ export function LibrarySeriesDetailSection({
             allEpisodes={allEpisodes}
             playbackFrom={playbackFrom}
             isAdmin={isAdmin}
+            canFavorite={canFavorite}
+            favourite={favourite}
+            favouriteBusy={favouriteBusy}
+            onToggleFavourite={onToggleFavourite}
             seriesToolBusy={seriesToolBusy}
             onBack={onBack}
             onSmartScrape={onSmartScrape}
