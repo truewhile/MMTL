@@ -9,9 +9,11 @@ import {
   LibrariesHeader,
 } from './LibrariesPageSections'
 import type { LibraryPreview } from './librariesPageModel'
+import { readPinnedLibraryIds, sortLibraryPreviews, togglePinnedLibraryId } from '../utils/pinnedLibraries'
 
 export function LibrariesPage() {
   const [previews, setPreviews] = useState<LibraryPreview[]>([])
+  const [pinnedIds, setPinnedIds] = useState<string[]>(() => readPinnedLibraryIds())
   const [loading, setLoading] = useState(true)
   const [repairing, setRepairing] = useState(false)
   const [repairEpisodeArtwork, setRepairEpisodeArtwork] = useState(false)
@@ -57,6 +59,12 @@ export function LibrariesPage() {
     loadLibraries().catch(() => undefined)
   }, [loadLibraries])
 
+  const sortedPreviews = useMemo(() => sortLibraryPreviews(previews, pinnedIds), [previews, pinnedIds])
+
+  const handleTogglePin = useCallback((libraryId: string) => {
+    setPinnedIds(togglePinnedLibraryId(libraryId))
+  }, [])
+
   const total = useMemo(() => previews.reduce((sum, preview) => sum + preview.total, 0), [previews])
 
   if (loading) {
@@ -79,7 +87,7 @@ export function LibrariesPage() {
       {previews.length === 0 ? (
         <LibrariesEmptyState />
       ) : (
-        <LibrariesContent previews={previews} />
+        <LibrariesContent previews={sortedPreviews} pinnedIds={pinnedIds} onTogglePin={handleTogglePin} />
       )}
     </div>
   )
