@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import clsx from 'clsx'
 
 import { LayoutSidebarContent, type LayoutSidebarContentProps } from './LayoutSidebarContent'
+import { isPlayerRoute } from './layoutNavigation'
 import { RouteErrorBoundary } from './RouteErrorBoundary'
 import type { useLayoutSidebar } from './useLayoutSidebar'
 
@@ -125,7 +126,7 @@ export function LayoutWorkspace({ routeKey, showMobileBottomNav = false }: Layou
     ? 'pb-[calc(3.75rem+env(safe-area-inset-bottom,0px))] lg:pb-10'
     : ''
 
-  if (routeKey.startsWith('/play')) {
+  if (isPlayerRoute(routeKey)) {
     return (
       <main className="flex flex-1 h-full w-full overflow-hidden">
         <RouteErrorBoundary>
