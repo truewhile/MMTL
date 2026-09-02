@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowRight, Film, FolderOpen, Library as LibraryIcon, Music, PlayCircle, RefreshCw, Sparkles, Tv } from 'lucide-react'
+import { ArrowRight, Film, FolderOpen, Library as LibraryIcon, Music, Pin, PlayCircle, RefreshCw, Sparkles, Tv } from 'lucide-react'
 
 import { imageURL } from '../api/client'
 import { EpisodeArtworkToggle } from '../components/EpisodeArtworkToggle'
@@ -9,6 +9,7 @@ import { MediaCard } from '../components/MediaCard'
 import { seriesCardLink } from '../utils/groupSeries'
 import { libraryDisplayPath } from './libraryDisplayModel'
 import { libraryArtworkItems, type LibraryPreview } from './librariesPageModel'
+import { isLibraryPinned } from '../utils/pinnedLibraries'
 
 const TYPE_ICONS: Record<string, ReactNode> = {
   movie: <Film size={18} />,
@@ -102,13 +103,26 @@ export function LibrariesEmptyState() {
   )
 }
 
-export function LibrariesContent({ previews }: { previews: LibraryPreview[] }) {
+export function LibrariesContent({
+  previews,
+  pinnedIds,
+  onTogglePin,
+}: {
+  previews: LibraryPreview[]
+  pinnedIds: string[]
+  onTogglePin: (libraryId: string) => void
+}) {
+  const pinnedCount = previews.filter((preview) => isLibraryPinned(preview.library.id, pinnedIds)).length
+
   return (
     <>
       <section className="space-y-4">
         <div>
           <h2 className="font-display text-2xl font-bold text-ink-600">媒体库入口</h2>
-          <p className="text-sm text-ink-50">按目录进入完整媒体库；下方每个目录也会直接展示最新内容。</p>
+          <p className="text-sm text-ink-50">
+            按目录进入完整媒体库；下方每个目录也会直接展示最新内容。
+            {pinnedCount > 0 ? ` 已置顶 ${pinnedCount} 个媒体库。` : ' 点击卡片右上角图钉可置顶常用媒体库。'}
+          </p>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
           {previews.map((preview, index) => (
@@ -118,7 +132,11 @@ export function LibrariesContent({ previews }: { previews: LibraryPreview[] }) {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.03 }}
             >
-              <LibraryEntryCard preview={preview} />
+              <LibraryEntryCard
+                preview={preview}
+                pinned={isLibraryPinned(preview.library.id, pinnedIds)}
+                onTogglePin={() => onTogglePin(preview.library.id)}
+              />
             </motion.div>
           ))}
         </div>
@@ -132,7 +150,10 @@ export function LibrariesContent({ previews }: { previews: LibraryPreview[] }) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.03 }}
           >
-            <LibraryShelf preview={preview} />
+            <LibraryShelf
+              preview={preview}
+              pinned={isLibraryPinned(preview.library.id, pinnedIds)}
+            />
           </motion.div>
         ))}
       </section>
@@ -140,7 +161,15 @@ export function LibrariesContent({ previews }: { previews: LibraryPreview[] }) {
   )
 }
 
-function LibraryEntryCard({ preview }: { preview: LibraryPreview }) {
+function LibraryEntryCard({
+  preview,
+  pinned,
+  onTogglePin,
+}: {
+  preview: LibraryPreview
+  pinned: boolean
+  onTogglePin: () => void
+}) {
   const library = preview.library
   const artwork = library.cover_url
     ? [{ src: library.cover_url, version: library.updated_at }]
@@ -148,10 +177,35 @@ function LibraryEntryCard({ preview }: { preview: LibraryPreview }) {
   const displayPath = libraryDisplayPath(library.path)
 
   return (
-    <Link
-      to={`/library/${library.id}`}
-      className="group flex overflow-hidden rounded-2xl sm:rounded-3xl border border-sand-200 bg-white p-2.5 sm:p-3 shadow-card transition-all hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-card-hover"
+    <div
+      className={
+        'group relative flex overflow-hidden rounded-2xl sm:rounded-3xl border bg-white p-2.5 sm:p-3 shadow-card transition-all hover:-translate-y-0.5 hover:shadow-card-hover ' +
+        (pinned ? 'border-brand-300 ring-1 ring-brand-100' : 'border-sand-200 hover:border-brand-200')
+      }
     >
+      <button
+        type="button"
+        onClick={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          onTogglePin()
+        }}
+        className={
+          'absolute right-2 top-2 z-10 rounded-full border p-1.5 transition ' +
+          (pinned
+            ? 'border-brand-200 bg-brand-50 text-brand-600 hover:bg-brand-100'
+            : 'border-sand-200 bg-white/95 text-sand-500 opacity-0 hover:bg-gray-50 hover:text-brand-600 group-hover:opacity-100')
+        }
+        title={pinned ? '取消置顶' : '置顶媒体库'}
+        aria-label={pinned ? '取消置顶' : '置顶媒体库'}
+        aria-pressed={pinned}
+      >
+        <Pin size={14} className={pinned ? 'fill-current' : ''} />
+      </button>
+      <Link
+        to={`/library/${library.id}`}
+        className="flex min-w-0 flex-1"
+      >
       <div className={`grid h-20 w-24 sm:h-24 sm:w-36 shrink-0 gap-1 overflow-hidden rounded-xl sm:rounded-2xl bg-[linear-gradient(135deg,#fff7ed,#f8fafc)] ${artwork.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
         {artwork.length > 0 ? (
           artwork.map(({ src, version }, index) => (
@@ -173,7 +227,7 @@ function LibraryEntryCard({ preview }: { preview: LibraryPreview }) {
       </div>
       <div className="flex min-w-0 flex-1 flex-col justify-between px-3 sm:px-4 py-0.5 sm:py-1">
         <div>
-          <div className="mb-1 flex items-center justify-between gap-1.5">
+          <div className="mb-1 flex items-center justify-between gap-1.5 pr-8">
             <span className="inline-flex rounded-full bg-sand-100 px-2 py-0.5 text-[10px] font-bold text-sand-600">
               {TYPE_LABELS[library.type] ?? library.type}
             </span>
@@ -183,6 +237,7 @@ function LibraryEntryCard({ preview }: { preview: LibraryPreview }) {
           </div>
           <h2 className="line-clamp-2 font-display text-sm font-bold leading-tight text-ink-600 group-hover:text-brand-600 sm:truncate sm:text-xl sm:font-black">
             {library.name}
+            {pinned ? <span className="ml-1.5 align-middle text-[10px] font-bold text-brand-600">置顶</span> : null}
           </h2>
           <p className="mt-0.5 line-clamp-1 break-all text-[11px] text-ink-50 sm:mt-1 sm:text-xs" title={library.path}>
             {displayPath}
@@ -195,11 +250,12 @@ function LibraryEntryCard({ preview }: { preview: LibraryPreview }) {
           </span>
         </div>
       </div>
-    </Link>
+      </Link>
+    </div>
   )
 }
 
-function LibraryShelf({ preview }: { preview: LibraryPreview }) {
+function LibraryShelf({ preview, pinned }: { preview: LibraryPreview; pinned?: boolean }) {
   const library = preview.library
   const cards = preview.cards.slice(0, 10)
   const displayPath = libraryDisplayPath(library.path)
@@ -212,7 +268,10 @@ function LibraryShelf({ preview }: { preview: LibraryPreview }) {
             {TYPE_ICONS[library.type] ?? <LibraryIcon size={14} />}
             {TYPE_LABELS[library.type] ?? library.type}
           </div>
-          <h2 className="line-clamp-2 font-display text-xl sm:text-2xl font-black text-ink-600 sm:truncate">{library.name}</h2>
+          <h2 className="line-clamp-2 font-display text-xl sm:text-2xl font-black text-ink-600 sm:truncate">
+            {library.name}
+            {pinned ? <span className="ml-2 align-middle text-xs font-bold text-brand-600">置顶</span> : null}
+          </h2>
           <p className="mt-1 line-clamp-1 break-all text-xs text-ink-50">
             <span title={library.path}>{displayPath}</span> · {preview.total.toLocaleString()} 个条目 · 最新 {cards.length} 部
           </p>
