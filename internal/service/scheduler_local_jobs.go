@@ -8,9 +8,6 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"gorm.io/gorm"
-
-	"github.com/truewhile/MeBox/internal/model"
 )
 
 // jobScanLibraries re-walks every enabled library.
@@ -179,29 +176,6 @@ func (s *SchedulerService) jobCleanTranscodeCache(ctx context.Context) error {
 	}
 	cutoff := time.Now().Add(-24 * time.Hour)
 	return walkAndPrune(s.cacheDir+"/hls", cutoff)
-}
-
-// jobPurgeRecycleBin permanently deletes media rows soft-deleted >30 days
-// ago. The on-disk file is left untouched (delete is operator-driven).
-func (s *SchedulerService) jobPurgeRecycleBin(ctx context.Context) error {
-	cutoff := time.Now().Add(-30 * 24 * time.Hour)
-	res := s.repo.DB.WithContext(ctx).
-		Unscoped().
-		Where("deleted_at IS NOT NULL AND deleted_at < ?", cutoff).
-		Delete(&model.Media{})
-	if res.Error != nil && !isMissingTableErr(res.Error) {
-		return res.Error
-	}
-	return pruneRecycleBinRows(ctx, s.repo.DB, maxRecycleBinRecords)
-}
-
-// isMissingTableErr lets the test harness ignore "no such table" errors
-// that show up before AutoMigrate has run.
-func isMissingTableErr(err error) bool {
-	if err == nil {
-		return false
-	}
-	return err == gorm.ErrInvalidDB
 }
 
 // jobCleanImageCache prunes image proxy cache files when disk usage exceeds the configured limit.

@@ -26,7 +26,7 @@ type LibrarySeriesDetailHeaderProps = {
   onProbe: () => void
   onNFO: () => void
   onOrganize: () => void
-  onSoftDelete: () => void
+  onDelete: () => void
 }
 
 export function LibrarySeriesDetailHeader({
@@ -47,7 +47,7 @@ export function LibrarySeriesDetailHeader({
   onProbe,
   onNFO,
   onOrganize,
-  onSoftDelete,
+  onDelete,
 }: LibrarySeriesDetailHeaderProps) {
   const firstEpisode = firstPlayableEpisode(visibleEpisodes.length > 0 ? visibleEpisodes : allEpisodes)
 
@@ -131,9 +131,9 @@ export function LibrarySeriesDetailHeader({
                   <FolderInput size={13} />
                   <span>{seriesToolBusy === 'organize' ? '整理中…' : '整理当前合集'}</span>
                 </button>
-                <button onClick={onSoftDelete} disabled={!!seriesToolBusy} className="btn-outline px-3.5 py-2 text-xs gap-1.5 !border-red-100 !text-red-500 hover:!border-red-200 hover:!bg-red-50">
+                <button onClick={onDelete} disabled={!!seriesToolBusy} className="btn-outline px-3.5 py-2 text-xs gap-1.5 !border-red-100 !text-red-500 hover:!border-red-200 hover:!bg-red-50">
                   <Trash2 size={13} />
-                  <span>{seriesToolBusy === 'delete' ? '处理中…' : '移入回收站'}</span>
+                  <span>{seriesToolBusy === 'delete' ? '处理中…' : '删除'}</span>
                 </button>
               </div>
             </div>

@@ -240,8 +240,8 @@ func (r *MediaRepository) DeleteByLibraryRoot(ctx context.Context, libraryID, ro
 		Delete(&model.Media{}).Error
 }
 
-// PurgeByLibrary permanently removes media tied to a library. Used for virtual
-// cloud mounts where "remove mount" must not populate the recycle bin.
+// PurgeByLibrary permanently removes media tied to a library. Used when
+// removing a library or virtual mount so indexed rows are dropped immediately.
 func (r *MediaRepository) PurgeByLibrary(ctx context.Context, libraryID string) error {
 	return r.db.WithContext(ctx).Unscoped().Where("library_id = ?", libraryID).Delete(&model.Media{}).Error
 }

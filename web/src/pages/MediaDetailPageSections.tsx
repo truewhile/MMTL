@@ -31,7 +31,7 @@ interface MediaDetailMainContentProps extends MediaDetailPlaybackActionsProps {
   onOrganize: () => void
   onProbe: () => void
   onExportNFO: () => void
-  onSoftDelete: () => void
+  onDelete: () => void
 }
 
 interface MediaDetailDialogsProps {
@@ -147,7 +147,7 @@ export function MediaDetailMainContent({
   onOrganize,
   onProbe,
   onExportNFO,
-  onSoftDelete,
+  onDelete,
 }: MediaDetailMainContentProps) {
   return (
     <div className="relative z-10 p-6 sm:p-10 flex flex-col md:flex-row gap-8 lg:gap-12">
@@ -174,7 +174,7 @@ export function MediaDetailMainContent({
               onOrganize={onOrganize}
               onProbe={onProbe}
               onExportNFO={onExportNFO}
-              onSoftDelete={onSoftDelete}
+              onDelete={onDelete}
             />
           )}
         </div>

@@ -225,6 +225,19 @@ export const mediaAPI = {
         { timeout: BATCH_REQUEST_TIMEOUT },
       )
       .then((r) => r.data),
+
+  delete: (id: string, options?: { deleteFiles?: boolean }) =>
+    api
+      .delete(`/media/${id}`, {
+        params: options?.deleteFiles ? { delete_files: true } : undefined,
+      })
+      .then((r) => r.data),
+
+  exportNFO: (id: string) =>
+    api.post<{ path: string }>(`/media/${id}/nfo`).then((r) => r.data),
+
+  exportLibraryNFO: (id: string) =>
+    api.post<{ written: number }>(`/libraries/${id}/nfo`).then((r) => r.data),
 }
 
 function episodeImageOption(options?: ScrapeOptions): boolean | undefined {
