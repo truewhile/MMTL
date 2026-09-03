@@ -12,6 +12,12 @@ export function usePinnedLibraries() {
   const [syncing, setSyncing] = useState(false)
   const [loadError, setLoadError] = useState(false)
   const loadedRef = useRef(false)
+  const pinnedIdsRef = useRef<string[]>([])
+  const syncingRef = useRef(false)
+
+  useEffect(() => {
+    pinnedIdsRef.current = pinnedIds
+  }, [pinnedIds])
 
   useEffect(() => {
     let cancelled = false
@@ -22,6 +28,7 @@ export function usePinnedLibraries() {
       .then((ids) => {
         if (cancelled) return
         loadedRef.current = true
+        pinnedIdsRef.current = ids
         setPinnedIds(ids)
         setLoadError(false)
       })
@@ -29,7 +36,6 @@ export function usePinnedLibraries() {
         if (cancelled) return
         loadedRef.current = false
         setLoadError(true)
-        // Keep any existing pins in memory; never replace a known server list with [].
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -40,25 +46,27 @@ export function usePinnedLibraries() {
   }, [])
 
   const togglePin = useCallback(async (libraryId: string) => {
-    // Avoid saving from an unloaded/failed state — that would overwrite the
-    // server list with only the clicked id and can wipe existing local pins
-    // when mounted Emby ids used to be filtered out server-side.
-    if (!loadedRef.current || loading || loadError) return
+    if (!loadedRef.current || loading || loadError || syncingRef.current) return
 
-    let previous: string[] = []
-    let optimistic: string[] = []
-    setPinnedIds((current) => {
-      previous = current
-      optimistic = togglePinnedLibraryId(current, libraryId)
-      return optimistic
-    })
+    // Compute the next list synchronously from a ref. Do NOT capture the next
+    // value inside setState updater callbacks — React may defer those, leaving
+    // optimistic as [] and wiping the server-side pin list.
+    const previous = pinnedIdsRef.current
+    const optimistic = togglePinnedLibraryId(previous, libraryId)
+
+    pinnedIdsRef.current = optimistic
+    setPinnedIds(optimistic)
+    syncingRef.current = true
     setSyncing(true)
     try {
       const saved = await savePinnedLibraryIds(optimistic)
+      pinnedIdsRef.current = saved
       setPinnedIds(saved)
     } catch {
+      pinnedIdsRef.current = previous
       setPinnedIds(previous)
     } finally {
+      syncingRef.current = false
       setSyncing(false)
     }
   }, [loading, loadError])
