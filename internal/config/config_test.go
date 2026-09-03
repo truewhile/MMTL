@@ -43,8 +43,8 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Cache.RedisPrefix != "mebox" {
 		t.Fatalf("expected default redis prefix, got %q", cfg.Cache.RedisPrefix)
 	}
-	if cfg.Cache.MediaTTLSeconds != 15 {
-		t.Fatalf("expected default media cache ttl 15, got %d", cfg.Cache.MediaTTLSeconds)
+	if cfg.Cache.MediaTTLSeconds != 90 {
+		t.Fatalf("expected default media cache ttl 90, got %d", cfg.Cache.MediaTTLSeconds)
 	}
 	if cfg.Search.Index != "mebox_media" {
 		t.Fatalf("expected default search index, got %q", cfg.Search.Index)

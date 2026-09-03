@@ -9,12 +9,14 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/middleware"
 	"github.com/truewhile/MeBox/internal/service"
 )
 
 // Register attaches every API route to the engine.
 func Register(r *gin.Engine, cfg *config.Config, log *zap.Logger, svc *service.Container) {
 	api := r.Group("/api")
+	api.Use(middleware.GzipAPI())
 	{
 		api.GET("/health", healthCheck)
 		api.GET("/version", versionInfo)

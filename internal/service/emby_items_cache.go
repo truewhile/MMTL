@@ -49,7 +49,7 @@ func (e *EmbyService) embyLatestCacheKey(userID, parentID string, limit int) str
 
 func (e *EmbyService) mediaCacheTTLSeconds() int {
 	if e == nil || e.cfg == nil || e.cfg.Cache.MediaTTLSeconds < 1 {
-		return 15
+		return 90
 	}
 	return e.cfg.Cache.MediaTTLSeconds
 }

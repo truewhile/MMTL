@@ -20,6 +20,7 @@ type RuntimeCacheService struct {
 
 	mu     sync.RWMutex
 	memory map[string]runtimeCacheItem
+	obj    map[string]runtimeObjectItem
 	limit  int
 }
 
@@ -28,8 +29,18 @@ type runtimeCacheItem struct {
 	expiresAt time.Time
 }
 
+// runtimeObjectItem 直存 Go 对象，跳过 JSON 编解码。热点路径（整库行、
+// 分组结果）每次请求都要完整反序列化，字节缓存避免了 SQL 却没避免解码；
+// 对象缓存命中时零解码零分配。存储的值视为不可变：读取方如需修改必须
+// 自行浅拷贝。仅进程内生效（Redis 只支持字节），多实例部署退化为各实例
+// 独立缓存，与现有内存 L1 语义一致。
+type runtimeObjectItem struct {
+	value     any
+	expiresAt time.Time
+}
+
 func NewRuntimeCacheService(cfg *config.Config, log *zap.Logger) *RuntimeCacheService {
-	c := &RuntimeCacheService{log: log, memory: map[string]runtimeCacheItem{}, limit: 2048}
+	c := &RuntimeCacheService{log: log, memory: map[string]runtimeCacheItem{}, obj: map[string]runtimeObjectItem{}, limit: 2048}
 	if cfg == nil {
 		return c
 	}
@@ -112,6 +123,50 @@ func (c *RuntimeCacheService) SetJSON(ctx context.Context, key string, value any
 	}
 }
 
+// GetObject 返回缓存中的对象。返回值不可变：调用方需要修改时必须先自行拷贝。
+func (c *RuntimeCacheService) GetObject(key string) (any, bool) {
+	if !c.Enabled() || strings.TrimSpace(key) == "" {
+		return nil, false
+	}
+	fullKey := c.key(key)
+	now := time.Now()
+	c.mu.RLock()
+	item, ok := c.obj[fullKey]
+	c.mu.RUnlock()
+	if !ok {
+		return nil, false
+	}
+	if now.After(item.expiresAt) {
+		c.mu.Lock()
+		delete(c.obj, fullKey)
+		c.mu.Unlock()
+		return nil, false
+	}
+	return item.value, true
+}
+
+// SetObject 存入一个此后视为不可变的对象。
+func (c *RuntimeCacheService) SetObject(key string, value any, ttl time.Duration) {
+	if !c.Enabled() || strings.TrimSpace(key) == "" || value == nil || ttl <= 0 {
+		return
+	}
+	fullKey := c.key(key)
+	now := time.Now()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.obj) >= c.limit {
+		for k, item := range c.obj {
+			if now.After(item.expiresAt) || len(c.obj) >= c.limit {
+				delete(c.obj, k)
+			}
+			if len(c.obj) < c.limit {
+				break
+			}
+		}
+	}
+	c.obj[fullKey] = runtimeObjectItem{value: value, expiresAt: now.Add(ttl)}
+}
+
 func (c *RuntimeCacheService) DeletePrefix(ctx context.Context, prefix string) {
 	if !c.Enabled() || strings.TrimSpace(prefix) == "" {
 		return
@@ -188,6 +243,11 @@ func (c *RuntimeCacheService) deleteMemoryPrefix(prefix string) {
 	for key := range c.memory {
 		if strings.HasPrefix(key, prefix) {
 			delete(c.memory, key)
+		}
+	}
+	for key := range c.obj {
+		if strings.HasPrefix(key, prefix) {
+			delete(c.obj, key)
 		}
 	}
 }

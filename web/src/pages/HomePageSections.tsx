@@ -87,6 +87,41 @@ export function HomeEmptyState() {
   )
 }
 
+// ContinueWatchingSkeleton 与 ContinueWatchingSection 同构的占位块：
+// 播放记录请求独立渐进加载时，避免区块突然弹入造成的布局跳动。
+export function ContinueWatchingSkeleton() {
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between border-b border-[var(--app-border)] pb-3">
+        <div className="flex items-center gap-2.5">
+          <span className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-1.5 text-[var(--app-text)]">
+            <Clock size={18} />
+          </span>
+          <div className="space-y-1.5">
+            <div className="h-5 w-24 animate-pulse rounded bg-[var(--app-panel-soft)]" />
+            <div className="h-3 w-16 animate-pulse rounded bg-[var(--app-panel-soft)]" />
+          </div>
+        </div>
+      </div>
+
+      <div className="flex gap-4 overflow-hidden pb-3 pt-1">
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className="w-64 sm:w-72 shrink-0">
+            <div className="flex items-center gap-3.5 rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel)] p-3 shadow-sm">
+              <div className="h-20 w-14 shrink-0 animate-pulse rounded-xl bg-[var(--app-panel-soft)]" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="h-3 w-3/4 animate-pulse rounded bg-[var(--app-panel-soft)]" />
+                <div className="h-2.5 w-1/2 animate-pulse rounded bg-[var(--app-panel-soft)]" />
+                <div className="h-1.5 w-full animate-pulse rounded-full bg-[var(--app-panel-soft)]" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 /* =========================================================================
    1. 海报轮播区 (Hero Carousel Section)
    ========================================================================= */

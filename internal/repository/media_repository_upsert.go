@@ -23,12 +23,34 @@ import (
 //     永远捞不到数据。
 func (r *MediaRepository) Upsert(ctx context.Context, m *model.Media) error {
 	return withSQLiteBusyRetry(ctx, func() error {
-		return r.upsert(ctx, m)
+		return r.upsertWithDB(ctx, r.db, m)
 	})
 }
 
-func (r *MediaRepository) upsert(ctx context.Context, m *model.Media) error {
-	existing, created, err := r.findOrCreateMediaByPath(ctx, m)
+// UpsertBatch 在单个事务里逐条执行 Upsert：扫描一批只提交（fsync）一次，
+// 而不是每条一个隐式事务。任一条目落库失败不影响批内已成功的条目——
+// 事务回滚后由调用方退回逐条 Upsert 兜底。
+func (r *MediaRepository) UpsertBatch(ctx context.Context, items []*model.Media) error {
+	if len(items) == 0 {
+		return nil
+	}
+	return withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			for _, m := range items {
+				if m == nil {
+					continue
+				}
+				if err := r.upsertWithDB(ctx, tx, m); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	})
+}
+
+func (r *MediaRepository) upsertWithDB(ctx context.Context, db *gorm.DB, m *model.Media) error {
+	existing, created, err := r.findOrCreateMediaByPath(ctx, db, m)
 	if err != nil {
 		return err
 	}
@@ -38,20 +60,20 @@ func (r *MediaRepository) upsert(ctx context.Context, m *model.Media) error {
 	}
 
 	updates := mediaUpsertUpdates(existing, *m)
-	return r.applyMediaUpsertUpdates(ctx, m, existing, updates)
+	return r.applyMediaUpsertUpdates(ctx, db, m, existing, updates)
 }
 
-func (r *MediaRepository) findOrCreateMediaByPath(ctx context.Context, m *model.Media) (model.Media, bool, error) {
+func (r *MediaRepository) findOrCreateMediaByPath(ctx context.Context, db *gorm.DB, m *model.Media) (model.Media, bool, error) {
 	var existing model.Media
-	err := r.db.WithContext(ctx).Unscoped().Where("path = ?", m.Path).First(&existing).Error
+	err := db.WithContext(ctx).Unscoped().Where("path = ?", m.Path).First(&existing).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		// 新行：保证 scrape_status 走 GORM default:pending（即留空让数据库填）。
 		if m.ScrapeStatus == "" {
 			m.ScrapeStatus = "pending"
 		}
-		if createErr := r.db.WithContext(ctx).Create(m).Error; createErr == nil {
+		if createErr := db.WithContext(ctx).Create(m).Error; createErr == nil {
 			return *m, true, nil
-		} else if retryErr := r.db.WithContext(ctx).Unscoped().Where("path = ?", m.Path).First(&existing).Error; retryErr != nil {
+		} else if retryErr := db.WithContext(ctx).Unscoped().Where("path = ?", m.Path).First(&existing).Error; retryErr != nil {
 			return model.Media{}, false, createErr
 		}
 	}
@@ -237,12 +259,12 @@ func setNonEmptyMediaString(updates map[string]any, key, current, next string) {
 	}
 }
 
-func (r *MediaRepository) applyMediaUpsertUpdates(ctx context.Context, m *model.Media, existing model.Media, updates map[string]any) error {
+func (r *MediaRepository) applyMediaUpsertUpdates(ctx context.Context, db *gorm.DB, m *model.Media, existing model.Media, updates map[string]any) error {
 	if len(updates) == 0 {
 		*m = existing
 		return nil
 	}
-	if err := r.db.WithContext(ctx).Unscoped().Model(&model.Media{}).
+	if err := db.WithContext(ctx).Unscoped().Model(&model.Media{}).
 		Where("id = ?", existing.ID).Updates(updates).Error; err != nil {
 		return err
 	}

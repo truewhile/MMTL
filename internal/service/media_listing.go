@@ -73,11 +73,15 @@ func (s *MediaService) listMediaVisibleForGrouping(ctx context.Context, libraryI
 		AllowedLibraryIDs: visibility.AllowedLibraryIDs,
 		HiddenLibraryIDs:  visibility.HiddenLibraryIDs,
 	}
-	cacheKey := s.mediaListCacheKey(libraryID, libraryIDs, 0, maxMediaSearchLimit, filter) + ":group-source"
-	var cached mediaListCacheValue
-	if s.cache != nil && s.cache.GetJSON(ctx, cacheKey, &cached) {
-		s.attachLibraryMetadata(ctx, cached.Items)
-		return cached.Items, nil
+	cacheKey := s.mediaGroupedRowsCacheKey(libraryID, libraryIDs, filter)
+	if s.cache != nil {
+		if cachedObj, ok := s.cache.GetObject(cacheKey); ok {
+			if cached, ok := cachedObj.([]model.Media); ok {
+				// 对象缓存中的切片视为不可变；attachLibraryMetadata 会在填充时
+				// 执行过，命中路径直接返回副本即可（调用方只读）。
+				return cached, nil
+			}
+		}
 	}
 	items, total, err := s.repo.Media.ListByLibrariesFiltered(ctx, libraryIDs, 0, maxMediaSearchLimit, filter)
 	if err != nil {
@@ -91,7 +95,7 @@ func (s *MediaService) listMediaVisibleForGrouping(ctx context.Context, libraryI
 	}
 	s.attachLibraryMetadata(ctx, items)
 	if s.cache != nil {
-		s.cache.SetJSON(ctx, cacheKey, mediaListCacheValue{Items: items, Total: total}, time.Duration(s.mediaCacheTTLSeconds())*time.Second)
+		s.cache.SetObject(cacheKey, items, s.mediaObjectTTL())
 	}
 	return items, nil
 }

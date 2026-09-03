@@ -51,7 +51,7 @@ func (c *Config) normalize() error {
 		c.Cache.RedisPrefix = "mebox"
 	}
 	if c.Cache.MediaTTLSeconds < 1 {
-		c.Cache.MediaTTLSeconds = 15
+		c.Cache.MediaTTLSeconds = 90
 	}
 	c.Search.Backend = strings.ToLower(strings.TrimSpace(c.Search.Backend))
 	if c.Search.Index == "" {

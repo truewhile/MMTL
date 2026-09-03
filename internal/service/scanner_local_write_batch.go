@@ -63,6 +63,8 @@ func (b *localMediaWriteBatch) Flush() {
 		return
 	}
 	existingPaths := b.existingPaths(items)
+	upsertItems := make([]*model.Media, 0, len(items))
+	upsertAfter := make([]func(), 0, len(items))
 	createItems := make([]localMediaWriteItem, 0, len(items))
 	createMedia := make([]model.Media, 0, len(items))
 	for _, item := range items {
@@ -70,12 +72,16 @@ func (b *localMediaWriteBatch) Flush() {
 			continue
 		}
 		if existingPaths[filepath.Clean(item.media.Path)] {
-			b.upsertExistingItem(item)
+			// 已存在行：攒起来在一个事务里逐条 upsert（一批一次提交）。
+			after := item.after
+			upsertItems = append(upsertItems, item.media)
+			upsertAfter = append(upsertAfter, after)
 			continue
 		}
 		createItems = append(createItems, item)
 		createMedia = append(createMedia, *item.media)
 	}
+	b.flushUpserts(items, upsertItems, upsertAfter)
 	if len(createMedia) == 0 {
 		b.publish()
 		return
@@ -140,6 +146,35 @@ func (b *localMediaWriteBatch) existingPaths(items []localMediaWriteItem) map[st
 		out[filepath.Clean(path)] = true
 	}
 	return out
+}
+
+// flushUpserts 把已存在行的 upsert 攒成一个事务（一次提交/一组 fsync）。
+// 整批失败（如单条数据触发约束）时退回逐条 Upsert，只丢真正坏的那几条。
+func (b *localMediaWriteBatch) flushUpserts(allItems []localMediaWriteItem, upsertItems []*model.Media, upsertAfter []func()) {
+	if len(upsertItems) == 0 {
+		return
+	}
+	if err := b.scanner.repo.Media.UpsertBatch(b.ctx, upsertItems); err == nil {
+		b.res.Updated += len(upsertItems)
+		for _, after := range upsertAfter {
+			if after != nil {
+				after()
+			}
+		}
+		return
+	} else if b.scanner.log != nil {
+		b.scanner.log.Warn("batch upsert failed; falling back to per-item upsert",
+			zap.Int("items", len(upsertItems)))
+	}
+	// 兜底：按原始顺序找回每个条目的 path/after（两个切片同序但可能含 nil）。
+	idx := 0
+	for _, item := range allItems {
+		if item.media == nil || idx >= len(upsertItems) || upsertItems[idx] != item.media {
+			continue
+		}
+		idx++
+		b.upsertExistingItem(item)
+	}
 }
 
 func (b *localMediaWriteBatch) upsertExistingItem(item localMediaWriteItem) {

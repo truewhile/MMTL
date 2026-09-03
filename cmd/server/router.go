@@ -53,6 +53,7 @@ func buildRouter(cfg *config.Config, logger *zap.Logger, svc *service.Container)
 // comes from root, which is either the compiled-in SPA or an on-disk web dir.
 func serveSPA(r *gin.Engine, root fs.FS) {
 	assets := r.Group("/assets")
+	assets.Use(middleware.GzipStatic())
 	assets.Use(func(c *gin.Context) {
 		c.Header("Cache-Control", "public, max-age=31536000, immutable")
 		c.Next()
@@ -69,7 +70,7 @@ func serveSPA(r *gin.Engine, root fs.FS) {
 		r.GET(rootFile, serveFSFile(root, name))
 		r.HEAD(rootFile, serveFSFile(root, name))
 	}
-	r.NoRoute(func(c *gin.Context) {
+	r.NoRoute(middleware.GzipStatic(), func(c *gin.Context) {
 		path := c.Request.URL.Path
 		if shouldBypassSPAFallback(path) {
 			c.Status(http.StatusNotFound)

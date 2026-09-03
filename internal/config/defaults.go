@@ -47,7 +47,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("cache.cleanup_interval_min", 60)
 	v.SetDefault("cache.redis_url", "")
 	v.SetDefault("cache.redis_prefix", "mebox")
-	v.SetDefault("cache.media_ttl_seconds", 15)
+	v.SetDefault("cache.media_ttl_seconds", 90)
 
 	v.SetDefault("search.backend", "")
 	v.SetDefault("search.opensearch_url", "")

@@ -17,6 +17,15 @@ type seriesCardsCacheValue struct {
 	Total int64        `json:"total"`
 }
 
+// libraryRowsCacheValue 整库可见行 + 预计算索引的对象缓存。填充时一次性完成
+// 整库 SQL 加载与 series key 解析，之后剧集卡片、剧集列表、媒体详情剧集
+// 共享这份结果：命中路径零 SQL、零逐行 key 解析。Rows/Episodes 视为不可变。
+type libraryRowsCacheValue struct {
+	Rows     []model.Media
+	Resolver mediaSeriesKeyResolver
+	Episodes map[string][]model.Media
+}
+
 type SeriesCard struct {
 	Key       string      `json:"key"`
 	Rep       model.Media `json:"rep"`
@@ -29,24 +38,59 @@ type seriesCardGroup struct {
 	latest time.Time
 }
 
-func (s *MediaService) ListLibrarySeriesCards(ctx context.Context, libraryID string, visibility MediaVisibility) ([]SeriesCard, int64, error) {
-	visibility = ExpandMediaVisibilityForMergedCloudLibraries(ctx, s.repo, visibility)
-	cacheKey := s.seriesCardsCacheKey(libraryID, visibility)
-	var cached seriesCardsCacheValue
-	if s.cache != nil && s.cache.GetJSON(ctx, cacheKey, &cached) {
-		return cached.Cards, cached.Total, nil
+// libraryRowsWithIndex 返回整库行与预计算剧集索引（带对象缓存）。
+func (s *MediaService) libraryRowsWithIndex(ctx context.Context, libraryID string, visibility MediaVisibility) (*libraryRowsCacheValue, error) {
+	cacheKey := s.libraryRowsCacheKey(libraryID, visibility)
+	if s.cache != nil {
+		if obj, ok := s.cache.GetObject(cacheKey); ok {
+			if cached, ok := obj.(*libraryRowsCacheValue); ok {
+				return cached, nil
+			}
+		}
 	}
 	rows, _, err := s.listAllMediaVisible(ctx, libraryID, visibility)
 	if err != nil {
+		return nil, err
+	}
+	// listAllMediaVisible 走 ListMediaVisible，行已带库元数据（resolver 的
+	// key 计算依赖 DisplayLibraryPath/ID）。
+	resolver := newMediaSeriesKeyResolver(rows)
+	episodes := make(map[string][]model.Media, len(rows)/4+1)
+	for _, row := range rows {
+		k := resolver.key(row)
+		if k == "" {
+			continue
+		}
+		episodes[k] = append(episodes[k], row)
+	}
+	value := &libraryRowsCacheValue{Rows: rows, Resolver: resolver, Episodes: episodes}
+	if s.cache != nil {
+		s.cache.SetObject(cacheKey, value, s.mediaObjectTTL())
+	}
+	return value, nil
+}
+
+func (s *MediaService) ListLibrarySeriesCards(ctx context.Context, libraryID string, visibility MediaVisibility) ([]SeriesCard, int64, error) {
+	visibility = ExpandMediaVisibilityForMergedCloudLibraries(ctx, s.repo, visibility)
+	cacheKey := s.libraryCardsObjectKey(libraryID, visibility)
+	if s.cache != nil {
+		if obj, ok := s.cache.GetObject(cacheKey); ok {
+			if cached, ok := obj.(*seriesCardsCacheValue); ok {
+				return cached.Cards, cached.Total, nil
+			}
+		}
+	}
+	rows, err := s.libraryRowsWithIndex(ctx, libraryID, visibility)
+	if err != nil {
 		return nil, 0, err
 	}
-	cards := groupMediaSeriesCards(rows)
+	cards := groupMediaSeriesCards(rows.Rows)
 	if cards == nil {
 		cards = []SeriesCard{}
 	}
 	total := int64(len(cards))
 	if s.cache != nil {
-		s.cache.SetJSON(ctx, cacheKey, seriesCardsCacheValue{Cards: cards, Total: total}, time.Duration(s.mediaCacheTTLSeconds())*time.Second)
+		s.cache.SetObject(cacheKey, &seriesCardsCacheValue{Cards: cards, Total: total}, s.mediaObjectTTL())
 	}
 	return cards, total, nil
 }
@@ -72,17 +116,35 @@ func (s *MediaService) ListRecentSeriesCards(ctx context.Context, limit int, vis
 }
 
 func (s *MediaService) ListLibrarySeriesEpisodes(ctx context.Context, libraryID, key string, visibility MediaVisibility) ([]model.Media, error) {
-	rows, _, err := s.listAllMediaVisible(ctx, libraryID, visibility)
+	rows, err := s.libraryRowsWithIndex(ctx, libraryID, visibility)
 	if err != nil {
 		return nil, err
 	}
+	// 预计算索引命中：O(1) 查找，拷贝后排序避免改动共享缓存。
+	if episodes, ok := rows.Episodes[key]; ok && len(episodes) > 0 {
+		out := make([]model.Media, len(episodes))
+		copy(out, episodes)
+		sortEpisodesForDisplay(out)
+		return out, nil
+	}
+
+	// 兜底：索引未命中（如卡片 key 与行缓存短暂跨代），保持原线性匹配逻辑。
+	all := rows.Rows
 	out := make([]model.Media, 0)
-	resolver := newMediaSeriesKeyResolver(rows)
-	for _, row := range rows {
-		if resolver.key(row) == key {
+	for _, row := range all {
+		if rows.Resolver.key(row) == key {
 			out = append(out, row)
 		}
 	}
+	if len(out) == 0 {
+		return []model.Media{}, nil
+	}
+	sortEpisodesForDisplay(out)
+	return out, nil
+}
+
+// sortEpisodesForDisplay 与历史行为一致：季/集号升序，再按入库时间兜底。
+func sortEpisodesForDisplay(out []model.Media) {
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].SeasonNum != out[j].SeasonNum {
 			return out[i].SeasonNum < out[j].SeasonNum
@@ -92,7 +154,6 @@ func (s *MediaService) ListLibrarySeriesEpisodes(ctx context.Context, libraryID,
 		}
 		return out[i].CreatedAt.Before(out[j].CreatedAt)
 	})
-	return out, nil
 }
 
 func (s *MediaService) ListMediaEpisodes(ctx context.Context, mediaID string, visibility MediaVisibility) ([]model.Media, error) {
@@ -109,23 +170,22 @@ func (s *MediaService) ListMediaEpisodes(ctx context.Context, mediaID string, vi
 	if target.LibraryID == "" {
 		return []model.Media{*target}, nil
 	}
-	rows, _, err := s.listAllMediaVisible(ctx, target.LibraryID, visibility)
+	cache, err := s.libraryRowsWithIndex(ctx, target.LibraryID, visibility)
 	if err != nil {
 		return nil, err
 	}
+	rows := cache.Rows
 	if len(rows) == 0 {
 		return []model.Media{*target}, nil
 	}
 
-	resolver := newMediaSeriesKeyResolver(rows)
-	targetKey := resolver.key(*target)
-
-	out := make([]model.Media, 0)
+	var out []model.Media
+	targetKey := cache.Resolver.key(*target)
 	if targetKey != "" {
-		for _, row := range rows {
-			if resolver.key(row) == targetKey {
-				out = append(out, row)
-			}
+		// 预计算索引命中时拷贝，避免改动共享缓存。
+		if episodes, ok := cache.Episodes[targetKey]; ok {
+			out = make([]model.Media, len(episodes))
+			copy(out, episodes)
 		}
 	}
 

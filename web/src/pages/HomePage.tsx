@@ -9,6 +9,7 @@ import { usePinnedLibraries } from '../hooks/usePinnedLibraries'
 import { sortByPinnedIds } from '../utils/pinnedLibraries'
 import {
   ContinueWatchingSection,
+  ContinueWatchingSkeleton,
   HomeCarouselSection,
   HomeEmptyState,
   HomeLibrariesSection,
@@ -23,38 +24,22 @@ export function HomePage() {
   const [libraries, setLibraries] = useState<Library[]>([])
   const [libraryData, setLibraryData] = useState<Record<string, { cards: SeriesCard[]; items: Media[]; total: number }>>({})
   const [history, setHistory] = useState<HistoryItem[]>([])
-  const [loading, setLoading] = useState(true)
+  // 两个请求独立渐进加载：库列表控制整页首屏，播放记录区块自行渲染，
+  // 避免整页被 Promise.all 里最慢的那个请求拖住。
+  const [librariesLoading, setLibrariesLoading] = useState(true)
+  const [historyLoading, setHistoryLoading] = useState(true)
   const { pinnedIds } = usePinnedLibraries()
 
   useEffect(() => {
     let cancelled = false
 
-    async function load() {
-      setLoading(true)
-      try {
-        const [libs, hist] = await Promise.all([
-          libraryAPI
-            .list({ withPreview: true, previewLimit: 20 })
-            .then((rows) => asArray<LibraryWithPreview>(rows))
-            .catch(() => [] as LibraryWithPreview[]),
-          historyAPI
-            .continueWatching(12)
-            .then((rows) =>
-              rows.map(
-                (row): HistoryItem => ({
-                  ...row.history,
-                  created_at: '',
-                  updated_at: '',
-                  media: row.media,
-                }),
-              ),
-            )
-            .catch(() => [] as HistoryItem[]),
-        ])
-
+    libraryAPI
+      .list({ withPreview: true, previewLimit: 20 })
+      .then((rows) => asArray<LibraryWithPreview>(rows))
+      .catch(() => [] as LibraryWithPreview[])
+      .then((libs) => {
         if (cancelled) return
         setLibraries(libs)
-        setHistory(hist.filter((h) => h && !h.completed))
 
         const mapData: Record<string, { cards: SeriesCard[]; items: Media[]; total: number }> = {}
         for (const lib of libs) {
@@ -65,12 +50,36 @@ export function HomePage() {
           }
         }
         setLibraryData(mapData)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
+        setLibrariesLoading(false)
+      })
 
-    load()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    historyAPI
+      .continueWatching(12)
+      .then((rows) =>
+        rows.map(
+          (row): HistoryItem => ({
+            ...row.history,
+            created_at: '',
+            updated_at: '',
+            media: row.media,
+          }),
+        ),
+      )
+      .catch(() => [] as HistoryItem[])
+      .then((rows) => {
+        if (cancelled) return
+        setHistory(rows.filter((h) => h && !h.completed))
+        setHistoryLoading(false)
+      })
+
     return () => {
       cancelled = true
     }
@@ -131,14 +140,15 @@ export function HomePage() {
 
   const sortedLibraries = useMemo(() => sortByPinnedIds(libraries, pinnedIds), [libraries, pinnedIds])
 
-  const empty =
-    !loading &&
-    libraries.length === 0 &&
-    history.length === 0
-
-  if (loading) {
+  // 库列表还没回来先展示整页 loading；库为空时再等一下播放记录，
+  // 以免在"空站点"和"有观看记录"两个终态之间闪空白。
+  if (librariesLoading || (libraries.length === 0 && historyLoading)) {
     return <HomeLoadingState />
   }
+
+  const empty =
+    libraries.length === 0 &&
+    history.length === 0
 
   if (empty) {
     return <HomeEmptyState />
@@ -151,8 +161,9 @@ export function HomePage() {
         <HomeCarouselSection items={carouselItems} libraryMap={libraryMap} />
       )}
 
-      {/* 2. 继续观看（若有历史） */}
-      {history.length > 0 && <ContinueWatchingSection history={history} />}
+      {/* 2. 继续观看（独立加载，未回来前展示同构骨架） */}
+      {historyLoading && <ContinueWatchingSkeleton />}
+      {!historyLoading && history.length > 0 && <ContinueWatchingSection history={history} />}
 
       {/* 3. 媒体库卡片区 */}
       {sortedLibraries.length > 0 && (

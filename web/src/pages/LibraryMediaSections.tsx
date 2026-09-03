@@ -2,8 +2,12 @@ import type { ReactNode } from 'react'
 import { Film } from 'lucide-react'
 
 import { MediaCard } from '../components/MediaCard'
+import { MEDIA_GRID_CLASS, VirtualMediaGrid } from '../components/VirtualMediaGrid'
 import type { Media } from '../types'
 import type { SeriesCard } from '../utils/groupSeries'
+
+// 超过该数量后切换为虚拟滚动：DOM 只挂载视口内的卡片，大库不再线性劣化。
+const VIRTUALIZE_THRESHOLD = 200
 
 type LibraryMediaSectionsProps = {
   isSeries: boolean
@@ -27,11 +31,10 @@ export function LibraryMediaSections({
   return (
     <>
       {!isSeries && items.length > 0 && (
-        <div className="grid grid-cols-3 gap-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8">
-          {items.map((media) => (
-            <MediaCard key={media.id} media={media} actions={cardActions(media)} />
-          ))}
-        </div>
+        <MediaGrid count={items.length} renderItem={(index) => {
+          const media = items[index]
+          return <MediaCard key={media.id} media={media} actions={cardActions(media)} />
+        }} />
       )}
 
       {!isSeries && items.length === 0 && (
@@ -39,8 +42,9 @@ export function LibraryMediaSections({
       )}
 
       {isSeries && seriesCards.length > 0 && !selectedSeries && (
-        <div className="grid grid-cols-3 gap-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8">
-          {seriesCards.map((series) => (
+        <MediaGrid count={seriesCards.length} renderItem={(index) => {
+          const series = seriesCards[index]
+          return (
             <MediaCard
               key={series.key}
               media={series.rep}
@@ -48,8 +52,8 @@ export function LibraryMediaSections({
               actions={cardActions(series.rep)}
               onClick={() => onSeriesClick(series)}
             />
-          ))}
-        </div>
+          )
+        }} />
       )}
 
       {isSeries && seriesCards.length === 0 && !loading && (
@@ -57,6 +61,13 @@ export function LibraryMediaSections({
       )}
     </>
   )
+}
+
+function MediaGrid({ count, renderItem }: { count: number; renderItem: (index: number) => ReactNode }) {
+  if (count <= VIRTUALIZE_THRESHOLD) {
+    return <div className={MEDIA_GRID_CLASS}>{Array.from({ length: count }, (_, index) => renderItem(index))}</div>
+  }
+  return <VirtualMediaGrid totalCount={count} renderItem={renderItem} />
 }
 
 function LibraryEmptyState({ message }: { message: string }) {
