@@ -332,6 +332,7 @@ function LibraryEntryCard({
       <Link
         to={`/library/${library.id}`}
         className="flex min-w-0 flex-1"
+        title={library.name}
       >
       <div className={`grid h-20 w-24 sm:h-24 sm:w-36 shrink-0 gap-1 overflow-hidden rounded-xl sm:rounded-2xl bg-[linear-gradient(135deg,#fff7ed,#f8fafc)] ${artwork.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
         {artwork.length > 0 ? (
@@ -362,7 +363,10 @@ function LibraryEntryCard({
               {preview.total.toLocaleString()} 个条目
             </span>
           </div>
-          <h2 className="line-clamp-2 font-display text-sm font-bold leading-tight text-ink-600 group-hover:text-brand-600 sm:truncate sm:text-xl sm:font-black">
+          <h2
+            className="line-clamp-2 break-words font-display text-sm font-bold leading-snug text-ink-600 group-hover:text-brand-600 sm:text-base lg:text-lg sm:font-black"
+            title={library.name}
+          >
             {library.name}
             {pinned ? <span className="ml-1.5 align-middle text-[10px] font-bold text-brand-600">置顶</span> : null}
           </h2>
@@ -395,7 +399,10 @@ function LibraryShelf({ preview, pinned }: { preview: LibraryPreview; pinned?: b
             {TYPE_ICONS[library.type] ?? <LibraryIcon size={14} />}
             {TYPE_LABELS[library.type] ?? library.type}
           </div>
-          <h2 className="line-clamp-2 font-display text-xl sm:text-2xl font-black text-ink-600 sm:truncate">
+          <h2
+            className="line-clamp-2 break-words font-display text-xl sm:text-2xl font-black text-ink-600"
+            title={library.name}
+          >
             {library.name}
             {pinned ? <span className="ml-2 align-middle text-xs font-bold text-brand-600">置顶</span> : null}
           </h2>

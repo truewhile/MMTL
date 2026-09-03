@@ -461,6 +461,7 @@ export function HomeLibrariesSection({
               key={lib.id}
               to={`/library/${lib.id}`}
               className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel)] p-3 transition-all duration-300 hover:-translate-y-1 hover:border-brand-500/50 hover:bg-[var(--app-hover)]/40 hover:shadow-lg hover:shadow-brand-500/10"
+              title={lib.name}
             >
               {/* 封面图片展示区：和媒体库页面一样，显示设置好的或生成的图片 */}
               <div
@@ -496,7 +497,10 @@ export function HomeLibrariesSection({
 
               {/* 媒体库信息 */}
               <div className="mt-3 flex flex-col justify-between">
-                <h3 className="truncate font-display text-sm font-bold text-[var(--app-text)] group-hover:text-brand-500">
+                <h3
+                  className="line-clamp-2 break-words font-display text-sm font-bold text-[var(--app-text)] group-hover:text-brand-500"
+                  title={lib.name}
+                >
                   {lib.name}
                 </h3>
                 <p className="mt-0.5 text-xs text-[var(--app-muted)]">
@@ -542,7 +546,7 @@ export function HomeLibraryRowSection({
             {TYPE_ICONS[library.type] || <FolderOpen size={18} />}
           </span>
           <div>
-            <h2 className="font-display text-xl font-extrabold tracking-tight text-[var(--app-text)]">
+            <h2 className="font-display text-xl font-extrabold tracking-tight text-[var(--app-text)]" title={library.name}>
               {library.name}
             </h2>
             <span className="text-xs text-[var(--app-muted)]">
