@@ -3,17 +3,18 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { libraryAPI } from '../api/library'
 import { toolsAPI } from '../api/tools'
 import { openManageLibrariesDialog } from '../components/manageLibrariesDialog'
+import { usePinnedLibraries } from '../hooks/usePinnedLibraries'
 import {
   LibrariesContent,
   LibrariesEmptyState,
   LibrariesHeader,
 } from './LibrariesPageSections'
 import type { LibraryPreview } from './librariesPageModel'
-import { readPinnedLibraryIds, sortLibraryPreviews, togglePinnedLibraryId } from '../utils/pinnedLibraries'
+import { sortLibraryPreviews } from '../utils/pinnedLibraries'
 
 export function LibrariesPage() {
   const [previews, setPreviews] = useState<LibraryPreview[]>([])
-  const [pinnedIds, setPinnedIds] = useState<string[]>(() => readPinnedLibraryIds())
+  const { pinnedIds, loading: pinnedLoading, togglePin } = usePinnedLibraries()
   const [loading, setLoading] = useState(true)
   const [repairing, setRepairing] = useState(false)
   const [repairEpisodeArtwork, setRepairEpisodeArtwork] = useState(false)
@@ -62,12 +63,12 @@ export function LibrariesPage() {
   const sortedPreviews = useMemo(() => sortLibraryPreviews(previews, pinnedIds), [previews, pinnedIds])
 
   const handleTogglePin = useCallback((libraryId: string) => {
-    setPinnedIds(togglePinnedLibraryId(libraryId))
-  }, [])
+    void togglePin(libraryId)
+  }, [togglePin])
 
   const total = useMemo(() => previews.reduce((sum, preview) => sum + preview.total, 0), [previews])
 
-  if (loading) {
+  if (loading || pinnedLoading) {
     return <p className="px-2 py-8 text-sm text-sand-500">媒体库加载中…</p>
   }
 

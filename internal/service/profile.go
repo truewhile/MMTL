@@ -3,6 +3,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 
@@ -79,6 +80,106 @@ func (p *ProfileService) UpdateProfile(ctx context.Context, userID string, patch
 		}
 	}
 	return p.repo.User.FindByID(ctx, userID)
+}
+
+// GetPinnedLibraryIDs returns the user's pinned library IDs, filtered to libraries
+// they can still access.
+func (p *ProfileService) GetPinnedLibraryIDs(ctx context.Context, userID string) ([]string, error) {
+	user, err := p.repo.User.FindByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, errors.New("user not found")
+	}
+	visibility := UserDefaultMediaVisibility(ctx, p.repo, userID)
+	accessible, err := p.accessibleLibraryIDSet(ctx, visibility)
+	if err != nil {
+		return nil, err
+	}
+	return filterPinnedLibraryIDs(user.DecodePinnedLibraryIDs(), accessible), nil
+}
+
+// SetPinnedLibraryIDs persists the user's pinned library order after filtering to
+// accessible, enabled libraries.
+func (p *ProfileService) SetPinnedLibraryIDs(ctx context.Context, userID string, ids []string) ([]string, error) {
+	if userID == "" {
+		return nil, errors.New("missing user id")
+	}
+	user, err := p.repo.User.FindByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, errors.New("user not found")
+	}
+	visibility := UserDefaultMediaVisibility(ctx, p.repo, userID)
+	accessible, err := p.accessibleLibraryIDSet(ctx, visibility)
+	if err != nil {
+		return nil, err
+	}
+	normalized := filterPinnedLibraryIDs(normalizePinnedLibraryIDs(ids), accessible)
+	raw, err := json.Marshal(normalized)
+	if err != nil {
+		return nil, err
+	}
+	if err := p.repo.User.UpdateFields(ctx, userID, map[string]any{
+		"pinned_library_ids": string(raw),
+	}); err != nil {
+		return nil, err
+	}
+	return normalized, nil
+}
+
+func (p *ProfileService) accessibleLibraryIDSet(ctx context.Context, visibility MediaVisibility) (map[string]struct{}, error) {
+	libs, err := p.repo.Library.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]struct{})
+	for _, lib := range libs {
+		if !lib.Enabled {
+			continue
+		}
+		if !LibraryVisibleForUser(ctx, p.repo, lib, visibility) {
+			continue
+		}
+		out[lib.ID] = struct{}{}
+	}
+	return out, nil
+}
+
+func normalizePinnedLibraryIDs(ids []string) []string {
+	if len(ids) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(ids))
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		trimmed := strings.TrimSpace(id)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		out = append(out, trimmed)
+	}
+	return out
+}
+
+func filterPinnedLibraryIDs(ids []string, accessible map[string]struct{}) []string {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := accessible[id]; ok {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // AdminUpdateRole lets administrators promote / demote another user. The

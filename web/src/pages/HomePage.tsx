@@ -5,6 +5,8 @@ import { historyAPI } from '../api/history'
 import type { HistoryItem } from '../api/playback'
 import type { Library, Media } from '../types'
 import type { SeriesCard } from '../utils/groupSeries'
+import { usePinnedLibraries } from '../hooks/usePinnedLibraries'
+import { sortByPinnedIds } from '../utils/pinnedLibraries'
 import {
   ContinueWatchingSection,
   HomeCarouselSection,
@@ -22,6 +24,7 @@ export function HomePage() {
   const [libraryData, setLibraryData] = useState<Record<string, { cards: SeriesCard[]; items: Media[]; total: number }>>({})
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [loading, setLoading] = useState(true)
+  const { pinnedIds } = usePinnedLibraries()
 
   useEffect(() => {
     let cancelled = false
@@ -126,6 +129,8 @@ export function HomePage() {
     return candidateMedia.slice(0, 10)
   }, [libraries, libraryData])
 
+  const sortedLibraries = useMemo(() => sortByPinnedIds(libraries, pinnedIds), [libraries, pinnedIds])
+
   const empty =
     !loading &&
     libraries.length === 0 &&
@@ -150,9 +155,9 @@ export function HomePage() {
       {history.length > 0 && <ContinueWatchingSection history={history} />}
 
       {/* 3. 媒体库卡片区 */}
-      {libraries.length > 0 && (
+      {sortedLibraries.length > 0 && (
         <HomeLibrariesSection
-          libraries={libraries}
+          libraries={sortedLibraries}
           libraryData={libraryData}
           libraryCounts={libraryCounts}
         />
@@ -160,7 +165,7 @@ export function HomePage() {
 
       {/* 4. 各媒体库内容展示行 */}
       <div className="space-y-10">
-        {libraries.map((lib) => {
+        {sortedLibraries.map((lib) => {
           const cards = libraryData[lib.id]?.cards || []
           if (cards.length === 0) return null
           return (

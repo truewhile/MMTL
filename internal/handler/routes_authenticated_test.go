@@ -25,6 +25,8 @@ func TestAuthenticatedRouteSurfacesAreRegistered(t *testing.T) {
 
 	for _, want := range []string{
 		"GET /api/me",
+		"GET /api/me/pinned-libraries",
+		"PUT /api/me/pinned-libraries",
 		"GET /api/auth/permissions",
 		"GET /api/libraries",
 		"GET /api/media",

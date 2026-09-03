@@ -10,6 +10,7 @@ export interface User {
   force_password_reset: boolean
   is_active: boolean
   allowed_library_ids?: string[]
+  pinned_library_ids?: string[]
   is_default_admin?: boolean
   is_protected?: boolean
   realtime_online?: boolean
