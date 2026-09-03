@@ -189,19 +189,40 @@ func (s *MediaService) ListMediaEpisodes(ctx context.Context, mediaID string, vi
 		}
 	}
 
-	// 如果没有聚合到多集，尝试同父目录匹配
-	if len(out) <= 1 && target.Path != "" {
-		targetDir := filepath.Dir(strings.ReplaceAll(target.Path, "\\", "/"))
-		dirMatches := make([]model.Media, 0)
-		for _, row := range rows {
-			if row.Path != "" && filepath.Dir(strings.ReplaceAll(row.Path, "\\", "/")) == targetDir {
-				dirMatches = append(dirMatches, row)
+		// 如果没有聚合到多集，尝试同父目录匹配（排除合集目录和公共分类目录，且同目录文件不能是互不相同的独立电影）
+		if len(out) <= 1 && target.Path != "" {
+			targetDir := filepath.Dir(strings.ReplaceAll(target.Path, "\\", "/"))
+			parentBase := filepath.Base(targetDir)
+			if !mediaParentLooksLikeCollection(target.Path) && !seriesTitleIsGenericContainer(parentBase, *target) {
+				targetTitleNorm := normalizeSeriesTitle(target.Title)
+				targetDirNorm := normalizeSeriesTitle(parentBase)
+				dirMatches := make([]model.Media, 0)
+				for _, row := range rows {
+					if row.Path == "" || filepath.Dir(strings.ReplaceAll(row.Path, "\\", "/")) != targetDir {
+						continue
+					}
+					if row.ID == target.ID {
+						dirMatches = append(dirMatches, row)
+						continue
+					}
+					rowTitleNorm := normalizeSeriesTitle(row.Title)
+					allowMatch := false
+					if isGenericMovieTitle(rowTitleNorm) || isGenericMovieTitle(targetTitleNorm) {
+						allowMatch = true
+					} else if rowTitleNorm != "" && rowTitleNorm == targetTitleNorm {
+						allowMatch = true
+					} else if rowTitleNorm != "" && targetDirNorm != "" && rowTitleNorm == targetDirNorm {
+						allowMatch = true
+					}
+					if allowMatch {
+						dirMatches = append(dirMatches, row)
+					}
+				}
+				if len(dirMatches) > 1 {
+					out = dirMatches
+				}
 			}
 		}
-		if len(dirMatches) > 1 {
-			out = dirMatches
-		}
-	}
 
 	if len(out) == 0 {
 		out = []model.Media{*target}

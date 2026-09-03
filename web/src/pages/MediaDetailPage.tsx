@@ -32,7 +32,7 @@ export function MediaDetailPage() {
         media={media}
         isAdmin={role === 'admin'}
         favourite={detail.favourite}
-        playTargetId={detail.firstPlayableEpisode?.id}
+        playTargetId={media.id || detail.firstPlayableEpisode?.id}
         scrapeEpisodeArtwork={detail.scrapeEpisodeArtwork}
         onToggleFavourite={detail.toggleFavourite}
         onScrapeEpisodeArtworkChange={detail.setScrapeEpisodeArtwork}

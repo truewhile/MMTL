@@ -463,8 +463,49 @@ func TestGroupMediaSeriesCardsKeepsIndependentMoviesSeparateInSharedSubdirectory
 		{LibraryID: "movies", Title: "cd1", Path: `/media/电影/指环王 (2001)/cd1.mkv`},
 		{LibraryID: "movies", Title: "cd2", Path: `/media/电影/指环王 (2001)/cd2.mkv`},
 	}
-	cdCards := groupMediaSeriesCards(cdItems)
-	if len(cdCards) != 1 {
-		t.Fatalf("got %d cards for cd1/cd2, want 1 folded movie card", len(cdCards))
+		cdCards := groupMediaSeriesCards(cdItems)
+		if len(cdCards) != 1 {
+			t.Fatalf("got %d cards for cd1/cd2, want 1 folded movie card", len(cdCards))
+		}
+	}
+
+func TestListMediaEpisodesKeepsIndependentMoviesSeparate(t *testing.T) {
+	db := newServiceTestDB(t, &model.Library{}, &model.Media{})
+	repos := repository.New(db)
+	lib := model.Library{Base: model.Base{ID: "lib-movies"}, Name: "电影", Type: "movies", Enabled: true}
+	if err := repos.DB.Create(&lib).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	m1 := model.Media{
+		Base:      model.Base{ID: "m1"},
+		LibraryID: lib.ID,
+		Title:     "老师2024偷窥篇",
+		Path:      `/media/小姐姐/国产/nana/老师2024偷窥篇.strm`,
+	}
+	m2 := model.Media{
+		Base:      model.Base{ID: "m2"},
+		LibraryID: lib.ID,
+		Title:     "紫光灯下的肉体诱惑",
+		Path:      `/media/小姐姐/国产/nana/紫光灯下的肉体诱惑.strm`,
+	}
+	m3 := model.Media{
+		Base:      model.Base{ID: "m3"},
+		LibraryID: lib.ID,
+		Title:     "修洗衣机",
+		Path:      `/media/小姐姐/国产/nana/修洗衣机.strm`,
+	}
+	if err := repos.DB.Create(&[]model.Media{m1, m2, m3}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	svc := NewMediaService(&config.Config{}, zap.NewNop(), repos)
+	eps, err := svc.ListMediaEpisodes(t.Context(), "m1", MediaVisibility{IncludeNSFW: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(eps) != 1 || eps[0].ID != "m1" {
+		t.Fatalf("ListMediaEpisodes got %#v, want exactly m1", eps)
 	}
 }
+

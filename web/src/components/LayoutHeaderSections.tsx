@@ -6,6 +6,7 @@ import { ArrowLeft, Film, LoaderCircle, Menu, Search, Star, X } from 'lucide-rea
 import { imageURL } from '../api/client'
 import { mediaAPI } from '../api/library'
 import type { Media, PlayProfile, User } from '../types'
+import { favouriteMediaLink } from '../utils/mediaNavigation'
 import { resolveHeaderBack } from './layoutNavigation'
 import { LayoutThemeToggle } from './LayoutThemeToggle'
 import { LayoutUserMenu } from './LayoutUserMenu'
@@ -149,17 +150,17 @@ function LayoutHeaderSearch() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const handleSelect = (mediaId: string) => {
+  const handleSelect = (item: Media) => {
     setIsOpen(false)
     setQuery('')
-    navigate(`/media/${mediaId}`)
+    navigate(favouriteMediaLink(item))
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       setIsOpen(false)
     } else if (e.key === 'Enter' && results.length > 0) {
-      handleSelect(results[0].id)
+      handleSelect(results[0])
     }
   }
 
@@ -220,7 +221,7 @@ function LayoutHeaderSearch() {
                 {results.map((item) => (
                   <button
                     key={item.id}
-                    onClick={() => handleSelect(item.id)}
+                    onClick={() => handleSelect(item)}
                     className="flex w-full items-center gap-3 rounded-xl p-2 text-left transition-colors hover:bg-[var(--app-hover)] group"
                   >
                     <div className="relative h-12 w-9 shrink-0 overflow-hidden rounded-lg bg-[var(--app-panel-soft)]">

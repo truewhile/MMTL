@@ -96,7 +96,7 @@ export function MediaDetailPlaybackActions({
   onToggleFavourite,
   playTargetId,
 }: MediaDetailPlaybackActionsProps) {
-  const targetId = playTargetId || media.id
+  const targetId = media.id || playTargetId || ''
   return (
     <div className="flex flex-wrap gap-3">
       <Link to={`/play/${targetId}`} state={{ from: `/media/${media.id}` }} className="btn-primary px-6 py-3.5 shadow-sm">
