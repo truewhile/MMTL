@@ -94,18 +94,26 @@ func listLibrariesHandler(svc *service.Container) gin.HandlerFunc {
 				out = append(out, webLibraryPayload{Library: l})
 			}
 		}
-		// 远程 Emby 挂载库追加在本地库之后。
+		// 远程 Emby 挂载库追加在本地库之后（非管理员视图仍受 allowed_library_ids 约束）。
 		if svc.EmbyRemote != nil {
 			if views, err := svc.EmbyRemote.RemoteLibraries(ctx); err == nil {
-				remotePayloads := make([]webLibraryPayload, len(views))
-				for i, v := range views {
+				visibility := mediaVisibilityForRequest(c, svc)
+				allowedViews := make([]service.RemoteLibraryView, 0, len(views))
+				for _, v := range views {
+					if !includeHidden && !service.LibraryVisibleForUser(ctx, svc.Repo, v.Library, visibility) {
+						continue
+					}
+					allowedViews = append(allowedViews, v)
+				}
+				remotePayloads := make([]webLibraryPayload, len(allowedViews))
+				for i, v := range allowedViews {
 					remotePayloads[i] = webLibraryPayload{Library: v.Library, IsRemoteEmby: true, RemoteSource: v.AccountName}
 				}
-				if withPreview && len(views) > 0 {
+				if withPreview && len(allowedViews) > 0 {
 					const maxRemotePreviewWorkers = 6
 					sem := make(chan struct{}, maxRemotePreviewWorkers)
 					var wg sync.WaitGroup
-					for i, v := range views {
+					for i, v := range allowedViews {
 						i, v := i, v
 						wg.Add(1)
 						go func() {
@@ -148,6 +156,12 @@ func getLibraryHandler(svc *service.Container) gin.HandlerFunc {
 			mountID, remoteID, _ := service.DecodeEmbyRemoteID(id)
 			view, err := svc.EmbyRemote.RemoteLibraryByID(ctx, mountID, remoteID)
 			if err != nil || view == nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+				return
+			}
+			role, _ := c.Get(middleware.CtxUserRole)
+			includeHidden := role == "admin" && (c.Query("include_hidden") == "1" || c.Query("include_hidden") == "true" || c.Query("all") == "1")
+			if !includeHidden && !service.LibraryVisibleForUser(ctx, svc.Repo, view.Library, mediaVisibilityForRequest(c, svc)) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 				return
 			}
@@ -330,6 +344,10 @@ func listMediaHandler(svc *service.Container) gin.HandlerFunc {
 				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 				return
 			}
+			if !service.EmbyMountLibraryAllowed(mediaVisibilityForRequest(c, svc), mount) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+				return
+			}
 			itemTypes := ""
 			if view, err := svc.EmbyRemote.RemoteLibraryByID(ctx, mountID, remoteID); err == nil && view != nil {
 				itemTypes = remoteLibraryItemTypes(view.CollectionType)
@@ -394,6 +412,10 @@ func getMediaHandler(svc *service.Container) gin.HandlerFunc {
 			mountID, remoteID, _ := service.DecodeEmbyRemoteID(id)
 			mount, acct, _ := svc.EmbyRemote.ResolveMount(ctx, mountID)
 			if mount == nil || acct == nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+				return
+			}
+			if !service.EmbyMountLibraryAllowed(mediaVisibilityForRequest(c, svc), mount) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 				return
 			}
@@ -576,6 +598,10 @@ func streamHandler(svc *service.Container) gin.HandlerFunc {
 			mountID, remoteID, _ := service.DecodeEmbyRemoteID(id)
 			mount, acct, _ := svc.EmbyRemote.ResolveMount(ctx, mountID)
 			if mount == nil || acct == nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+				return
+			}
+			if !service.EmbyMountLibraryAllowed(mediaVisibilityForRequest(c, svc), mount) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 				return
 			}

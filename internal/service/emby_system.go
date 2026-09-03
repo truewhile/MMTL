@@ -143,6 +143,10 @@ func (e *EmbyService) Views(ctx context.Context, userID string) (map[string]any,
 		items = append(items, e.libraryAsView(ctx, &l))
 	}
 	for _, remote := range e.remoteViews(ctx) {
+		id, _ := remote["Id"].(string)
+		if !LibraryIDAllowed(visibility, id) {
+			continue
+		}
 		items = append(items, remote)
 	}
 	items = sortViewItemsByPinnedIDs(items, e.pinnedLibraryIDsForUser(ctx, userID))
