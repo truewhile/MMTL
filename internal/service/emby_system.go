@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"time"
 
@@ -125,7 +126,8 @@ func (e *EmbyService) userPayload(u *model.User) map[string]any {
 }
 
 // Views 返回 Emby 中"虚拟根目录"——每个 library 一个条目，外加所有启用的
-// 远程 Emby 挂载的媒体库（联邦聚合）。
+// 远程 Emby 挂载的媒体库（联邦聚合）。顺序遵循用户置顶偏好：置顶库靠前，
+// 未置顶保持原有 sort_order / 远程挂载顺序。
 func (e *EmbyService) Views(ctx context.Context, userID string) (map[string]any, error) {
 	libs, err := e.repo.Library.List(ctx)
 	if err != nil {
@@ -143,7 +145,52 @@ func (e *EmbyService) Views(ctx context.Context, userID string) (map[string]any,
 	for _, remote := range e.remoteViews(ctx) {
 		items = append(items, remote)
 	}
+	items = sortViewItemsByPinnedIDs(items, e.pinnedLibraryIDsForUser(ctx, userID))
 	return map[string]any{"Items": items, "TotalRecordCount": len(items), "StartIndex": 0}, nil
+}
+
+func (e *EmbyService) pinnedLibraryIDsForUser(ctx context.Context, userID string) []string {
+	if e == nil || e.repo == nil || e.repo.User == nil || strings.TrimSpace(userID) == "" {
+		return nil
+	}
+	user, err := e.repo.User.FindByID(ctx, userID)
+	if err != nil || user == nil {
+		return nil
+	}
+	return user.DecodePinnedLibraryIDs()
+}
+
+func sortViewItemsByPinnedIDs(items []map[string]any, pinnedIDs []string) []map[string]any {
+	if len(items) < 2 || len(pinnedIDs) == 0 {
+		return items
+	}
+	rank := make(map[string]int, len(pinnedIDs))
+	for i, id := range pinnedIDs {
+		if id == "" {
+			continue
+		}
+		if _, exists := rank[id]; !exists {
+			rank[id] = i
+		}
+	}
+	if len(rank) == 0 {
+		return items
+	}
+	sorted := append([]map[string]any(nil), items...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		iID, _ := sorted[i]["Id"].(string)
+		jID, _ := sorted[j]["Id"].(string)
+		iRank, iPinned := rank[iID]
+		jRank, jPinned := rank[jID]
+		if iPinned != jPinned {
+			return iPinned
+		}
+		if iPinned && jPinned {
+			return iRank < jRank
+		}
+		return false
+	})
+	return sorted
 }
 
 // remoteViews 返回全部启用挂载的远程媒体库视图（只有显式挂载的库才出现）。
