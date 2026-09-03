@@ -21,6 +21,9 @@ func (e *EmbyService) Item(ctx context.Context, mediaID, userID string) (map[str
 		if mount == nil || acct == nil {
 			return nil, nil
 		}
+		if !EmbyMountLibraryAllowed(e.mediaVisibility(ctx, userID), mount) {
+			return nil, nil
+		}
 		out, err := e.remote.RemoteItem(ctx, mount, acct, remoteID)
 		if err != nil || out == nil {
 			return out, err
@@ -107,6 +110,9 @@ func (e *EmbyService) LatestItems(ctx context.Context, userID, parentID string, 
 		mountID, remoteParent, _ := DecodeEmbyRemoteID(parentID)
 		mount, acct, _ := e.remote.ResolveMount(ctx, mountID)
 		if mount == nil || acct == nil {
+			return nil, nil
+		}
+		if !EmbyMountLibraryAllowed(e.mediaVisibility(ctx, userID), mount) {
 			return nil, nil
 		}
 		out, err := e.remote.RemoteLatest(ctx, mount, acct, remoteParent, limit)

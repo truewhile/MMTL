@@ -74,6 +74,10 @@ func listLibrarySeriesHandler(svc *service.Container) gin.HandlerFunc {
 				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 				return
 			}
+			if !service.EmbyMountLibraryAllowed(mediaVisibilityForRequest(c, svc), mount) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+				return
+			}
 			cards, err := svc.EmbyRemote.RemoteSeriesCards(ctx, mount, acct, remoteID)
 			if err != nil {
 				writeInternalOrCanceled(c, err)
@@ -165,6 +169,10 @@ func listLibrarySeriesEpisodesHandler(svc *service.Container) gin.HandlerFunc {
 				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 				return
 			}
+			if !service.EmbyMountLibraryAllowed(mediaVisibilityForRequest(c, svc), mount) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+				return
+			}
 			items, err := svc.EmbyRemote.RemoteEpisodes(ctx, mount, acct, remoteSeriesID)
 			if err != nil {
 				writeInternalOrCanceled(c, err)
@@ -204,6 +212,10 @@ func listMediaEpisodesHandler(svc *service.Container) gin.HandlerFunc {
 			mountID, remoteID, _ := service.DecodeEmbyRemoteID(id)
 			mount, acct, _ := svc.EmbyRemote.ResolveMount(ctx, mountID)
 			if mount == nil || acct == nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+				return
+			}
+			if !service.EmbyMountLibraryAllowed(mediaVisibilityForRequest(c, svc), mount) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 				return
 			}

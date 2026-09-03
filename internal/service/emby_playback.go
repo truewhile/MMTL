@@ -24,6 +24,9 @@ func (e *EmbyService) PlaybackInfo(ctx context.Context, mediaID, userID string) 
 		if err != nil {
 			return nil, ErrEmbyRemoteNotFound
 		}
+		if !EmbyMountLibraryAllowed(e.mediaVisibility(ctx, userID), mount) {
+			return nil, ErrEmbyRemoteNotFound
+		}
 		out, err := e.remote.RemotePlaybackInfo(ctx, mount, acct, remoteID, userID)
 		if err != nil {
 			return nil, err

@@ -156,6 +156,9 @@ func (e *EmbyService) Items(ctx context.Context, p ItemsParams) (map[string]any,
 			if mount == nil || acct == nil {
 				return emptyItemsEnvelope(p.StartIndex), nil
 			}
+			if !EmbyMountLibraryAllowed(e.mediaVisibility(ctx, p.UserID), mount) {
+				return emptyItemsEnvelope(p.StartIndex), nil
+			}
 			out, err := e.remote.RemoteItems(ctx, mount, acct, p)
 			if err != nil {
 				return nil, err
@@ -273,6 +276,9 @@ func (e *EmbyService) aggregatedSearch(ctx context.Context, p ItemsParams) (map[
 		for i := range mounts {
 			m := mounts[i]
 			if !m.Enabled {
+				continue
+			}
+			if !EmbyMountLibraryAllowed(e.mediaVisibility(ctx, p.UserID), &m) {
 				continue
 			}
 			acct := e.remote.AccountByID(ctx, m.AccountID)
