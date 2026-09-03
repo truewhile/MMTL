@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
   loadPinnedLibraryIds,
@@ -10,16 +10,26 @@ export function usePinnedLibraries() {
   const [pinnedIds, setPinnedIds] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
+  const [loadError, setLoadError] = useState(false)
+  const loadedRef = useRef(false)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
+    setLoadError(false)
+    loadedRef.current = false
     loadPinnedLibraryIds()
       .then((ids) => {
-        if (!cancelled) setPinnedIds(ids)
+        if (cancelled) return
+        loadedRef.current = true
+        setPinnedIds(ids)
+        setLoadError(false)
       })
       .catch(() => {
-        if (!cancelled) setPinnedIds([])
+        if (cancelled) return
+        loadedRef.current = false
+        setLoadError(true)
+        // Keep any existing pins in memory; never replace a known server list with [].
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -30,6 +40,11 @@ export function usePinnedLibraries() {
   }, [])
 
   const togglePin = useCallback(async (libraryId: string) => {
+    // Avoid saving from an unloaded/failed state — that would overwrite the
+    // server list with only the clicked id and can wipe existing local pins
+    // when mounted Emby ids used to be filtered out server-side.
+    if (!loadedRef.current || loading || loadError) return
+
     let previous: string[] = []
     let optimistic: string[] = []
     setPinnedIds((current) => {
@@ -46,7 +61,7 @@ export function usePinnedLibraries() {
     } finally {
       setSyncing(false)
     }
-  }, [])
+  }, [loading, loadError])
 
-  return { pinnedIds, loading, syncing, togglePin }
+  return { pinnedIds, loading, syncing, loadError, togglePin }
 }

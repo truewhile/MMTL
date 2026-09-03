@@ -119,6 +119,9 @@ func (p *ProfileService) SetPinnedLibraryIDs(ctx context.Context, userID string,
 		return nil, err
 	}
 	normalized := filterPinnedLibraryIDs(normalizePinnedLibraryIDs(ids), accessible)
+	if normalized == nil {
+		normalized = []string{}
+	}
 	raw, err := json.Marshal(normalized)
 	if err != nil {
 		return nil, err
@@ -145,6 +148,22 @@ func (p *ProfileService) accessibleLibraryIDSet(ctx context.Context, visibility 
 			continue
 		}
 		out[lib.ID] = struct{}{}
+	}
+	// Mounted Emby libraries are not rows in the local libraries table; their
+	// web IDs are embyremote~{mountID}~{remoteViewID}. Include enabled mounts
+	// from the mount table so pinning them does not get stripped (and so a
+	// pin-save that includes remotes cannot accidentally wipe local pins).
+	if p.repo.EmbyMount != nil {
+		mounts, err := p.repo.EmbyMount.List(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, mount := range mounts {
+			if !mount.Enabled || strings.TrimSpace(mount.RemoteViewID) == "" {
+				continue
+			}
+			out[EncodeEmbyRemoteID(mount.ID, mount.RemoteViewID)] = struct{}{}
+		}
 	}
 	return out, nil
 }
