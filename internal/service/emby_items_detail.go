@@ -28,6 +28,14 @@ func (e *EmbyService) Item(ctx context.Context, mediaID, userID string) (map[str
 		if err := e.mergeRemoteUserData(ctx, userID, out); err != nil {
 			return nil, err
 		}
+		if favorite, _ := IsUserFavorite(ctx, e.repo, userID, mediaID); favorite {
+			userData, _ := out["UserData"].(map[string]any)
+			if userData == nil {
+				userData = map[string]any{}
+				out["UserData"] = userData
+			}
+			userData["IsFavorite"] = true
+		}
 		return out, nil
 	}
 	if lib, err := e.repo.Library.FindByID(ctx, mediaID); err != nil {
@@ -178,6 +186,137 @@ func (e *EmbyService) latestSeriesItemsForLibrary(ctx context.Context, userID, l
 // ResumeItems 列出有未完成播放进度的媒体。
 func (e *EmbyService) ResumeItems(ctx context.Context, userID string, limit int) (map[string]any, error) {
 	return e.resumableItems(ctx, ItemsParams{UserID: userID, Limit: limit})
+}
+
+// favoriteItems returns favourited media for Emby clients, including mounted
+// remote items stored only in the local favourites table.
+func (e *EmbyService) favoriteItems(ctx context.Context, p ItemsParams) (map[string]any, error) {
+	if p.Limit <= 0 || p.Limit > 500 {
+		p.Limit = 50
+	}
+	if p.StartIndex < 0 {
+		p.StartIndex = 0
+	}
+	if strings.TrimSpace(p.UserID) == "" {
+		return map[string]any{"Items": []any{}, "TotalRecordCount": int64(0), "StartIndex": p.StartIndex}, nil
+	}
+
+	var favs []model.Favorite
+	if err := e.repo.DB.WithContext(ctx).
+		Where("user_id = ?", p.UserID).
+		Order("created_at desc").
+		Find(&favs).Error; err != nil {
+		return nil, err
+	}
+	if len(favs) == 0 {
+		return map[string]any{"Items": []any{}, "TotalRecordCount": int64(0), "StartIndex": p.StartIndex}, nil
+	}
+
+	localIDs := make([]string, 0, len(favs))
+	for _, fav := range favs {
+		if !IsEmbyRemoteID(fav.MediaID) {
+			localIDs = append(localIDs, fav.MediaID)
+		}
+	}
+	byID := map[string]*model.Media{}
+	if len(localIDs) > 0 {
+		var medias []model.Media
+		q := e.repo.DB.WithContext(ctx).Where("id IN ?", localIDs)
+		q = e.applyUserMediaVisibility(ctx, q, p.UserID)
+		if err := q.Find(&medias).Error; err != nil {
+			return nil, err
+		}
+		for i := range medias {
+			byID[medias[i].ID] = &medias[i]
+		}
+	}
+
+	items := make([]map[string]any, 0, len(favs))
+	for _, fav := range favs {
+		if m, ok := byID[fav.MediaID]; ok {
+			if !favoriteMatchesParent(ctx, e, p.ParentID, fav.MediaID, m.LibraryID, m.SeriesID, nil) {
+				continue
+			}
+			if p.SearchTerm != "" {
+				needle := strings.ToLower(p.SearchTerm)
+				if !strings.Contains(strings.ToLower(m.Title), needle) &&
+					!strings.Contains(strings.ToLower(m.OriginalName), needle) {
+					continue
+				}
+			}
+			items = append(items, e.itemPayload(ctx, m, true, 0))
+			continue
+		}
+		if e.remote == nil || !IsEmbyRemoteID(fav.MediaID) {
+			continue
+		}
+		mountID, remoteID, _ := DecodeEmbyRemoteID(fav.MediaID)
+		mount, acct, err := e.remote.ResolveMount(ctx, mountID)
+		if err != nil || mount == nil || acct == nil {
+			continue
+		}
+		item, err := e.remote.RemoteItem(ctx, mount, acct, remoteID)
+		if err != nil || item == nil {
+			continue
+		}
+		if !favoriteMatchesParent(ctx, e, p.ParentID, fav.MediaID, "", "", item) {
+			continue
+		}
+		if p.SearchTerm != "" {
+			needle := strings.ToLower(p.SearchTerm)
+			name, _ := item["Name"].(string)
+			orig, _ := item["OriginalTitle"].(string)
+			if !strings.Contains(strings.ToLower(name), needle) &&
+				!strings.Contains(strings.ToLower(orig), needle) {
+				continue
+			}
+		}
+		userData, _ := item["UserData"].(map[string]any)
+		if userData == nil {
+			userData = map[string]any{}
+			item["UserData"] = userData
+		}
+		userData["IsFavorite"] = true
+		items = append(items, item)
+	}
+
+	total := int64(len(items))
+	if p.StartIndex >= len(items) {
+		return map[string]any{"Items": []map[string]any{}, "TotalRecordCount": total, "StartIndex": p.StartIndex}, nil
+	}
+	end := minInt(p.StartIndex+p.Limit, len(items))
+	return map[string]any{"Items": items[p.StartIndex:end], "TotalRecordCount": total, "StartIndex": p.StartIndex}, nil
+}
+
+func favoriteMatchesParent(ctx context.Context, e *EmbyService, parentID, mediaID, libraryID, seriesID string, remoteItem map[string]any) bool {
+	if parentID == "" {
+		return true
+	}
+	if libraryID != "" {
+		if libraryID == parentID || seriesID == parentID {
+			return true
+		}
+		for _, id := range e.mergedLibraryIDs(ctx, parentID) {
+			if id == libraryID {
+				return true
+			}
+		}
+		return false
+	}
+	if remoteItem == nil {
+		return false
+	}
+	itemParent, _ := remoteItem["ParentId"].(string)
+	itemSeries, _ := remoteItem["SeriesId"].(string)
+	if itemParent == parentID || itemSeries == parentID || mediaID == parentID {
+		return true
+	}
+	if !IsEmbyRemoteID(parentID) {
+		return false
+	}
+	wantMountID, _, _ := DecodeEmbyRemoteID(parentID)
+	gotMountID, _, _ := DecodeEmbyRemoteID(mediaID)
+	return wantMountID != "" && gotMountID == wantMountID
 }
 
 // resumableItems 返回未完成播放进度的媒体（包含本地媒体与挂载的远程媒体），支持分页。

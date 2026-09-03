@@ -7,35 +7,17 @@ import (
 	"strings"
 	"time"
 
-	"gorm.io/gorm"
-
 	"github.com/truewhile/MeBox/internal/model"
 )
 
-// SetFavorite 把 mediaID 标为 userID 的收藏。远程 Emby 条目直接透传到对应
-// 服务器（本地不落库）。
+// SetFavorite 把 mediaID 标为 userID 的收藏。挂载的远程 Emby 条目会同时写入
+// 本地 favourites 表并透传到对应远程服务器，保证网页与第三方 Emby 客户端一致。
 func (e *EmbyService) SetFavorite(ctx context.Context, userID, mediaID string, favorite bool) error {
-	if e.remote != nil && IsEmbyRemoteID(mediaID) {
-		acctID, remoteID, _ := DecodeEmbyRemoteID(mediaID)
-		if err := e.ProxyRemoteSetFavorite(ctx, acctID, remoteID, favorite); err != nil {
-			return err
-		}
-		return nil
-	}
-	if favorite {
-		var f model.Favorite
-		err := e.repo.DB.WithContext(ctx).
-			Where("user_id = ? AND media_id = ?", userID, mediaID).First(&f).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return e.repo.DB.WithContext(ctx).Create(&model.Favorite{
-				UserID: userID, MediaID: mediaID,
-			}).Error
-		}
+	if err := SyncUserFavorite(ctx, e.repo, e.remote, userID, mediaID, favorite); err != nil {
 		return err
 	}
-	return e.repo.DB.WithContext(ctx).
-		Where("user_id = ? AND media_id = ?", userID, mediaID).
-		Delete(&model.Favorite{}).Error
+	e.invalidateEmbyItemsCache(ctx)
+	return nil
 }
 
 // MarkPlayed 把 mediaID 标为已看（写一个 100% 进度的 history 行）。
@@ -122,8 +104,7 @@ func (e *EmbyService) RecordProgress(ctx context.Context, userID, mediaID string
 }
 
 // mergeRemoteUserData applies the current MeBox user's locally recorded playback
-// state to remote Emby payloads. Remote metadata remains authoritative unless the
-// user has played the item through MeBox.
+// and favourite state to remote Emby payloads.
 func (e *EmbyService) mergeRemoteUserData(ctx context.Context, userID string, payload any) error {
 	if strings.TrimSpace(userID) == "" || payload == nil {
 		return nil
@@ -152,10 +133,27 @@ func (e *EmbyService) mergeRemoteUserData(ctx context.Context, userID string, pa
 	for i := range histories {
 		byMediaID[histories[i].MediaID] = &histories[i]
 	}
+	var favs []model.Favorite
+	if err := e.repo.DB.WithContext(ctx).Where("user_id = ? AND media_id IN ?", userID, ids).Find(&favs).Error; err != nil {
+		return err
+	}
+	favSet := make(map[string]bool, len(favs))
+	for _, fav := range favs {
+		favSet[fav.MediaID] = true
+	}
 	for _, item := range items {
 		id, _ := item["Id"].(string)
+		userData, _ := item["UserData"].(map[string]any)
 		if h := byMediaID[id]; h != nil {
-			item["UserData"] = mergedRemoteUserData(item["UserData"], h)
+			item["UserData"] = mergedRemoteUserData(userData, h)
+			userData, _ = item["UserData"].(map[string]any)
+		}
+		if favSet[id] {
+			if userData == nil {
+				userData = map[string]any{}
+				item["UserData"] = userData
+			}
+			userData["IsFavorite"] = true
 		}
 	}
 	return nil

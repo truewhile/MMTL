@@ -148,6 +148,9 @@ func (e *EmbyService) Items(ctx context.Context, p ItemsParams) (map[string]any,
 	if e.remote != nil {
 		// 远程目录浏览：ParentId 带远程前缀 → 完整转发给远程 Emby 承接分页。
 		if IsEmbyRemoteID(p.ParentID) {
+			if containsEmbyFilter(p.Filters, "IsFavorite") {
+				return e.favoriteItems(ctx, p)
+			}
 			mountID, _, _ := DecodeEmbyRemoteID(p.ParentID)
 			mount, acct, _ := e.remote.ResolveMount(ctx, mountID)
 			if mount == nil || acct == nil {
@@ -170,6 +173,9 @@ func (e *EmbyService) Items(ctx context.Context, p ItemsParams) (map[string]any,
 
 	if containsEmbyFilter(p.Filters, "IsResumable") {
 		return e.resumableItems(ctx, p)
+	}
+	if containsEmbyFilter(p.Filters, "IsFavorite") {
+		return e.favoriteItems(ctx, p)
 	}
 
 	if len(p.IDs) > 0 {

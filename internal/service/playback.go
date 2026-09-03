@@ -159,7 +159,20 @@ func (p *PlaybackService) RecentHistory(ctx context.Context, userID string, limi
 
 // ToggleFavourite flips the favourite flag and reports the new state.
 func (p *PlaybackService) ToggleFavourite(ctx context.Context, userID, mediaID string) (bool, error) {
-	return p.repo.Favorite.Toggle(ctx, userID, mediaID)
+	current, err := IsUserFavorite(ctx, p.repo, userID, mediaID)
+	if err != nil {
+		return false, err
+	}
+	next := !current
+	if err := p.SetFavourite(ctx, userID, mediaID, next); err != nil {
+		return false, err
+	}
+	return next, nil
+}
+
+// SetFavourite sets favourite state for a media item.
+func (p *PlaybackService) SetFavourite(ctx context.Context, userID, mediaID string, favorite bool) error {
+	return SyncUserFavorite(ctx, p.repo, p.remote, userID, mediaID, favorite)
 }
 
 // ListFavourites returns every favourited media for a user.
