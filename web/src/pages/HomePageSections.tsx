@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
@@ -371,6 +371,16 @@ export function HomeLibrariesSection({
   libraryData?: Record<string, { cards: SeriesCard[]; items: Media[]; total: number }>
   libraryCounts: Record<string, number>
 }) {
+  const PAGE_SIZE = 20
+  const [currentPage, setCurrentPage] = useState(1)
+  const totalPages = Math.max(1, Math.ceil(libraries.length / PAGE_SIZE))
+  const effectivePage = Math.min(currentPage, totalPages)
+
+  const pagedLibraries = useMemo<Library[]>(() => {
+    const start = (effectivePage - 1) * PAGE_SIZE
+    return libraries.slice(start, start + PAGE_SIZE)
+  }, [libraries, effectivePage])
+
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--app-border)] pb-3">
@@ -379,27 +389,62 @@ export function HomeLibrariesSection({
             <LibraryIcon size={18} />
           </span>
           <div>
-            <h2 className="font-display text-xl font-extrabold tracking-tight text-[var(--app-text)]">
-              媒体库
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="font-display text-xl font-extrabold tracking-tight text-[var(--app-text)]">
+                媒体库
+              </h2>
+              {libraries.length > PAGE_SIZE && (
+                <span className="rounded-md border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-1.5 py-0.5 text-[11px] font-semibold text-[var(--app-muted)]">
+                  共 {libraries.length} 个 · 每页 {PAGE_SIZE} 个
+                </span>
+              )}
+            </div>
             <p className="text-xs text-[var(--app-muted)]">
               点击卡片浏览对应媒体库精选内容
             </p>
           </div>
         </div>
 
-        <Link
-          to="/libraries"
-          className="group inline-flex items-center gap-1 text-xs font-bold text-[var(--app-subtle)] transition-colors hover:text-brand-500"
-        >
-          <span>全部媒体库</span>
-          <ArrowRight size={14} className="transition-transform group-hover:translate-x-0.5" />
-        </Link>
+        <div className="flex items-center gap-3">
+          {totalPages > 1 && (
+            <div className="flex items-center gap-2 rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-2 py-1 text-xs">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={effectivePage <= 1}
+                className="rounded-lg p-1 text-[var(--app-muted)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-[var(--app-muted)] transition-colors"
+                title="上一页"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <span className="font-mono text-xs font-semibold text-[var(--app-subtle)]">
+                {effectivePage} / {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={effectivePage >= totalPages}
+                className="rounded-lg p-1 text-[var(--app-muted)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-[var(--app-muted)] transition-colors"
+                title="下一页"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
+
+          <Link
+            to="/libraries"
+            className="group inline-flex items-center gap-1 text-xs font-bold text-[var(--app-subtle)] transition-colors hover:text-brand-500"
+          >
+            <span>全部媒体库</span>
+            <ArrowRight size={14} className="transition-transform group-hover:translate-x-0.5" />
+          </Link>
+        </div>
       </div>
 
       {/* Libraries Grid */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-6">
-        {libraries.map((lib) => {
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-5 2xl:grid-cols-6">
+        {pagedLibraries.map((lib) => {
           const count = libraryCounts[lib.id] ?? 0
           const cards = libraryData?.[lib.id]?.cards || []
           const artwork = getLibraryArtworks(lib, cards)

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { libraryAPI } from '../api/library'
 import { toolsAPI } from '../api/tools'
@@ -10,32 +10,65 @@ import {
   LibrariesHeader,
 } from './LibrariesPageSections'
 import type { LibraryPreview } from './librariesPageModel'
+import type { Library } from '../types'
+import type { SeriesCard } from '../utils/groupSeries'
 import { sortLibraryPreviews } from '../utils/pinnedLibraries'
 
 export function LibrariesPage() {
-  const [previews, setPreviews] = useState<LibraryPreview[]>([])
+  const [libraries, setLibraries] = useState<Library[]>([])
+  const [libraryData, setLibraryData] = useState<Record<string, { cards: SeriesCard[]; total: number }>>({})
   const { pinnedIds, loading: pinnedLoading, togglePin } = usePinnedLibraries()
   const [loading, setLoading] = useState(true)
   const [repairing, setRepairing] = useState(false)
   const [repairEpisodeArtwork, setRepairEpisodeArtwork] = useState(false)
   const [repairMsg, setRepairMsg] = useState('')
 
+  const [fetchedLibIds, setFetchedLibIds] = useState<Set<string>>(new Set())
+  const fetchingRef = useRef<Set<string>>(new Set())
+
+  const fetchPreviews = useCallback(async (ids: string[]) => {
+    const targets = ids.filter((id) => !fetchedLibIds.has(id) && !fetchingRef.current.has(id))
+    if (targets.length === 0) return
+    targets.forEach((id) => fetchingRef.current.add(id))
+
+    try {
+      const rows = await libraryAPI.listPreviews(targets, 10)
+      setLibraryData((prev) => {
+        const next = { ...prev }
+        for (const row of rows) {
+          next[row.id] = {
+            cards: row.cards ?? [],
+            total: row.total ?? 0,
+          }
+        }
+        return next
+      })
+    } catch {
+      // 容错
+    } finally {
+      setFetchedLibIds((prev) => {
+        const next = new Set(prev)
+        targets.forEach((id) => {
+          next.add(id)
+          fetchingRef.current.delete(id)
+        })
+        return next
+      })
+    }
+  }, [fetchedLibIds])
+
   const loadLibraries = useCallback(async () => {
     setLoading(true)
     try {
-      const libs = await libraryAPI.list({ withPreview: true })
-      setPreviews(
-        libs.map((library) => ({
-          library,
-          items: [],
-          total: library.total ?? 0,
-          cards: library.cards ?? [],
-        })),
-      )
+      const libs = await libraryAPI.list()
+      setLibraries(libs)
+      // 优先拉取前 3 个库的卡片预览
+      const topIds = libs.slice(0, 3).map((l) => l.id)
+      void fetchPreviews(topIds)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [fetchPreviews])
 
   async function handleRepairRescrape() {
     if (repairing) return
@@ -59,6 +92,18 @@ export function LibrariesPage() {
   useEffect(() => {
     loadLibraries().catch(() => undefined)
   }, [loadLibraries])
+
+  const previews: LibraryPreview[] = useMemo(() => {
+    return libraries.map((library) => {
+      const data = libraryData[library.id]
+      return {
+        library,
+        items: [],
+        total: data?.total ?? 0,
+        cards: data?.cards ?? [],
+      }
+    })
+  }, [libraries, libraryData])
 
   const sortedPreviews = useMemo(() => sortLibraryPreviews(previews, pinnedIds), [previews, pinnedIds])
 
@@ -88,7 +133,12 @@ export function LibrariesPage() {
       {previews.length === 0 ? (
         <LibrariesEmptyState />
       ) : (
-        <LibrariesContent previews={sortedPreviews} pinnedIds={pinnedIds} onTogglePin={handleTogglePin} />
+        <LibrariesContent
+          previews={sortedPreviews}
+          pinnedIds={pinnedIds}
+          onTogglePin={handleTogglePin}
+          onNeedPreviews={fetchPreviews}
+        />
       )}
     </div>
   )

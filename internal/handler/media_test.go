@@ -104,11 +104,16 @@ func TestListLibrariesHidesAdultDirectoriesUnlessAdminRequestsAll(t *testing.T) 
 		t.Fatalf("watching library list should hide adult directories, got %#v", visible)
 	}
 
-	all := requestLibraries(t, svc, viewer.ID, "admin", "/api/libraries?include_hidden=1")
-	if len(all) != 2 {
-		t.Fatalf("admin include_hidden list should keep management access, got %#v", all)
+		all := requestLibraries(t, svc, viewer.ID, "admin", "/api/libraries?include_hidden=1")
+		if len(all) != 2 {
+			t.Fatalf("admin include_hidden list should keep management access, got %#v", all)
+		}
+
+		filtered := requestLibraries(t, svc, viewer.ID, "admin", "/api/libraries?include_hidden=1&ids="+safe.ID)
+		if len(filtered) != 1 || filtered[0].ID != safe.ID {
+			t.Fatalf("ids filter should return only requested library, got %#v", filtered)
+		}
 	}
-}
 
 func TestGetLibraryAllowsEmptyLibrary(t *testing.T) {
 	gin.SetMode(gin.TestMode)

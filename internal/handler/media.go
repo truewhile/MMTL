@@ -58,17 +58,37 @@ func listLibrariesHandler(svc *service.Container) gin.HandlerFunc {
 		}
 		role, _ := c.Get(middleware.CtxUserRole)
 		includeHidden := role == "admin" && (c.Query("include_hidden") == "1" || c.Query("include_hidden") == "true" || c.Query("all") == "1")
-		if !includeHidden {
-			libs = service.FilterDisplayCloudLibraries(ctx, svc.Repo, libs)
-			visibility := mediaVisibilityForRequest(c, svc)
-			filtered := libs[:0]
-			for _, lib := range libs {
-				if service.LibraryVisibleForUser(ctx, svc.Repo, lib, visibility) {
-					filtered = append(filtered, lib)
+			if !includeHidden {
+				libs = service.FilterDisplayCloudLibraries(ctx, svc.Repo, libs)
+				visibility := mediaVisibilityForRequest(c, svc)
+				filtered := libs[:0]
+				for _, lib := range libs {
+					if service.LibraryVisibleForUser(ctx, svc.Repo, lib, visibility) {
+						filtered = append(filtered, lib)
+					}
+				}
+				libs = filtered
+			}
+			rawIDs := strings.TrimSpace(c.Query("ids"))
+			var targetSet map[string]struct{}
+			if rawIDs != "" {
+				targetSet = make(map[string]struct{})
+				for _, id := range strings.Split(rawIDs, ",") {
+					id = strings.TrimSpace(id)
+					if id != "" {
+						targetSet[id] = struct{}{}
+					}
 				}
 			}
-			libs = filtered
-		}
+			if len(targetSet) > 0 {
+				filtered := libs[:0]
+				for _, lib := range libs {
+					if _, ok := targetSet[lib.ID]; ok {
+						filtered = append(filtered, lib)
+					}
+				}
+				libs = filtered
+			}
 		withPreview := c.Query("with_preview") == "1" || c.Query("with_preview") == "true"
 		limit := 10
 		if withPreview {
@@ -97,14 +117,19 @@ func listLibrariesHandler(svc *service.Container) gin.HandlerFunc {
 		// 远程 Emby 挂载库追加在本地库之后（非管理员视图仍受 allowed_library_ids 约束）。
 		if svc.EmbyRemote != nil {
 			if views, err := svc.EmbyRemote.RemoteLibraries(ctx); err == nil {
-				visibility := mediaVisibilityForRequest(c, svc)
-				allowedViews := make([]service.RemoteLibraryView, 0, len(views))
-				for _, v := range views {
-					if !includeHidden && !service.LibraryVisibleForUser(ctx, svc.Repo, v.Library, visibility) {
-						continue
+					visibility := mediaVisibilityForRequest(c, svc)
+					allowedViews := make([]service.RemoteLibraryView, 0, len(views))
+					for _, v := range views {
+						if !includeHidden && !service.LibraryVisibleForUser(ctx, svc.Repo, v.Library, visibility) {
+							continue
+						}
+						if len(targetSet) > 0 {
+							if _, ok := targetSet[v.Library.ID]; !ok {
+								continue
+							}
+						}
+						allowedViews = append(allowedViews, v)
 					}
-					allowedViews = append(allowedViews, v)
-				}
 				remotePayloads := make([]webLibraryPayload, len(allowedViews))
 				for i, v := range allowedViews {
 					remotePayloads[i] = webLibraryPayload{Library: v.Library, IsRemoteEmby: true, RemoteSource: v.AccountName}

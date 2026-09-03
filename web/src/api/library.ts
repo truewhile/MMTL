@@ -87,16 +87,30 @@ export interface LibraryWithPreview extends Library {
 }
 
 export const libraryAPI = {
-  list: (options?: { includeHidden?: boolean; withPreview?: boolean; previewLimit?: number }) =>
+  list: (options?: { includeHidden?: boolean; withPreview?: boolean; previewLimit?: number; ids?: string[] }) =>
     api
       .get<LibraryWithPreview[]>('/libraries', {
         params: {
           ...(options?.includeHidden ? { include_hidden: 1 } : {}),
           ...(options?.withPreview ? { with_preview: 1 } : {}),
           ...(options?.previewLimit ? { preview_limit: options.previewLimit } : {}),
+          ...(options?.ids && options.ids.length > 0 ? { ids: options.ids.join(',') } : {}),
         },
       })
       .then((r) => r.data),
+
+  listPreviews: (ids: string[], previewLimit = 10) => {
+    if (ids.length === 0) return Promise.resolve<LibraryWithPreview[]>([])
+    return api
+      .get<LibraryWithPreview[]>('/libraries', {
+        params: {
+          with_preview: 1,
+          preview_limit: previewLimit,
+          ids: ids.join(','),
+        },
+      })
+      .then((r) => r.data)
+  },
 
   get: (id: string, options?: { includeHidden?: boolean }) =>
     api

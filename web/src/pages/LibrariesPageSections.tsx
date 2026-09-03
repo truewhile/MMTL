@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowRight, Film, FolderOpen, Library as LibraryIcon, Music, Pin, PlayCircle, RefreshCw, Sparkles, Tv } from 'lucide-react'
+import { ArrowRight, ChevronLeft, ChevronRight, Film, FolderOpen, Library as LibraryIcon, Music, Pin, PlayCircle, RefreshCw, Sparkles, Tv } from 'lucide-react'
 
 import { imageURL } from '../api/client'
 import { EpisodeArtworkToggle } from '../components/EpisodeArtworkToggle'
@@ -107,10 +107,12 @@ export function LibrariesContent({
   previews,
   pinnedIds,
   onTogglePin,
+  onNeedPreviews,
 }: {
   previews: LibraryPreview[]
   pinnedIds: string[]
   onTogglePin: (libraryId: string) => void
+  onNeedPreviews?: (ids: string[]) => void
 }) {
   const pinnedCount = previews.filter((preview) => isLibraryPinned(preview.library.id, pinnedIds)).length
 
@@ -120,6 +122,11 @@ export function LibrariesContent({
   const STEP_SHELVES = 2
   const [visibleCount, setVisibleCount] = useState(INITIAL_SHELVES)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const currentTargets = previews.slice(0, visibleCount).map((p) => p.library.id)
+    onNeedPreviews?.(currentTargets)
+  }, [previews, visibleCount, onNeedPreviews])
 
   useEffect(() => {
     const sentinel = sentinelRef.current
@@ -153,18 +160,62 @@ export function LibrariesContent({
     return previews.slice(0, visibleCount)
   }, [previews, visibleCount])
 
+  const ENTRY_PAGE_SIZE = 20
+  const [entryPage, setEntryPage] = useState(1)
+  const totalEntryPages = Math.max(1, Math.ceil(previews.length / ENTRY_PAGE_SIZE))
+  const effectiveEntryPage = Math.min(entryPage, totalEntryPages)
+  const pagedPreviews = useMemo<LibraryPreview[]>(() => {
+    const start = (effectiveEntryPage - 1) * ENTRY_PAGE_SIZE
+    return previews.slice(start, start + ENTRY_PAGE_SIZE)
+  }, [previews, effectiveEntryPage])
+
   return (
     <>
       <section className="space-y-4">
-        <div>
-          <h2 className="font-display text-2xl font-bold text-ink-600">媒体库入口</h2>
-          <p className="text-sm text-ink-50">
-            按目录进入完整媒体库；下方每个目录也会直接展示最新内容。
-            {pinnedCount > 0 ? ` 已置顶 ${pinnedCount} 个媒体库。` : ' 点击卡片右上角图钉可置顶常用媒体库。'}
-          </p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="font-display text-2xl font-bold text-ink-600">媒体库入口</h2>
+              {previews.length > ENTRY_PAGE_SIZE && (
+                <span className="rounded-md border border-sand-200 bg-sand-50 px-2 py-0.5 text-xs font-semibold text-sand-700">
+                  共 {previews.length} 个 · 每页 {ENTRY_PAGE_SIZE} 个
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-ink-50">
+              按目录进入完整媒体库；下方每个目录也会直接展示最新内容。
+              {pinnedCount > 0 ? ` 已置顶 ${pinnedCount} 个媒体库。` : ' 点击卡片右上角图钉可置顶常用媒体库。'}
+            </p>
+          </div>
+
+          {totalEntryPages > 1 && (
+            <div className="flex items-center gap-2 rounded-xl border border-sand-200 bg-white px-2.5 py-1 text-xs shadow-sm">
+              <button
+                type="button"
+                onClick={() => setEntryPage((p) => Math.max(1, p - 1))}
+                disabled={effectiveEntryPage <= 1}
+                className="rounded-lg p-1 text-ink-50 hover:bg-sand-100 hover:text-ink-600 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-ink-50 transition-colors"
+                title="上一页"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <span className="font-mono text-xs font-semibold text-ink-600">
+                {effectiveEntryPage} / {totalEntryPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setEntryPage((p) => Math.min(totalEntryPages, p + 1))}
+                disabled={effectiveEntryPage >= totalEntryPages}
+                className="rounded-lg p-1 text-ink-50 hover:bg-sand-100 hover:text-ink-600 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-ink-50 transition-colors"
+                title="下一页"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
-          {previews.map((preview, index) => (
+          {pagedPreviews.map((preview, index) => (
             <motion.div
               key={preview.library.id}
               initial={{ opacity: 0, y: 12 }}
