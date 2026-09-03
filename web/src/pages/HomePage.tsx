@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { libraryAPI, type LibraryWithPreview } from '../api/library'
 import { historyAPI } from '../api/history'
@@ -34,7 +34,7 @@ export function HomePage() {
     let cancelled = false
 
     libraryAPI
-      .list({ withPreview: true, previewLimit: 20 })
+      .list({ withPreview: true, previewLimit: 10 })
       .then((rows) => asArray<LibraryWithPreview>(rows))
       .catch(() => [] as LibraryWithPreview[])
       .then((libs) => {
@@ -140,6 +140,50 @@ export function HomePage() {
 
   const sortedLibraries = useMemo(() => sortByPinnedIds(libraries, pinnedIds), [libraries, pinnedIds])
 
+  // 过滤出有内容的媒体库，避免空库空占名额
+  const activeLibraries = useMemo(() => {
+    return sortedLibraries.filter((lib) => (libraryData[lib.id]?.cards?.length ?? 0) > 0)
+  }, [sortedLibraries, libraryData])
+
+  // 媒体库展示行支持向下滑动渐进流式加载：默认先展示前 3 个库，
+  // 随着用户向下滑动接近底部，通过 IntersectionObserver 动态解锁后续媒体库。
+  const INITIAL_ROWS = 3
+  const STEP_ROWS = 2
+  const [visibleRowCount, setVisibleRowCount] = useState(INITIAL_ROWS)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
+
+    const scrollParent = document.getElementById('app-main-scroll')
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries
+        if (entry?.isIntersecting) {
+          setVisibleRowCount((prev) => {
+            if (prev >= activeLibraries.length) return prev
+            return Math.min(prev + STEP_ROWS, activeLibraries.length)
+          })
+        }
+      },
+      {
+        root: scrollParent,
+        rootMargin: '400px 0px',
+        threshold: 0,
+      },
+    )
+
+    observer.observe(sentinel)
+    return () => {
+      observer.disconnect()
+    }
+  }, [activeLibraries.length])
+
+  const visibleLibraries = useMemo(() => {
+    return activeLibraries.slice(0, visibleRowCount)
+  }, [activeLibraries, visibleRowCount])
+
   // 库列表还没回来先展示整页 loading；库为空时再等一下播放记录，
   // 以免在"空站点"和"有观看记录"两个终态之间闪空白。
   if (librariesLoading || (libraries.length === 0 && historyLoading)) {
@@ -174,20 +218,29 @@ export function HomePage() {
         />
       )}
 
-      {/* 4. 各媒体库内容展示行 */}
-      <div className="space-y-10">
-        {sortedLibraries.map((lib) => {
-          const cards = libraryData[lib.id]?.cards || []
-          if (cards.length === 0) return null
-          return (
-            <HomeLibraryRowSection
-              key={lib.id}
-              library={lib}
-              cards={cards}
-            />
-          )
-        })}
-      </div>
+      {/* 4. 各媒体库内容展示行（向下滑动渐进流式加载） */}
+      {visibleLibraries.length > 0 && (
+        <div className="space-y-10">
+          {visibleLibraries.map((lib) => {
+            const cards = libraryData[lib.id]?.cards || []
+            return (
+              <HomeLibraryRowSection
+                key={lib.id}
+                library={lib}
+                cards={cards}
+              />
+            )
+          })}
+          {visibleRowCount < activeLibraries.length && (
+            <div ref={sentinelRef} className="flex h-10 w-full items-center justify-center py-2 opacity-60">
+              <div className="flex items-center gap-2 text-xs text-[var(--app-muted)]">
+                <div className="h-1.5 w-1.5 animate-ping rounded-full bg-brand-500" />
+                <span>加载更多媒体库…</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

@@ -100,14 +100,21 @@ func (s *MediaService) ListLibrariesWithPreview(ctx context.Context, libraries [
 		if len(items) == 0 {
 			continue
 		}
-		cards := groupMediaSeriesCards(items)
-		if len(cards) > cardLimit {
-			cards = cards[:cardLimit]
-		}
-		if cards == nil {
-			cards = []SeriesCard{}
-		}
-		out[i].Cards = cards
+			cards := groupMediaSeriesCards(items)
+			// 如果折叠后的作品部数不足 cardLimit，且该库总记录数大于当前提取的条目数，
+			// 说明多集剧集折叠占满了提取窗口，调用 ListLibrarySeriesCards 补齐完整的影视部数。
+			if len(cards) < cardLimit && out[i].Total > int64(len(items)) {
+				if fullCards, _, err := s.ListLibrarySeriesCards(ctx, out[i].ID, visibility); err == nil && len(fullCards) > 0 {
+					cards = fullCards
+				}
+			}
+			if len(cards) > cardLimit {
+				cards = cards[:cardLimit]
+			}
+			if cards == nil {
+				cards = []SeriesCard{}
+			}
+			out[i].Cards = cards
 	}
 
 	if s.cache != nil {

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowRight, Film, FolderOpen, Library as LibraryIcon, Music, Pin, PlayCircle, RefreshCw, Sparkles, Tv } from 'lucide-react'
@@ -114,6 +114,45 @@ export function LibrariesContent({
 }) {
   const pinnedCount = previews.filter((preview) => isLibraryPinned(preview.library.id, pinnedIds)).length
 
+  // 下方媒体库货架支持向下滑动渐进流式加载：默认先展示前 3 个库货架，
+  // 随着用户向下滑动接近底部，通过 IntersectionObserver 动态解锁后续媒体库货架。
+  const INITIAL_SHELVES = 3
+  const STEP_SHELVES = 2
+  const [visibleCount, setVisibleCount] = useState(INITIAL_SHELVES)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
+
+    const scrollParent = document.getElementById('app-main-scroll')
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries
+        if (entry?.isIntersecting) {
+          setVisibleCount((prev) => {
+            if (prev >= previews.length) return prev
+            return Math.min(prev + STEP_SHELVES, previews.length)
+          })
+        }
+      },
+      {
+        root: scrollParent,
+        rootMargin: '400px 0px',
+        threshold: 0,
+      },
+    )
+
+    observer.observe(sentinel)
+    return () => {
+      observer.disconnect()
+    }
+  }, [previews.length])
+
+  const visiblePreviews = useMemo(() => {
+    return previews.slice(0, visibleCount)
+  }, [previews, visibleCount])
+
   return (
     <>
       <section className="space-y-4">
@@ -142,21 +181,32 @@ export function LibrariesContent({
         </div>
       </section>
 
-      <section className="space-y-6">
-        {previews.map((preview, index) => (
-          <motion.div
-            key={preview.library.id}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.03 }}
-          >
-            <LibraryShelf
-              preview={preview}
-              pinned={isLibraryPinned(preview.library.id, pinnedIds)}
-            />
-          </motion.div>
-        ))}
-      </section>
+      {visiblePreviews.length > 0 && (
+        <section className="space-y-6">
+          {visiblePreviews.map((preview, index) => (
+            <motion.div
+              key={preview.library.id}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: Math.min(index, 3) * 0.03 }}
+            >
+              <LibraryShelf
+                preview={preview}
+                pinned={isLibraryPinned(preview.library.id, pinnedIds)}
+              />
+            </motion.div>
+          ))}
+
+          {visibleCount < previews.length && (
+            <div ref={sentinelRef} className="flex h-10 w-full items-center justify-center py-2 opacity-60">
+              <div className="flex items-center gap-2 text-xs text-[var(--app-muted)]">
+                <div className="h-1.5 w-1.5 animate-ping rounded-full bg-brand-500" />
+                <span>加载更多媒体库货架…</span>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
     </>
   )
 }
