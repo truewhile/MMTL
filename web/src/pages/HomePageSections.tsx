@@ -366,10 +366,12 @@ export function HomeLibrariesSection({
   libraries,
   libraryData,
   libraryCounts,
+  onNeedPreviews,
 }: {
   libraries: Library[]
   libraryData?: Record<string, { cards: SeriesCard[]; items: Media[]; total: number }>
   libraryCounts: Record<string, number>
+  onNeedPreviews?: (ids: string[]) => void
 }) {
   const PAGE_SIZE = 20
   const [currentPage, setCurrentPage] = useState(1)
@@ -380,6 +382,11 @@ export function HomeLibrariesSection({
     const start = (effectivePage - 1) * PAGE_SIZE
     return libraries.slice(start, start + PAGE_SIZE)
   }, [libraries, effectivePage])
+
+  useEffect(() => {
+    const ids = pagedLibraries.map((l) => l.id)
+    onNeedPreviews?.(ids)
+  }, [pagedLibraries, onNeedPreviews])
 
   return (
     <section className="space-y-4">

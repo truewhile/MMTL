@@ -13,6 +13,7 @@ import (
 
 	"github.com/truewhile/MeBox/internal/middleware"
 	"github.com/truewhile/MeBox/internal/model"
+	"github.com/truewhile/MeBox/internal/repository"
 	"github.com/truewhile/MeBox/internal/service"
 )
 
@@ -109,11 +110,25 @@ func listLibrariesHandler(svc *service.Container) gin.HandlerFunc {
 			for _, p := range previews {
 				out = append(out, webLibraryPayload{Library: p.Library, Total: p.Total, Cards: p.Cards})
 			}
-		} else {
-			for _, l := range libs {
-				out = append(out, webLibraryPayload{Library: l})
+			} else {
+				visibility := mediaVisibilityForRequest(c, svc)
+				libIDs := make([]string, len(libs))
+				for i, l := range libs {
+					libIDs[i] = l.ID
+				}
+				counts, _ := svc.Repo.Media.CountByLibraries(ctx, libIDs, repository.MediaQueryFilter{
+					IncludeNSFW:       visibility.IncludeNSFW,
+					AllowedLibraryIDs: visibility.AllowedLibraryIDs,
+					HiddenLibraryIDs:  visibility.HiddenLibraryIDs,
+				})
+				for _, l := range libs {
+					var total int64
+					if counts != nil {
+						total = counts[l.ID]
+					}
+					out = append(out, webLibraryPayload{Library: l, Total: total})
+				}
 			}
-		}
 		// 远程 Emby 挂载库追加在本地库之后（非管理员视图仍受 allowed_library_ids 约束）。
 		if svc.EmbyRemote != nil {
 			if views, err := svc.EmbyRemote.RemoteLibraries(ctx); err == nil {

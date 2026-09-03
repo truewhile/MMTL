@@ -115,14 +115,15 @@ export function HomePage() {
     }
   }, [fetchedLibIds])
 
-  // 3. 首屏视口媒体库：优先加载轮播图指定的库和前 3 个库
+  // 3. 首屏优先加载：轮播图库 + 媒体库卡片区前 20 个库 + 首屏前 3 个内容行
   useEffect(() => {
     if (sortedLibraries.length === 0) return
     const carouselLibIds = sortedLibraries
       .filter((l) => l.carousel_enabled === true)
       .map((l) => l.id)
+    const topGridLibIds = sortedLibraries.slice(0, 20).map((l) => l.id)
     const topRowLibIds = sortedLibraries.slice(0, 3).map((l) => l.id)
-    const initialTargets = Array.from(new Set([...carouselLibIds, ...topRowLibIds]))
+    const initialTargets = Array.from(new Set([...carouselLibIds, ...topGridLibIds, ...topRowLibIds]))
     void fetchPreviews(initialTargets)
   }, [sortedLibraries, fetchPreviews])
 
@@ -139,34 +140,63 @@ export function HomePage() {
     void fetchPreviews(currentTargets)
   }, [sortedLibraries, visibleTargetCount, fetchPreviews])
 
-  // 底部哨兵监听（触底解锁后续媒体库行）
+  // 当前已拉取并确认有内容的媒体库行
+  const visibleLibraries = useMemo(() => {
+    return sortedLibraries
+      .slice(0, visibleTargetCount)
+      .filter((lib) => (libraryData[lib.id]?.cards?.length ?? 0) > 0)
+  }, [sortedLibraries, visibleTargetCount, libraryData])
+
+  const hasMoreLibraries = visibleTargetCount < sortedLibraries.length
+
+  // 底部哨兵监听与滚动双保险（触底解锁后续媒体库行）
   useEffect(() => {
-    const sentinel = sentinelRef.current
-    if (!sentinel) return
-
     const scrollParent = document.getElementById('app-main-scroll')
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const [entry] = entries
-        if (entry?.isIntersecting) {
-          setVisibleTargetCount((prev) => {
-            if (prev >= sortedLibraries.length) return prev
-            return Math.min(prev + STEP_ROWS, sortedLibraries.length)
-          })
-        }
-      },
-      {
-        root: scrollParent,
-        rootMargin: '400px 0px',
-        threshold: 0,
-      },
-    )
+    if (!scrollParent) return
 
-    observer.observe(sentinel)
-    return () => {
-      observer.disconnect()
+    const handleCheckBottom = () => {
+      const remaining = scrollParent.scrollHeight - scrollParent.scrollTop - scrollParent.clientHeight
+      if (remaining < 600) {
+        setVisibleTargetCount((prev) => {
+          if (prev >= sortedLibraries.length) return prev
+          return Math.min(prev + STEP_ROWS, sortedLibraries.length)
+        })
+      }
     }
-  }, [sortedLibraries.length])
+
+    scrollParent.addEventListener('scroll', handleCheckBottom, { passive: true })
+
+    const sentinel = sentinelRef.current
+    let observer: IntersectionObserver | null = null
+    if (sentinel) {
+      observer = new IntersectionObserver(
+        (entries) => {
+          const [entry] = entries
+          if (entry?.isIntersecting) {
+            setVisibleTargetCount((prev) => {
+              if (prev >= sortedLibraries.length) return prev
+              return Math.min(prev + STEP_ROWS, sortedLibraries.length)
+            })
+          }
+        },
+        {
+          root: scrollParent,
+          rootMargin: '600px 0px',
+          threshold: 0,
+        },
+      )
+      observer.observe(sentinel)
+    }
+
+    handleCheckBottom()
+
+    return () => {
+      scrollParent.removeEventListener('scroll', handleCheckBottom)
+      if (observer) {
+        observer.disconnect()
+      }
+    }
+  }, [visibleLibraries.length, hasMoreLibraries, sortedLibraries.length])
 
   // Quick lookup map for libraries
   const libraryMap = useMemo(() => {
@@ -221,15 +251,6 @@ export function HomePage() {
     return candidateMedia.slice(0, 10)
   }, [libraries, libraryData])
 
-  // 当前已拉取并确认有内容的媒体库行
-  const visibleLibraries = useMemo(() => {
-    return sortedLibraries
-      .slice(0, visibleTargetCount)
-      .filter((lib) => (libraryData[lib.id]?.cards?.length ?? 0) > 0)
-  }, [sortedLibraries, visibleTargetCount, libraryData])
-
-  const hasMoreLibraries = visibleTargetCount < sortedLibraries.length
-
   // 库列表还没回来先展示整页 loading；库为空时再等一下播放记录，
   // 以免在"空站点"和"有观看记录"两个终态之间闪空白。
   if (librariesLoading || (libraries.length === 0 && historyLoading)) {
@@ -261,6 +282,7 @@ export function HomePage() {
           libraries={sortedLibraries}
           libraryData={libraryData}
           libraryCounts={libraryCounts}
+          onNeedPreviews={fetchPreviews}
         />
       )}
 

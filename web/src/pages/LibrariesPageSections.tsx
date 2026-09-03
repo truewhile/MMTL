@@ -128,33 +128,54 @@ export function LibrariesContent({
     onNeedPreviews?.(currentTargets)
   }, [previews, visibleCount, onNeedPreviews])
 
+  // 底部哨兵监听与滚动双保险（触底解锁后续媒体库货架）
   useEffect(() => {
-    const sentinel = sentinelRef.current
-    if (!sentinel) return
-
     const scrollParent = document.getElementById('app-main-scroll')
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const [entry] = entries
-        if (entry?.isIntersecting) {
-          setVisibleCount((prev) => {
-            if (prev >= previews.length) return prev
-            return Math.min(prev + STEP_SHELVES, previews.length)
-          })
-        }
-      },
-      {
-        root: scrollParent,
-        rootMargin: '400px 0px',
-        threshold: 0,
-      },
-    )
+    if (!scrollParent) return
 
-    observer.observe(sentinel)
-    return () => {
-      observer.disconnect()
+    const handleCheckBottom = () => {
+      const remaining = scrollParent.scrollHeight - scrollParent.scrollTop - scrollParent.clientHeight
+      if (remaining < 600) {
+        setVisibleCount((prev) => {
+          if (prev >= previews.length) return prev
+          return Math.min(prev + STEP_SHELVES, previews.length)
+        })
+      }
     }
-  }, [previews.length])
+
+    scrollParent.addEventListener('scroll', handleCheckBottom, { passive: true })
+
+    const sentinel = sentinelRef.current
+    let observer: IntersectionObserver | null = null
+    if (sentinel) {
+      observer = new IntersectionObserver(
+        (entries) => {
+          const [entry] = entries
+          if (entry?.isIntersecting) {
+            setVisibleCount((prev) => {
+              if (prev >= previews.length) return prev
+              return Math.min(prev + STEP_SHELVES, previews.length)
+            })
+          }
+        },
+        {
+          root: scrollParent,
+          rootMargin: '600px 0px',
+          threshold: 0,
+        },
+      )
+      observer.observe(sentinel)
+    }
+
+    handleCheckBottom()
+
+    return () => {
+      scrollParent.removeEventListener('scroll', handleCheckBottom)
+      if (observer) {
+        observer.disconnect()
+      }
+    }
+  }, [visibleCount, previews.length])
 
   const visiblePreviews = useMemo(() => {
     return previews.slice(0, visibleCount)
@@ -168,6 +189,11 @@ export function LibrariesContent({
     const start = (effectiveEntryPage - 1) * ENTRY_PAGE_SIZE
     return previews.slice(start, start + ENTRY_PAGE_SIZE)
   }, [previews, effectiveEntryPage])
+
+  useEffect(() => {
+    const ids = pagedPreviews.map((p) => p.library.id)
+    onNeedPreviews?.(ids)
+  }, [pagedPreviews, onNeedPreviews])
 
   return (
     <>

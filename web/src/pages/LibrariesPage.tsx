@@ -62,8 +62,8 @@ export function LibrariesPage() {
     try {
       const libs = await libraryAPI.list()
       setLibraries(libs)
-      // 优先拉取前 3 个库的卡片预览
-      const topIds = libs.slice(0, 3).map((l) => l.id)
+      // 优先拉取入口卡片网格当前页（前 20 个库）的预览
+      const topIds = libs.slice(0, 20).map((l) => l.id)
       void fetchPreviews(topIds)
     } finally {
       setLoading(false)
