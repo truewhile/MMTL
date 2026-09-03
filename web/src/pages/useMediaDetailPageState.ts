@@ -5,8 +5,7 @@ import toast from 'react-hot-toast'
 import { api } from '../api/client'
 import { mediaAPI } from '../api/library'
 import { playbackAPI } from '../api/playback'
-import { recycleAPI } from '../api/recycle'
-import { confirmAction } from '../components/confirmAction'
+import { confirmActionResult } from '../components/confirmAction'
 import type { Media } from '../types'
 import { mediaLibraryBackTarget } from './MediaDetailPageModel'
 
@@ -181,11 +180,11 @@ function useMediaDetailActions({
   )
   const reprobe = useCallback(() => reprobeMedia(media, refresh), [media, refresh])
   const exportNFO = useCallback(() => exportMediaNFO(media), [media])
-  const softDelete = useCallback(
-    () => softDeleteMedia(media, navigate),
+  const deleteMedia = useCallback(
+    () => deleteMediaFromLibrary(media, navigate),
     [media, navigate],
   )
-  return { goBack, toggleFavourite, rescrape, reprobe, exportNFO, softDelete }
+  return { goBack, toggleFavourite, rescrape, reprobe, exportNFO, deleteMedia }
 }
 
 function goBackFromMediaDetail(media: Media | null, navigate: NavigateFunction, replace = false): void {
@@ -237,23 +236,24 @@ async function reprobeMedia(media: Media | null, refresh: () => Promise<void>): 
 async function exportMediaNFO(media: Media | null): Promise<void> {
   if (!media) return
   try {
-    const result = await recycleAPI.exportNFO(media.id)
+    const result = await mediaAPI.exportNFO(media.id)
     toast.success(`NFO 已成功写入 ${result.path}`)
   } catch (err: unknown) {
     toast.error(apiErrorMessage(err, '导出失败'))
   }
 }
 
-async function softDeleteMedia(media: Media | null, navigate: NavigateFunction): Promise<void> {
+async function deleteMediaFromLibrary(media: Media | null, navigate: NavigateFunction): Promise<void> {
   if (!media) return
-  const confirmed = await confirmAction({
-    title: '移入回收站',
-    message: `将「${media.title}」移至回收站? (磁盘文件保留)`,
-    confirmText: '移入回收站',
+  const result = await confirmActionResult({
+    title: '删除媒体',
+    message: `确定从媒体库删除「${media.title}」？\n默认仅移除索引记录，磁盘文件会保留。`,
+    confirmText: '删除',
+    checkboxLabel: '同时删除本地文件（含同名 NFO）',
   })
-  if (!confirmed) return
-  await recycleAPI.softDelete(media.id)
-  toast.success('已移至回收站')
+  if (!result.confirmed) return
+  await mediaAPI.delete(media.id, { deleteFiles: result.checked })
+  toast.success(result.checked ? '已删除媒体及本地文件' : '已从媒体库删除')
   goBackFromMediaDetail(media, navigate, true)
 }
 

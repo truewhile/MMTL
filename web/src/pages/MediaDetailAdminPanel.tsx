@@ -14,7 +14,7 @@ type MediaDetailAdminPanelProps = {
   onOrganize: () => void
   onProbe: () => void
   onExportNFO: () => void
-  onSoftDelete: () => void
+  onDelete: () => void
 }
 
 export function MediaDetailAdminPanel({
@@ -27,7 +27,7 @@ export function MediaDetailAdminPanel({
   onOrganize,
   onProbe,
   onExportNFO,
-  onSoftDelete,
+  onDelete,
 }: MediaDetailAdminPanelProps) {
   if (isRemoteEmbyID(media.id)) {
     return null
@@ -70,11 +70,11 @@ export function MediaDetailAdminPanel({
           <span>写出本地 NFO 属性</span>
         </button>
         <button
-          onClick={onSoftDelete}
+          onClick={onDelete}
           className="btn-outline py-2 px-3.5 text-xs gap-1.5 !border-red-100 !text-red-500 hover:!bg-red-50 hover:!border-red-200"
         >
           <Trash2 size={13} />
-          <span>移入回收站</span>
+          <span>删除</span>
         </button>
       </div>
     </div>

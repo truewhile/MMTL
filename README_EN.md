@@ -50,7 +50,7 @@ In practice, MeBox gives you:
 | **Cloud & STRM** | OpenList, CloudDrive2, 115, WebDAV; STRM sync; upload/download queues; direct or 302 playback |
 | **Downloads & organize** | qBittorrent, site search/subscriptions, post-download organization, file manager |
 | **Users & permissions** | Admin/regular users, expiry, NSFW toggle, play-profile PIN, granular permissions |
-| **Operations** | Unified task queue, recycle bin, storage stats, DLNA casting, settings and logs |
+| **Operations** | Unified task queue, storage stats, DLNA casting, settings and logs |
 
 ### Tech stack
 

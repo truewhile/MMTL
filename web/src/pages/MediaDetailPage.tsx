@@ -42,7 +42,7 @@ export function MediaDetailPage() {
         onOrganize={() => detail.setOrganizeOpen(true)}
         onProbe={detail.reprobe}
         onExportNFO={detail.exportNFO}
-        onSoftDelete={detail.softDelete}
+        onDelete={detail.deleteMedia}
       />
 
       {detail.hasEpisodes && (

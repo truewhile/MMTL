@@ -8,9 +8,6 @@
 //	organize_source   opt-in        — organize the configured staging folder.
 //	transcode_cleanup every 24 h   — purge HLS transcode artefacts
 //	                                  older than 24 h.
-//	recycle_purge     every 24 h   — empty the recycle bin of rows
-//	                                  soft-deleted more than 30 days
-//	                                  ago.
 //
 // Each job runs at most once at a time (an in-flight run blocks the
 // next tick). All work happens on a long-lived background context so
@@ -127,11 +124,6 @@ func (s *SchedulerService) Start(ctx context.Context) {
 			name:     "transcode_cleanup",
 			interval: 24 * time.Hour,
 			run:      s.jobCleanTranscodeCache,
-		},
-		{
-			name:     "recycle_purge",
-			interval: 24 * time.Hour,
-			run:      s.jobPurgeRecycleBin,
 		},
 		{
 			name:     "image_cache_cleanup",
