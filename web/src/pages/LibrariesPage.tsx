@@ -23,11 +23,11 @@ export function LibrariesPage() {
   const [repairEpisodeArtwork, setRepairEpisodeArtwork] = useState(false)
   const [repairMsg, setRepairMsg] = useState('')
 
-  const [fetchedLibIds, setFetchedLibIds] = useState<Set<string>>(new Set())
+  const fetchedLibIdsRef = useRef<Set<string>>(new Set())
   const fetchingRef = useRef<Set<string>>(new Set())
 
   const fetchPreviews = useCallback(async (ids: string[]) => {
-    const targets = ids.filter((id) => !fetchedLibIds.has(id) && !fetchingRef.current.has(id))
+    const targets = ids.filter((id) => !fetchedLibIdsRef.current.has(id) && !fetchingRef.current.has(id))
     if (targets.length === 0) return
     targets.forEach((id) => fetchingRef.current.add(id))
 
@@ -46,16 +46,12 @@ export function LibrariesPage() {
     } catch {
       // 容错
     } finally {
-      setFetchedLibIds((prev) => {
-        const next = new Set(prev)
-        targets.forEach((id) => {
-          next.add(id)
-          fetchingRef.current.delete(id)
-        })
-        return next
+      targets.forEach((id) => {
+        fetchedLibIdsRef.current.add(id)
+        fetchingRef.current.delete(id)
       })
     }
-  }, [fetchedLibIds])
+  }, [])
 
   const loadLibraries = useCallback(async () => {
     setLoading(true)

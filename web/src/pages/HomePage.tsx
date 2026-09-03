@@ -80,11 +80,11 @@ export function HomePage() {
   const sortedLibraries = useMemo(() => sortByPinnedIds(libraries, pinnedIds), [libraries, pinnedIds])
 
   // 按需拉取卡片预览管理
-  const [fetchedLibIds, setFetchedLibIds] = useState<Set<string>>(new Set())
+  const fetchedLibIdsRef = useRef<Set<string>>(new Set())
   const fetchingRef = useRef<Set<string>>(new Set())
 
   const fetchPreviews = useCallback(async (ids: string[]) => {
-    const targets = ids.filter((id) => !fetchedLibIds.has(id) && !fetchingRef.current.has(id))
+    const targets = ids.filter((id) => !fetchedLibIdsRef.current.has(id) && !fetchingRef.current.has(id))
     if (targets.length === 0) return
     targets.forEach((id) => fetchingRef.current.add(id))
 
@@ -104,16 +104,12 @@ export function HomePage() {
     } catch {
       // 容错
     } finally {
-      setFetchedLibIds((prev) => {
-        const next = new Set(prev)
-        targets.forEach((id) => {
-          next.add(id)
-          fetchingRef.current.delete(id)
-        })
-        return next
+      targets.forEach((id) => {
+        fetchedLibIdsRef.current.add(id)
+        fetchingRef.current.delete(id)
       })
     }
-  }, [fetchedLibIds])
+  }, [])
 
   // 3. 首屏优先加载：轮播图库 + 媒体库卡片区前 20 个库 + 首屏前 3 个内容行
   useEffect(() => {
