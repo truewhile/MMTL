@@ -11,6 +11,16 @@ import (
 
 var episodicPathRE = regexp.MustCompile(`(?i)[\\/](?:电视剧|剧集|连续剧|短剧|国产剧|国剧|大陆剧|华语剧|国产电视剧|大陆电视剧|华语电视剧|欧美剧|欧美电视剧|美剧|英剧|日韩剧|日韩电视剧|日剧|韩剧|港剧|台剧|港台剧|泰剧|综艺|纪录片|儿童|动漫|番剧|国漫|日番|韩漫|美漫|欧美动漫|欧美动画|其他动漫|tv|series|shows?|season[\s._-]*\d|s\d{1,2}(?:[\s._-]|[\\/])|special[\s._-]*episodes?|specials?|sp|ovas?|oads?|extras?|bonus(?:es)?|omake|特别篇|特別篇|番外篇?|特典|外传|外傳|总集篇|總集篇)[\\/]`)
 
+var genericMovieTitleRE = regexp.MustCompile(`(?i)^(?:cd\s*\d+|part\s*\d+|disc\s*\d+|disk\s*\d+|dvd\s*\d+|movie|film|video|main|feature|track\s*\d+|preview|sample|trailer|\d{3,4}p|4k|2160p|1080p|720p)$`)
+
+func isGenericMovieTitle(title string) bool {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return true
+	}
+	return genericMovieTitleRE.MatchString(title)
+}
+
 func mediaSeriesKey(media model.Media) string {
 	return compactSeriesKey(mediaSeriesRawKey(media))
 }
@@ -54,7 +64,11 @@ func mediaSeriesRawKey(media model.Media) string {
 		return seriesFingerprint("movie-external", fmt.Sprintf("bgm:%d", media.BangumiID))
 	}
 	if fromPath != "" && !mediaParentLooksLikeCollection(media.Path) {
-		return seriesFingerprint("library-path", media.LibraryID, fromPath)
+		titleNorm := normalizeSeriesTitle(media.Title)
+		fromPathNorm := normalizeSeriesTitle(fromPath)
+		if titleNorm == "" || isGenericMovieTitle(titleNorm) || titleNorm == fromPathNorm {
+			return seriesFingerprint("library-path", media.LibraryID, fromPath)
+		}
 	}
 	return seriesFingerprint("library-title", media.LibraryID, normalizeSeriesTitle(media.Title))
 }

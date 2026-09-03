@@ -445,3 +445,26 @@ func TestGroupMediaSeriesCardsBridgesReleaseFoldersByMatchedSeriesTitle(t *testi
 		t.Fatalf("cards=%#v, want one series bridged by matched title", cards)
 	}
 }
+
+func TestGroupMediaSeriesCardsKeepsIndependentMoviesSeparateInSharedSubdirectory(t *testing.T) {
+	// 同一分类子目录下存放多部不同标题的独立电影，不应被强制折叠成 1 部
+	items := []model.Media{
+		{LibraryID: "movies", Title: "老师2024偷窥篇", Path: `/media/小姐姐/国产/nana/老师2024偷窥篇.strm`},
+		{LibraryID: "movies", Title: "紫光灯下的肉体诱惑", Path: `/media/小姐姐/国产/nana/紫光灯下的肉体诱惑.strm`},
+		{LibraryID: "movies", Title: "修洗衣机", Path: `/media/小姐姐/国产/nana/修洗衣机.strm`},
+	}
+	cards := groupMediaSeriesCards(items)
+	if len(cards) != 3 {
+		t.Fatalf("got %d cards, want 3 independent movie cards", len(cards))
+	}
+
+	// 但同一部电影的 CD1 和 CD2 仍应正确折叠为 1 部
+	cdItems := []model.Media{
+		{LibraryID: "movies", Title: "cd1", Path: `/media/电影/指环王 (2001)/cd1.mkv`},
+		{LibraryID: "movies", Title: "cd2", Path: `/media/电影/指环王 (2001)/cd2.mkv`},
+	}
+	cdCards := groupMediaSeriesCards(cdItems)
+	if len(cdCards) != 1 {
+		t.Fatalf("got %d cards for cd1/cd2, want 1 folded movie card", len(cdCards))
+	}
+}
