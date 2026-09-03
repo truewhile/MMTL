@@ -25,6 +25,9 @@ type User struct {
 	// 为空时代表不限制（全库可访问）。
 	AllowedLibraryIDs  string   `gorm:"type:text" json:"-"`
 	AllowedLibraryList []string `gorm:"-" json:"allowed_library_ids,omitempty"`
+	// PinnedLibraryIDs 存储用户置顶的媒体库 ID 列表（JSON 字符串），顺序即置顶优先级。
+	PinnedLibraryIDs  string   `gorm:"type:text" json:"-"`
+	PinnedLibraryList []string `gorm:"-" json:"pinned_library_ids,omitempty"`
 	// ExpiredAt is the account expiry time. Nil means the account never
 	// expires. When set and in the past, the account is treated as expired
 	// (login blocked) until an admin or a redemption code renews it.
@@ -59,10 +62,30 @@ func (u *User) DecodeAllowedLibraryIDs() []string {
 	return out
 }
 
+// DecodePinnedLibraryIDs 解析 PinnedLibraryIDs 字段。
+func (u *User) DecodePinnedLibraryIDs() []string {
+	if u == nil || strings.TrimSpace(u.PinnedLibraryIDs) == "" {
+		return nil
+	}
+	var ids []string
+	if err := json.Unmarshal([]byte(u.PinnedLibraryIDs), &ids); err != nil {
+		return nil
+	}
+	var out []string
+	for _, id := range ids {
+		trimmed := strings.TrimSpace(id)
+		if trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
+}
+
 // PopulateComputedFields 填充非 DB 虚拟计算字段（如 AllowedLibraryList）。
 func (u *User) PopulateComputedFields() {
 	if u == nil {
 		return
 	}
 	u.AllowedLibraryList = u.DecodeAllowedLibraryIDs()
+	u.PinnedLibraryList = u.DecodePinnedLibraryIDs()
 }

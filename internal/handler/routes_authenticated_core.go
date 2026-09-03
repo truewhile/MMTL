@@ -10,6 +10,8 @@ import (
 func registerAuthedUserAndLicenseRoutes(authed *gin.RouterGroup, svc *service.Container) {
 	authed.GET("/me", meHandler(svc))
 	authed.PATCH("/me", updateProfileHandler(svc))
+	authed.GET("/me/pinned-libraries", getPinnedLibrariesHandler(svc))
+	authed.PUT("/me/pinned-libraries", setPinnedLibrariesHandler(svc))
 	authed.POST("/me/password", changePasswordHandler(svc))
 	authed.POST("/me/logout", logoutHandler(svc))
 
