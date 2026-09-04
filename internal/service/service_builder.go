@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/helper"
 	"github.com/truewhile/MeBox/internal/model"
 	"github.com/truewhile/MeBox/internal/repository"
 )
@@ -47,12 +48,12 @@ func newServiceContainer(cfg *config.Config, log *zap.Logger, repos *repository.
 
 func (b *serviceContainerBuilder) startRealtimeServices() {
 	b.c.WSHub = NewHub(b.log)
-	go b.c.WSHub.Run()
+	helper.Go(b.log, "ws.hub", b.c.WSHub.Run)
 	b.c.Tasks = NewTaskTrackerService(b.log, b.c.WSHub)
 	b.c.SystemUpdate = NewSystemUpdateService(b.cfg, b.log, b.repos, b.c.Tasks, b.version)
 
 	b.c.SSEHub = NewSSEHub(b.log)
-	go b.c.SSEHub.Run()
+	helper.Go(b.log, "sse.hub", b.c.SSEHub.Run)
 }
 
 func (b *serviceContainerBuilder) initProviderServices() {

@@ -98,7 +98,8 @@ func (e *EmbyService) Item(ctx context.Context, mediaID, userID string) (map[str
 			pos = h.PositionMs
 		}
 	}
-	return e.itemPayload(ctx, m, fav, pos), nil
+	// 单条目 payload 内部对库类型/series 标题有多次查找，挂请求级缓存合并。
+	return e.itemPayload(e.withPayloadCache(ctx), m, fav, pos), nil
 }
 
 // LatestItems 最近添加，全库或指定库。远程媒体库(parentID 带前缀)直接透传远程。
@@ -177,7 +178,7 @@ func (e *EmbyService) latestSeriesItemsForLibrary(ctx context.Context, userID, l
 	if err := q.Order(mediaReleaseOrderSQL(true)).Limit(embySeriesGroupingLimit).Find(&rows).Error; err != nil {
 		return nil, err
 	}
-	groups := e.seriesGroupsFromMedia(rows)
+	groups := e.seriesGroupsFromMedia(ctx, rows)
 	sortSeriesGroups(groups, ItemsParams{SortBy: "premieredate", SortOrder: "Descending"})
 	if len(groups) > limit {
 		groups = groups[:limit]
@@ -415,9 +416,9 @@ func (e *EmbyService) itemPayload(ctx context.Context, m *model.Media, fav bool,
 	seasonID := ""
 	if e.mediaShouldBeEpisode(ctx, m) {
 		itemType = "Episode"
-		seriesID = e.seriesIDForMedia(m)
-		seriesName = e.seriesNameForMedia(m)
-		seasonID = e.seasonIDForMedia(m)
+		seriesID = e.seriesIDForMedia(ctx, m)
+		seriesName = e.seriesNameForMedia(ctx, m)
+		seasonID = e.seasonIDForMedia(ctx, m)
 		parentID = seasonID
 		episodeTitle := strings.TrimSpace(m.EpisodeTitle)
 		if episodeTitle != "" {

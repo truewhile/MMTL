@@ -54,7 +54,7 @@ func (e *EmbyService) countVisibleSeries(ctx context.Context, userID string) (in
 		for i := range rows {
 			key := strings.TrimSpace(rows[i].SeriesID)
 			if key == "" {
-				key = stableEmbyID(embyVirtualSeriesPrefix, rows[i].LibraryID, e.seriesNameForMedia(&rows[i]))
+				key = stableEmbyID(embyVirtualSeriesPrefix, rows[i].LibraryID, e.seriesNameForMedia(ctx, &rows[i]))
 			}
 			seen[key] = struct{}{}
 		}

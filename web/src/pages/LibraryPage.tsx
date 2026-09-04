@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, Fragment, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, Fragment, type ReactNode } from 'react'
 import { useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 
@@ -175,7 +175,7 @@ export function LibraryPage() {
     setManualMovie,
   })
 
-  const handleToggleFavourite = async (mediaID: string) => {
+  const handleToggleFavourite = useCallback(async (mediaID: string) => {
     if (!canFavorite || favouriteBusyID) return
     setFavouriteBusyID(mediaID)
     try {
@@ -183,9 +183,11 @@ export function LibraryPage() {
     } finally {
       setFavouriteBusyID('')
     }
-  }
+  }, [canFavorite, favouriteBusyID, toggleFavourite])
 
-  const cardActions = (media: Media): ReactNode => {
+  // useCallback 稳定引用：配合 MediaCard 的 memo，仅在收藏状态/操作集变化时
+  // 才让卡片重渲染。
+  const cardActions = useCallback((media: Media): ReactNode => {
     const actions: ReactNode[] = []
     if (canFavorite) {
       actions.push(
@@ -206,7 +208,7 @@ export function LibraryPage() {
     }
     if (actions.length === 0) return undefined
     return <>{actions}</>
-  }
+  }, [canFavorite, favouriteBusyID, handleToggleFavourite, isFavourite, movieActions])
 
   if (loading) {
     return (

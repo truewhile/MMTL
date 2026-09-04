@@ -13,6 +13,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/helper"
 	"github.com/truewhile/MeBox/internal/model"
 	"github.com/truewhile/MeBox/internal/repository"
 )
@@ -176,9 +177,11 @@ func (s *AuthService) touchLoginBestEffort(userID string) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		if err := s.repo.User.TouchLogin(ctx, userID); err != nil && s.log != nil {
-			s.log.Debug("touch login delayed", zap.String("user_id", userID), zap.Error(err))
-		}
+		helper.Run(s.log, "auth.touchLogin", func() {
+			if err := s.repo.User.TouchLogin(ctx, userID); err != nil && s.log != nil {
+				s.log.Debug("touch login delayed", zap.String("user_id", userID), zap.Error(err))
+			}
+		})
 	}()
 }
 

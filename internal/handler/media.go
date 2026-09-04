@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/truewhile/MeBox/internal/helper"
 	"github.com/truewhile/MeBox/internal/middleware"
 	"github.com/truewhile/MeBox/internal/model"
 	"github.com/truewhile/MeBox/internal/repository"
@@ -164,18 +165,20 @@ func listLibrariesHandler(svc *service.Container) gin.HandlerFunc {
 							case <-ctx.Done():
 								return
 							}
-							acct := svc.EmbyRemote.AccountByID(ctx, v.AccountID)
-							if acct == nil {
-								return
-							}
-							tmpMount := &model.EmbyMount{Base: model.Base{ID: v.MountID}}
-							itemTypes := remoteLibraryItemTypes(v.CollectionType)
-							if _, total, err := svc.EmbyRemote.RemoteLibraryMedia(ctx, tmpMount, acct, v.RemoteID, itemTypes, 0, 1); err == nil {
-								remotePayloads[i].Total = total
-							}
-							if cards, err := svc.EmbyRemote.RemoteLatestCards(ctx, tmpMount, acct, v.RemoteID, limit); err == nil {
-								remotePayloads[i].Cards = cards
-							}
+							helper.Run(svc.Log, "media.remotePreview", func() {
+								acct := svc.EmbyRemote.AccountByID(ctx, v.AccountID)
+								if acct == nil {
+									return
+								}
+								tmpMount := &model.EmbyMount{Base: model.Base{ID: v.MountID}}
+								itemTypes := remoteLibraryItemTypes(v.CollectionType)
+								if _, total, err := svc.EmbyRemote.RemoteLibraryMedia(ctx, tmpMount, acct, v.RemoteID, itemTypes, 0, 1); err == nil {
+									remotePayloads[i].Total = total
+								}
+								if cards, err := svc.EmbyRemote.RemoteLatestCards(ctx, tmpMount, acct, v.RemoteID, limit); err == nil {
+									remotePayloads[i].Cards = cards
+								}
+							})
 						}()
 					}
 					wg.Wait()

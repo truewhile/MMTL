@@ -33,6 +33,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/helper"
 	"github.com/truewhile/MeBox/internal/repository"
 )
 
@@ -143,7 +144,7 @@ func (t *TranscoderService) EnsureJob(ctx context.Context, mediaID string) (stri
 	t.jobs[mediaID] = job
 	t.mu.Unlock()
 
-	go t.monitorIdle(jobCtx, job)
-	go t.runFFmpeg(jobCtx, job, m.Path)
+	helper.Go(t.log, "transcoder.monitorIdle", func() { t.monitorIdle(jobCtx, job) })
+	helper.Go(t.log, "transcoder.ffmpeg", func() { t.runFFmpeg(jobCtx, job, m.Path) })
 	return t.PlaylistPath(mediaID), nil
 }

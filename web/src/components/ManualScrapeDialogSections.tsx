@@ -202,7 +202,7 @@ function ManualScrapeCandidateRow({
     <div className="flex flex-col gap-4 rounded-xl border border-sand-200 bg-white p-3 shadow-sm sm:flex-row">
       <div className="h-28 w-20 shrink-0 overflow-hidden rounded-lg bg-sand-100">
         {item.poster_url ? (
-          <img src={imageURL(item.poster_url)} alt={item.title} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+          <img src={imageURL(item.poster_url)} alt={item.title} loading="lazy" decoding="async" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
         ) : (
           <div className="flex h-full items-center justify-center text-xs text-sand-500">无海报</div>
         )}

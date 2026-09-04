@@ -8,6 +8,11 @@ import (
 
 // AutoMigrate creates tables for every model registered in the model package.
 func AutoMigrate(db *gorm.DB) error {
+	// 必须先于 AutoMigrate：旧库中可能已有重复的 (user_id, media_id) 历史行，
+	// 不去重会导致唯一索引 uniq_user_history 创建失败。
+	if err := dedupePlaybackHistories(db); err != nil {
+		return err
+	}
 	if err := db.AutoMigrate(model.AllModels()...); err != nil {
 		return err
 	}
@@ -35,6 +40,27 @@ func AutoMigrate(db *gorm.DB) error {
 func ensureSQLiteQueryOptimizer(db *gorm.DB) error {
 	// Refresh planner statistics so indexes on large media tables are used.
 	return db.Exec("ANALYZE").Error
+}
+
+// dedupePlaybackHistories removes duplicate (user_id, media_id) rows left by
+// the former read-then-write upsert, so the uniq_user_history composite unique
+// index can be created on existing databases. Keeps the most recent row per
+// pair, preferring live rows over soft-deleted ones.
+func dedupePlaybackHistories(db *gorm.DB) error {
+	if !db.Migrator().HasTable("playback_histories") {
+		return nil
+	}
+	return db.Exec(`
+DELETE FROM playback_histories WHERE id IN (
+	SELECT id FROM (
+		SELECT id, ROW_NUMBER() OVER (
+			PARTITION BY user_id, media_id
+			ORDER BY deleted_at IS NULL DESC, watched_at DESC, id DESC
+		) AS rn
+		FROM playback_histories
+	) ranked
+	WHERE ranked.rn > 1
+)`).Error
 }
 
 func ensurePostgresColumnCompatibility(db *gorm.DB) error {

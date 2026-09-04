@@ -49,11 +49,15 @@ func (e *EmbyService) findSeriesGroup(ctx context.Context, id, userID string) (e
 	q = e.applyUserMediaVisibility(ctx, q, userID)
 	if !strings.HasPrefix(id, embyVirtualSeriesPrefix) {
 		q = q.Where("series_id = ?", id)
+	} else {
+		// 虚拟 series ID 只可能来自 series_id 为空的媒体：
+		// 有 series_id 时分组 key 就是 series_id 本身（UUID，不带虚拟前缀）。
+		q = q.Where("series_id IS NULL OR series_id = ''")
 	}
 	if err := q.Order("media.season_num asc, media.episode_num asc, media.created_at asc").Limit(embySeriesGroupingLimit).Find(&rows).Error; err != nil {
 		return embySeriesGroup{}, false, err
 	}
-	for _, group := range e.seriesGroupsFromMedia(rows) {
+	for _, group := range e.seriesGroupsFromMedia(ctx, rows) {
 		if group.ID == id {
 			e.rememberSeriesGroup(group)
 			return group, true, nil
@@ -88,9 +92,18 @@ func (e *EmbyService) findSeasonGroup(ctx context.Context, id, userID string) (e
 	if season, ok := e.cachedSeasonGroup(id); ok {
 		return season, true, nil
 	}
+	// 虚拟 Season ID 是 hash(seriesKey, seasonNum)，无法反解出 series。
+	// 常见情况（已刮削、series_id 非空）先用一条小型 DISTINCT 查询枚举候选对，
+	// 在内存中算哈希匹配，命中后只加载该一部剧的剧集行，避免整库扫描。
+	if season, ok, err := e.findSeasonGroupBySeriesCandidates(ctx, id, userID); err != nil {
+		return embySeasonGroup{}, false, err
+	} else if ok {
+		return season, true, nil
+	}
+	// 回退：未刮削（series_id 为空，虚拟 key 由库名+名称派生）的媒体只能全量分组。
 	var rows []model.Media
 	q := e.repo.DB.WithContext(ctx).Model(&model.Media{}).
-		Where("season_num > 0 OR episode_num > 0")
+		Where("(series_id IS NULL OR series_id = '') AND (season_num > 0 OR episode_num > 0)")
 	q = e.applyUserMediaVisibility(ctx, q, userID)
 	if err := q.
 		Order("media.season_num asc, media.episode_num asc, media.created_at asc").
@@ -98,7 +111,7 @@ func (e *EmbyService) findSeasonGroup(ctx context.Context, id, userID string) (e
 		Find(&rows).Error; err != nil {
 		return embySeasonGroup{}, false, err
 	}
-	for _, series := range e.seriesGroupsFromMedia(rows) {
+	for _, series := range e.seriesGroupsFromMedia(ctx, rows) {
 		for _, season := range e.seasonsForSeries(series) {
 			if season.ID == id {
 				e.rememberSeriesGroup(series)
@@ -109,18 +122,77 @@ func (e *EmbyService) findSeasonGroup(ctx context.Context, id, userID string) (e
 	return embySeasonGroup{}, false, nil
 }
 
-func (e *EmbyService) seriesGroupsFromMedia(rows []model.Media) []embySeriesGroup {
+// findSeasonGroupBySeriesCandidates resolves virtual season IDs for media that
+// carry a real series_id: enumerate distinct (series_id, season_num) pairs via
+// SQL, hash each candidate to find the matching season, then load only that
+// one series' episodes.
+func (e *EmbyService) findSeasonGroupBySeriesCandidates(ctx context.Context, id, userID string) (embySeasonGroup, bool, error) {
+	type seasonCandidate struct {
+		SeriesID  string
+		SeasonNum int
+	}
+	var candidates []seasonCandidate
+	q := e.repo.DB.WithContext(ctx).Model(&model.Media{}).
+		Select("DISTINCT series_id, season_num").
+		Where("series_id <> '' AND (season_num > 0 OR episode_num > 0)")
+	q = e.applyUserMediaVisibility(ctx, q, userID)
+	if err := q.Find(&candidates).Error; err != nil {
+		return embySeasonGroup{}, false, err
+	}
+	matched := make([]string, 0, 1)
+	for _, cand := range candidates {
+		if seasonID(cand.SeriesID, cand.SeasonNum) == id {
+			matched = append(matched, cand.SeriesID)
+		}
+	}
+	for _, matchedSeries := range matched {
+		season, ok, err := e.seasonGroupForSeries(ctx, id, matchedSeries, userID)
+		if err != nil || ok {
+			return season, ok, err
+		}
+	}
+	return embySeasonGroup{}, false, nil
+}
+
+// seasonGroupForSeries rebuilds the season groups of one series (small row
+// set) and returns the one matching the virtual season id.
+func (e *EmbyService) seasonGroupForSeries(ctx context.Context, id, seriesID, userID string) (embySeasonGroup, bool, error) {
+	var rows []model.Media
+	rq := e.repo.DB.WithContext(ctx).Model(&model.Media{}).
+		Where("series_id = ? AND (season_num > 0 OR episode_num > 0)", seriesID)
+	rq = e.applyUserMediaVisibility(ctx, rq, userID)
+	if err := rq.
+		Order("media.season_num asc, media.episode_num asc, media.created_at asc").
+		Limit(embySeriesGroupingLimit).
+		Find(&rows).Error; err != nil {
+		return embySeasonGroup{}, false, err
+	}
+	for _, series := range e.seriesGroupsFromMedia(ctx, rows) {
+		if series.ID != seriesID {
+			continue
+		}
+		for _, season := range e.seasonsForSeries(series) {
+			if season.ID == id {
+				e.rememberSeriesGroup(series)
+				return season, true, nil
+			}
+		}
+	}
+	return embySeasonGroup{}, false, nil
+}
+
+func (e *EmbyService) seriesGroupsFromMedia(ctx context.Context, rows []model.Media) []embySeriesGroup {
 	byID := map[string]*embySeriesGroup{}
 	order := []string{}
 	for _, row := range rows {
 		row := row
-		seriesID := e.seriesIDForMedia(&row)
+		seriesID := e.seriesIDForMedia(ctx, &row)
 		group, ok := byID[seriesID]
 		if !ok {
 			group = &embySeriesGroup{
 				ID:          seriesID,
 				LibraryID:   row.LibraryID,
-				Name:        e.seriesNameForMedia(&row),
+				Name:        e.seriesNameForMedia(ctx, &row),
 				Year:        row.Year,
 				ReleaseDate: row.ReleaseDate,
 				TMDbID:      row.TMDbID,

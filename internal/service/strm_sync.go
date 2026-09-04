@@ -18,6 +18,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/truewhile/MeBox/internal/helper"
 	"github.com/truewhile/MeBox/internal/model"
 	"github.com/truewhile/MeBox/internal/service/cloud"
 	"github.com/truewhile/MeBox/internal/service/cloud115"
@@ -105,7 +106,7 @@ func (s *StrmService) StartSync(ctx context.Context, pathID string, syncType ...
 	p.LastSyncMessage = "同步进行中"
 	_ = s.repo.StrmSyncPath.Update(ctx, p)
 
-	go s.runSync(runCtx, p, rec)
+	helper.Go(s.log, "strm.sync", func() { s.runSync(runCtx, p, rec) })
 	return nil
 }
 
@@ -361,38 +362,45 @@ func (st *strmSyncState) walkRemote() error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for task := range queue {
-				if ctx.Err() != nil {
-					return
-				}
-				entries, err := st.provider.List(ctx, task.id)
-				if err != nil {
-					errMu.Lock()
-					if firstErr == nil {
-						firstErr = fmt.Errorf("列出远端目录 %s 失败：%w", task.id, err)
+			// worker 解析远端响应 panic 时取消整个同步，让 closer 与其余
+			// worker 正常收尾，避免队列与 pending 计数卡死；正常退出不取消。
+			if err := helper.Recover(st.s.log, "strm.sync.walkRemote", func() error {
+				for task := range queue {
+					if ctx.Err() != nil {
+						return nil
 					}
-					errMu.Unlock()
-					cancel()
-					return
-				}
-				for _, entry := range entries {
-					cleanName := cleanEntryName(entry.Name, entry.IsDir)
-					rel := cleanName
-					if task.rel != "" {
-						rel = task.rel + "/" + cleanName
-					}
-					if entry.IsDir {
-						pending.Add(1)
-						select {
-						case queue <- dirTask{id: entry.ID, rel: rel}:
-						case <-ctx.Done():
-							pending.Add(-1)
+					entries, err := st.provider.List(ctx, task.id)
+					if err != nil {
+						errMu.Lock()
+						if firstErr == nil {
+							firstErr = fmt.Errorf("列出远端目录 %s 失败：%w", task.id, err)
 						}
-					} else {
-						st.processRemoteFile(entry, rel)
+						errMu.Unlock()
+						cancel()
+						return nil
 					}
+					for _, entry := range entries {
+						cleanName := cleanEntryName(entry.Name, entry.IsDir)
+						rel := cleanName
+						if task.rel != "" {
+							rel = task.rel + "/" + cleanName
+						}
+						if entry.IsDir {
+							pending.Add(1)
+							select {
+							case queue <- dirTask{id: entry.ID, rel: rel}:
+							case <-ctx.Done():
+								pending.Add(-1)
+							}
+						} else {
+							st.processRemoteFile(entry, rel)
+						}
+					}
+					pending.Add(-1)
 				}
-				pending.Add(-1)
+				return nil
+			}); err != nil {
+				cancel()
 			}
 		}()
 	}
@@ -560,22 +568,28 @@ func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				for t := range taskCh {
-					if ctx.Err() != nil {
-						return
-					}
-					files, _, err := open115.GetFsListFlat(ctx, rootCID, t.offset, pageSize)
-					if err != nil {
-						errMu.Lock()
-						if fetchErr == nil {
-							fetchErr = err
+				// 分页拉取 panic 时取消整个同步；正常退出不取消。
+				if err := helper.Recover(st.s.log, "strm.sync.walk115.page", func() error {
+					for t := range taskCh {
+						if ctx.Err() != nil {
+							return nil
 						}
-						errMu.Unlock()
-						return
+						files, _, err := open115.GetFsListFlat(ctx, rootCID, t.offset, pageSize)
+						if err != nil {
+							errMu.Lock()
+							if fetchErr == nil {
+								fetchErr = err
+							}
+							errMu.Unlock()
+							return nil
+						}
+						filesMu.Lock()
+						allFiles = append(allFiles, files...)
+						filesMu.Unlock()
 					}
-					filesMu.Lock()
-					allFiles = append(allFiles, files...)
-					filesMu.Unlock()
+					return nil
+				}); err != nil {
+					cancel()
 				}
 			}()
 		}
@@ -632,63 +646,70 @@ func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
 			pwg.Add(1)
 			go func() {
 				defer pwg.Done()
-				for pid := range pidCh {
-					if ctx.Err() != nil {
-						return
-					}
-					if _, loaded := st.dirCache.Load(pid); loaded {
-						if n := doneDirs.Add(1); n%20 == 0 || n == int64(totalDirs) {
+				// 解析目录详情 panic 时中止整个同步（避免带着损坏的相对路径
+				// 继续执行）；正常退出不取消。
+				if err := helper.Recover(st.s.log, "strm.sync.walk115.dirTree", func() error {
+					for pid := range pidCh {
+						if ctx.Err() != nil {
+							return nil
+						}
+						if _, loaded := st.dirCache.Load(pid); loaded {
+							if n := doneDirs.Add(1); n%20 == 0 || n == int64(totalDirs) {
+								st.updateSyncMessage(fmt.Sprintf("正在解析目录树 (%d/%d)...", n, totalDirs))
+							}
+							continue
+						}
+						detail, err := open115.GetFsDetailByCid(ctx, pid)
+						if err != nil {
+							// 目录详情解析失败会导致下游文件 rel 无法还原真实父路径，
+							// seen key 与磁盘路径对不上：增量 prune 会误删本地文件、上传会
+							// 误传本地未变文件、下载会重复下载。这里不是降级容错，而是
+							// 直接中止整个同步——宁可本次同步失败，也不带着损坏的相对路径
+							// 继续执行造成大规模误删/误传/重下（参考用户反馈"云盘没动却重下重传"）。
+							errMu.Lock()
+							if firstErr == nil {
+								firstErr = fmt.Errorf("115: 解析目录树失败（file_id=%s）：%w", pid, err)
+							}
+							errMu.Unlock()
+							st.scanIncomplete.Store(true)
+							cancel()
+							return nil
+						} else if detail != nil {
+							// 解析相对路径
+							relPath := cleanDirRel(detail.RelativePath(rootCID))
+							st.dirCache.Store(pid, relPath)
+							_ = st.s.repo.StrmDirCache.Set(ctx, st.p.ID, pid, relPath)
+
+							// 顺便解析并缓存 detail.Paths 中包含的中间各层级目录
+							for _, ancestor := range detail.Paths {
+								if ancestor.FileId == "0" || ancestor.FileId == rootCID {
+									continue
+								}
+								if _, loaded := st.dirCache.Load(ancestor.FileId); !loaded {
+									subDetail := &cloud115.RemoteFileDetail{
+										FileId:   ancestor.FileId,
+										FileName: ancestor.Name,
+										Paths:    nil,
+									}
+									for _, p := range detail.Paths {
+										subDetail.Paths = append(subDetail.Paths, p)
+										if p.FileId == ancestor.FileId {
+											break
+										}
+									}
+									ancestorRel := cleanDirRel(subDetail.RelativePath(rootCID))
+									st.dirCache.Store(ancestor.FileId, ancestorRel)
+									_ = st.s.repo.StrmDirCache.Set(ctx, st.p.ID, ancestor.FileId, ancestorRel)
+								}
+							}
+						}
+						if n := doneDirs.Add(1); n%10 == 0 || n == int64(totalDirs) {
 							st.updateSyncMessage(fmt.Sprintf("正在解析目录树 (%d/%d)...", n, totalDirs))
 						}
-						continue
 					}
-					detail, err := open115.GetFsDetailByCid(ctx, pid)
-					if err != nil {
-						// 目录详情解析失败会导致下游文件 rel 无法还原真实父路径，
-						// seen key 与磁盘路径对不上：增量 prune 会误删本地文件、上传会
-						// 误传本地未变文件、下载会重复下载。这里不是降级容错，而是
-						// 直接中止整个同步——宁可本次同步失败，也不带着损坏的相对路径
-						// 继续执行造成大规模误删/误传/重下（参考用户反馈"云盘没动却重下重传"）。
-						errMu.Lock()
-						if firstErr == nil {
-							firstErr = fmt.Errorf("115: 解析目录树失败（file_id=%s）：%w", pid, err)
-						}
-						errMu.Unlock()
-						st.scanIncomplete.Store(true)
-						cancel()
-						return
-					} else if detail != nil {
-						// 解析相对路径
-						relPath := cleanDirRel(detail.RelativePath(rootCID))
-						st.dirCache.Store(pid, relPath)
-						_ = st.s.repo.StrmDirCache.Set(ctx, st.p.ID, pid, relPath)
-
-						// 顺便解析并缓存 detail.Paths 中包含的中间各层级目录
-						for _, ancestor := range detail.Paths {
-							if ancestor.FileId == "0" || ancestor.FileId == rootCID {
-								continue
-							}
-							if _, loaded := st.dirCache.Load(ancestor.FileId); !loaded {
-								subDetail := &cloud115.RemoteFileDetail{
-									FileId:   ancestor.FileId,
-									FileName: ancestor.Name,
-									Paths:    nil,
-								}
-								for _, p := range detail.Paths {
-									subDetail.Paths = append(subDetail.Paths, p)
-									if p.FileId == ancestor.FileId {
-										break
-									}
-								}
-								ancestorRel := cleanDirRel(subDetail.RelativePath(rootCID))
-								st.dirCache.Store(ancestor.FileId, ancestorRel)
-								_ = st.s.repo.StrmDirCache.Set(ctx, st.p.ID, ancestor.FileId, ancestorRel)
-							}
-						}
-					}
-					if n := doneDirs.Add(1); n%10 == 0 || n == int64(totalDirs) {
-						st.updateSyncMessage(fmt.Sprintf("正在解析目录树 (%d/%d)...", n, totalDirs))
-					}
+					return nil
+				}); err != nil {
+					cancel()
 				}
 			}()
 		}

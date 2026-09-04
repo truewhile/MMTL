@@ -65,7 +65,7 @@ func (e *EmbyService) movieLibraryItems(ctx context.Context, p ItemsParams) (map
 			return nil, err
 		}
 	}
-	seriesGroups := e.seriesGroupsFromMedia(episodicRows)
+	seriesGroups := e.seriesGroupsFromMedia(ctx, episodicRows)
 
 	// 真正的电影 -> Movie 项(剔除剧集结构行)。
 	movieQ := apply(e.repo.DB.WithContext(ctx).Model(&model.Media{}))
@@ -135,10 +135,11 @@ func (e *EmbyService) libraryIsEpisodic(ctx context.Context, libraryID string) (
 	if strings.TrimSpace(libraryID) == "" {
 		return false, nil
 	}
-	if lib, err := e.repo.Library.FindByID(ctx, libraryID); err != nil {
+	// 走请求级缓存（若有），避免同一请求内对同一库重复查表。
+	if typ, ok, err := e.payloadLibraryType(ctx, libraryID); err != nil {
 		return false, err
-	} else if lib != nil {
-		return embyLibraryTypeIsEpisodic(lib.Type), nil
+	} else if ok {
+		return embyLibraryTypeIsEpisodic(typ), nil
 	}
 	var count int64
 	err := e.repo.DB.WithContext(ctx).Model(&model.Media{}).
@@ -151,11 +152,11 @@ func (e *EmbyService) mediaBelongsToEpisodicLibrary(ctx context.Context, m *mode
 	if e == nil || m == nil || strings.TrimSpace(m.LibraryID) == "" {
 		return false
 	}
-	lib, err := e.repo.Library.FindByID(ctx, m.LibraryID)
-	if err != nil || lib == nil {
+	typ, ok, err := e.payloadLibraryType(ctx, m.LibraryID)
+	if err != nil || !ok {
 		return false
 	}
-	return embyLibraryTypeIsEpisodic(lib.Type)
+	return embyLibraryTypeIsEpisodic(typ)
 }
 
 func (e *EmbyService) mediaShouldBeEpisode(ctx context.Context, m *model.Media) bool {

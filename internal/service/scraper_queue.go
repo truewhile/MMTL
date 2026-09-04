@@ -10,6 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/truewhile/MeBox/internal/helper"
 	"github.com/truewhile/MeBox/internal/model"
 )
 
@@ -73,7 +74,10 @@ func (s *ScraperService) queueWorker(ctx context.Context) {
 				}
 				defer func() { <-sem }()
 
-				s.processScrapeTask(ctx, t)
+				// 刮削要解析远端元数据响应，单个任务 panic 不应拖垮队列 worker。
+				helper.Run(s.log, "scraper.task", func() {
+					s.processScrapeTask(ctx, t)
+				})
 			}(&tasks[i])
 		}
 		wg.Wait()

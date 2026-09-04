@@ -149,6 +149,9 @@ func (e *EmbyService) episodeItems(ctx context.Context, rows []model.Media, p It
 }
 
 func (e *EmbyService) payloadsForMedia(ctx context.Context, rows []model.Media, userID string) ([]map[string]any, error) {
+	// 请求级缓存：库类型与 series 标题整页只查一次，消除逐条目 N+1。
+	ctx = e.withPayloadCache(ctx)
+	e.prefetchPayloadCache(ctx, rows)
 	rows = e.collapseMediaVersionRows(ctx, rows)
 	userFavs := map[string]bool{}
 	userPos := map[string]int64{}
@@ -240,7 +243,7 @@ func (e *EmbyService) seriesItemsForLibrary(ctx context.Context, libraryID strin
 	if err := q.Order(mediaReleaseOrderSQL(true)).Limit(embySeriesGroupingLimit).Find(&rows).Error; err != nil {
 		return nil, err
 	}
-	groups := e.seriesGroupsFromMedia(rows)
+	groups := e.seriesGroupsFromMedia(ctx, rows)
 	sortSeriesGroups(groups, p)
 	total := len(groups)
 	items := make([]map[string]any, 0, minInt(p.Limit, len(groups)))

@@ -14,21 +14,22 @@ import (
 	"github.com/truewhile/MeBox/internal/model"
 )
 
-func (e *EmbyService) seriesIDForMedia(m *model.Media) string {
+func (e *EmbyService) seriesIDForMedia(ctx context.Context, m *model.Media) string {
 	if strings.TrimSpace(m.SeriesID) != "" {
 		return m.SeriesID
 	}
-	return stableEmbyID(embyVirtualSeriesPrefix, m.LibraryID, e.seriesNameForMedia(m))
+	return stableEmbyID(embyVirtualSeriesPrefix, m.LibraryID, e.seriesNameForMedia(ctx, m))
 }
 
-func (e *EmbyService) seasonIDForMedia(m *model.Media) string {
-	return seasonID(e.seriesIDForMedia(m), m.SeasonNum)
+func (e *EmbyService) seasonIDForMedia(ctx context.Context, m *model.Media) string {
+	return seasonID(e.seriesIDForMedia(ctx, m), m.SeasonNum)
 }
 
-func (e *EmbyService) seriesNameForMedia(m *model.Media) string {
+func (e *EmbyService) seriesNameForMedia(ctx context.Context, m *model.Media) string {
 	if strings.TrimSpace(m.SeriesID) != "" {
-		if series, err := e.repo.Series.FindByID(context.Background(), m.SeriesID); err == nil && series != nil && strings.TrimSpace(series.Title) != "" {
-			return series.Title
+		// 走请求级缓存；无缓存 ctx 时退化为单次查询。
+		if title, ok, err := e.payloadSeriesTitle(ctx, m.SeriesID); err == nil && ok && strings.TrimSpace(title) != "" {
+			return title
 		}
 	}
 	if strings.EqualFold(strings.TrimSpace(m.ScrapeStatus), "matched") && strings.TrimSpace(m.Title) != "" {

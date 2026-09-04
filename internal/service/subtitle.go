@@ -23,6 +23,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -35,6 +37,21 @@ type SubtitleService struct {
 	log  *zap.Logger
 	repo *repository.Container
 	cfg  *config.Config
+
+	// 目录发现是 Emby 条目列表的热路径（每个媒体源一次 DB 查询 + 最多 5 次
+	// os.ReadDir），而字幕文件极少变化：按 media_id 做短 TTL 缓存。
+	cacheMu   sync.Mutex
+	discovery map[string]subtitleDiscoveryEntry
+}
+
+const (
+	subtitleDiscoveryTTL      = 2 * time.Minute
+	subtitleDiscoveryCacheCap = 4096
+)
+
+type subtitleDiscoveryEntry struct {
+	tracks    []SubtitleTrack
+	expiresAt time.Time
 }
 
 // NewSubtitleService is the constructor.
@@ -73,6 +90,50 @@ func (s *SubtitleService) DiscoverExternalOnly(ctx context.Context, mediaID stri
 }
 
 func (s *SubtitleService) discover(ctx context.Context, mediaID string) ([]SubtitleTrack, error) {
+	if tracks, ok := s.cachedDiscovery(mediaID); ok {
+		return tracks, nil
+	}
+	tracks, err := s.discoverUncached(ctx, mediaID)
+	if err != nil {
+		return nil, err
+	}
+	s.rememberDiscovery(mediaID, tracks)
+	return tracks, nil
+}
+
+func (s *SubtitleService) cachedDiscovery(mediaID string) ([]SubtitleTrack, bool) {
+	now := time.Now()
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+	entry, ok := s.discovery[mediaID]
+	if !ok {
+		return nil, false
+	}
+	if now.After(entry.expiresAt) {
+		delete(s.discovery, mediaID)
+		return nil, false
+	}
+	// 返回副本，避免调用方修改缓存内容。
+	return append([]SubtitleTrack(nil), entry.tracks...), true
+}
+
+func (s *SubtitleService) rememberDiscovery(mediaID string, tracks []SubtitleTrack) {
+	now := time.Now()
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+	if s.discovery == nil {
+		s.discovery = make(map[string]subtitleDiscoveryEntry)
+	}
+	if len(s.discovery) >= subtitleDiscoveryCacheCap {
+		s.discovery = make(map[string]subtitleDiscoveryEntry)
+	}
+	s.discovery[mediaID] = subtitleDiscoveryEntry{
+		tracks:    append([]SubtitleTrack(nil), tracks...),
+		expiresAt: now.Add(subtitleDiscoveryTTL),
+	}
+}
+
+func (s *SubtitleService) discoverUncached(ctx context.Context, mediaID string) ([]SubtitleTrack, error) {
 	m, err := s.repo.Media.FindByID(ctx, mediaID)
 	if err != nil {
 		return nil, err

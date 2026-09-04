@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { memo, type ReactNode } from 'react'
 import { Film } from 'lucide-react'
 
 import { MediaCard } from '../components/MediaCard'
@@ -33,7 +33,9 @@ export function LibraryMediaSections({
       {!isSeries && items.length > 0 && (
         <MediaGrid count={items.length} renderItem={(index) => {
           const media = items[index]
-          return <MediaCard key={media.id} media={media} actions={cardActions(media)} />
+          // renderActions 传函数引用：MediaCard 重渲染时才构建操作按钮，
+          // 配合 memo，父级无关状态变化不再级联重渲染全部卡片。
+          return <MediaCard key={media.id} media={media} renderActions={cardActions} />
         }} />
       )}
 
@@ -45,12 +47,11 @@ export function LibraryMediaSections({
         <MediaGrid count={seriesCards.length} renderItem={(index) => {
           const series = seriesCards[index]
           return (
-            <MediaCard
+            <SeriesCardItem
               key={series.key}
-              media={series.rep}
-              count={series.count}
-              actions={cardActions(series.rep)}
-              onClick={() => onSeriesClick(series)}
+              series={series}
+              cardActions={cardActions}
+              onSeriesClick={onSeriesClick}
             />
           )
         }} />
@@ -62,6 +63,27 @@ export function LibraryMediaSections({
     </>
   )
 }
+
+// 独立 memo 组件：onClick 闭包在其内部创建，props 均为稳定引用，
+// 父级重渲染不会穿透到每张剧集卡片。
+const SeriesCardItem = memo(function SeriesCardItem({
+  series,
+  cardActions,
+  onSeriesClick,
+}: {
+  series: SeriesCard
+  cardActions: (media: Media) => ReactNode
+  onSeriesClick: (series: SeriesCard) => void
+}) {
+  return (
+    <MediaCard
+      media={series.rep}
+      count={series.count}
+      renderActions={cardActions}
+      onClick={() => onSeriesClick(series)}
+    />
+  )
+})
 
 function MediaGrid({ count, renderItem }: { count: number; renderItem: (index: number) => ReactNode }) {
   if (count <= VIRTUALIZE_THRESHOLD) {

@@ -70,6 +70,8 @@ export function LibrarySeriesDetailHeader({
             <img
               src={imageURL(series.rep.poster_url, series.rep.updated_at)}
               alt={series.rep.title}
+              loading="lazy"
+              decoding="async"
               className="aspect-[2/3] w-full object-cover"
               referrerPolicy="no-referrer"
             />

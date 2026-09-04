@@ -95,7 +95,10 @@ export function StrmManagePage() {
   // 有进行中的同步时轮询刷新状态
   useEffect(() => {
     if (!paths.some((p) => p.last_sync_status === 'running')) return
-    const timer = setInterval(() => refresh().catch(() => undefined), 4000)
+    const timer = setInterval(() => {
+      if (document.hidden) return
+      refresh().catch(() => undefined)
+    }, 4000)
     return () => clearInterval(timer)
   }, [paths, refresh])
 

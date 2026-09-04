@@ -22,6 +22,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"go.uber.org/zap"
 
+	"github.com/truewhile/MeBox/internal/helper"
 	"github.com/truewhile/MeBox/internal/model"
 	"github.com/truewhile/MeBox/internal/repository"
 )
@@ -69,8 +70,8 @@ func (w *WatcherService) Start(ctx context.Context) error {
 	if err := w.Refresh(ctx); err != nil {
 		w.log.Warn("watcher refresh failed", zap.Error(err))
 	}
-	go w.loop(ctx)
-	go w.debouncer(ctx)
+	helper.Go(w.log, "watcher.loop", func() { w.loop(ctx) })
+	helper.Go(w.log, "watcher.debouncer", func() { w.debouncer(ctx) })
 	return nil
 }
 

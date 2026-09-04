@@ -24,6 +24,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/helper"
 	"github.com/truewhile/MeBox/internal/model"
 	"github.com/truewhile/MeBox/internal/repository"
 	"github.com/truewhile/MeBox/internal/service/cloud"
@@ -186,14 +187,14 @@ func (s *StrmService) Start(ctx context.Context) {
 		uploadThreads = 4
 	}
 	for i := 0; i < downloadThreads; i++ {
-		go s.downloadWorker(ctx)
+		helper.Go(s.log, "strm.downloadWorker", func() { s.downloadWorker(ctx) })
 	}
 	for i := 0; i < uploadThreads; i++ {
-		go s.uploadWorker(ctx)
+		helper.Go(s.log, "strm.uploadWorker", func() { s.uploadWorker(ctx) })
 	}
-	go s.cronLoop(ctx)
-	go s.queueCleanupLoop(ctx)
-	go s.refresh115TokensLoop(ctx)
+	helper.Go(s.log, "strm.cronLoop", func() { s.cronLoop(ctx) })
+	helper.Go(s.log, "strm.queueCleanupLoop", func() { s.queueCleanupLoop(ctx) })
+	helper.Go(s.log, "strm.refresh115TokensLoop", func() { s.refresh115TokensLoop(ctx) })
 	s.log.Info("strm service started",
 		zap.Int("download_threads", downloadThreads),
 		zap.Int("upload_threads", uploadThreads))

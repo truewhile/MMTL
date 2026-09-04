@@ -18,6 +18,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/truewhile/MeBox/internal/helper"
 	"github.com/truewhile/MeBox/internal/model"
 	"github.com/truewhile/MeBox/internal/service/cloud"
 	"github.com/truewhile/MeBox/internal/service/cloud115"
@@ -66,7 +67,10 @@ func (s *StrmService) downloadWorker(ctx context.Context) {
 					return
 				}
 				defer s.releaseDownloadSlot(task.Provider)
-				s.processDownloadTask(ctx, task)
+				// 单个任务 panic 不应拖垮整个下载 worker。
+				helper.Run(s.log, "strm.downloadTask", func() {
+					s.processDownloadTask(ctx, task)
+				})
 			}(i)
 		}
 		wg.Wait()

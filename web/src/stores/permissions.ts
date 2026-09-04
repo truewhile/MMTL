@@ -14,6 +14,10 @@ interface PermissionState {
   clearPermissions: () => void
 }
 
+// 进行中的请求共享同一个 Promise：同一次 commit 内挂载的多个消费方
+// 同时触发 fetchPermissions 时只会发出一次 /permissions 请求。
+let inflight: Promise<void> | null = null
+
 export const usePermissionStore = create<PermissionState>((set, get) => ({
   permissions: {},
   role: '',
@@ -23,22 +27,28 @@ export const usePermissionStore = create<PermissionState>((set, get) => ({
   error: null,
 
   fetchPermissions: async () => {
+    if (inflight) return inflight
     set({ isLoading: true, error: null })
-    try {
-      const result = await getMyPermissions()
-      set({
-        permissions: result.permissions ?? {},
-        role: result.role ?? '',
-        tier: result.tier ?? 'free',
-        isSuper: result.is_super ?? false,
-        isLoading: false,
-      })
-    } catch (err) {
-      set({
-        isLoading: false,
-        error: err instanceof Error ? err.message : 'Failed to fetch permissions',
-      })
-    }
+    inflight = (async () => {
+      try {
+        const result = await getMyPermissions()
+        set({
+          permissions: result.permissions ?? {},
+          role: result.role ?? '',
+          tier: result.tier ?? 'free',
+          isSuper: result.is_super ?? false,
+          isLoading: false,
+        })
+      } catch (err) {
+        set({
+          isLoading: false,
+          error: err instanceof Error ? err.message : 'Failed to fetch permissions',
+        })
+      } finally {
+        inflight = null
+      }
+    })()
+    return inflight
   },
 
   hasPermission: (key: string) => {

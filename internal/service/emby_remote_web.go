@@ -18,6 +18,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/truewhile/MeBox/internal/helper"
 	"github.com/truewhile/MeBox/internal/model"
 )
 
@@ -609,32 +610,34 @@ func (r *EmbyRemoteService) RemoteSearchMedia(ctx context.Context, query string,
 				return
 			}
 
-			q := url.Values{}
-			q.Set("ParentId", target.mount.RemoteViewID)
-			q.Set("Recursive", "true")
-			q.Set("SearchTerm", query)
-			q.Set("IncludeItemTypes", "Movie,Series")
-			q.Set("Fields", "Overview,Genres,ProviderIds,Path,SeriesPrimaryImage,MediaStreams,MediaSources,DateCreated,PremiereDate,ProductionYear,CommunityRating,CriticRating")
-			q.Set("Limit", strconv.Itoa(limit))
-			q.Set("StartIndex", "0")
+			helper.Run(r.log, "emby.remoteSearch", func() {
+				q := url.Values{}
+				q.Set("ParentId", target.mount.RemoteViewID)
+				q.Set("Recursive", "true")
+				q.Set("SearchTerm", query)
+				q.Set("IncludeItemTypes", "Movie,Series")
+				q.Set("Fields", "Overview,Genres,ProviderIds,Path,SeriesPrimaryImage,MediaStreams,MediaSources,DateCreated,PremiereDate,ProductionYear,CommunityRating,CriticRating")
+				q.Set("Limit", strconv.Itoa(limit))
+				q.Set("StartIndex", "0")
 
-			var body struct {
-				Items []map[string]any `json:"Items"`
-			}
-			if err := r.doGet(searchCtx, target.acct, target.cfg, "/Users/"+url.PathEscape(r.remoteUserID(target.cfg))+"/Items", q, &body); err != nil {
-				if r.log != nil {
-					r.log.Warn("remote search failed",
-						zap.String("mount", target.mount.RemoteViewName), zap.Error(err))
+				var body struct {
+					Items []map[string]any `json:"Items"`
 				}
-				return
-			}
-			medias := make([]model.Media, 0, len(body.Items))
-			for _, it := range body.Items {
-				RewriteEmbyRemoteIDs(it, target.mount.ID)
-				m := r.MapRemoteItemToMedia(searchCtx, &target.mount, target.acct, target.cfg, it)
-				medias = append(medias, m)
-			}
-			results[idx] = searchResult{items: medias}
+				if err := r.doGet(searchCtx, target.acct, target.cfg, "/Users/"+url.PathEscape(r.remoteUserID(target.cfg))+"/Items", q, &body); err != nil {
+					if r.log != nil {
+						r.log.Warn("remote search failed",
+							zap.String("mount", target.mount.RemoteViewName), zap.Error(err))
+					}
+					return
+				}
+				medias := make([]model.Media, 0, len(body.Items))
+				for _, it := range body.Items {
+					RewriteEmbyRemoteIDs(it, target.mount.ID)
+					m := r.MapRemoteItemToMedia(searchCtx, &target.mount, target.acct, target.cfg, it)
+					medias = append(medias, m)
+				}
+				results[idx] = searchResult{items: medias}
+			})
 		}(i, t)
 	}
 	wg.Wait()

@@ -22,6 +22,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/truewhile/MeBox/internal/helper"
 	"github.com/truewhile/MeBox/internal/repository"
 )
 
@@ -139,7 +140,7 @@ func (s *SchedulerService) Start(ctx context.Context) {
 			// 首轮等满一个完整周期再跑，平时节奏不变。
 			initialDelay = j.interval
 		}
-		go s.loopWithInitialDelay(ctx, j, initialDelay)
+		helper.Go(s.log, "scheduler.loop."+j.name, func() { s.loopWithInitialDelay(ctx, j, initialDelay) })
 	}
 }
 

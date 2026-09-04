@@ -2,9 +2,9 @@ package repository
 
 import (
 	"context"
-	"errors"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/truewhile/MeBox/internal/model"
 )
@@ -13,25 +13,24 @@ import (
 // upserts on (UserID, MediaID) so resume always reads the latest position.
 type HistoryRepository struct{ db *gorm.DB }
 
-// Upsert atomically inserts/updates the resume position.
+// Upsert atomically inserts/updates the resume position in a single statement,
+// relying on the uniq_user_history composite unique index. Concurrent progress
+// reports for the same (user, media) can no longer double-insert.
 func (r *HistoryRepository) Upsert(ctx context.Context, h *model.PlaybackHistory) error {
-	var existing model.PlaybackHistory
-	err := r.db.WithContext(ctx).
-		Where("user_id = ? AND media_id = ?", h.UserID, h.MediaID).
-		First(&existing).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return r.db.WithContext(ctx).Create(h).Error
-	}
-	if err != nil {
-		return err
-	}
-	existing.PositionMs = h.PositionMs
-	if h.DurationMs > 0 {
-		existing.DurationMs = h.DurationMs
-	}
-	existing.WatchedAt = h.WatchedAt
-	existing.Completed = h.Completed
-	return r.db.WithContext(ctx).Save(&existing).Error
+	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "user_id"}, {Name: "media_id"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"position_ms": h.PositionMs,
+			// 沿用旧语义：未知时长（0）不覆盖已记录的时长。
+			"duration_ms": gorm.Expr(
+				"CASE WHEN ? > 0 THEN ? ELSE playback_histories.duration_ms END",
+				h.DurationMs, h.DurationMs,
+			),
+			"watched_at": h.WatchedAt,
+			"completed":  h.Completed,
+			"deleted_at": nil,
+		}),
+	}).Create(h).Error
 }
 
 // ListByUser returns the most recent history rows for the user.

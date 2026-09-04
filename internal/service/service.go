@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/helper"
 	"github.com/truewhile/MeBox/internal/repository"
 )
 
@@ -96,7 +97,7 @@ func (c *Container) Boot() {
 	if err := c.APIConfig.SeedDefaults(c.stopCtx); err != nil {
 		c.Log.Warn("api config seed failed", zap.Error(err))
 	}
-	go c.warmMediaSearchIndex(c.stopCtx)
+	helper.Go(c.Log, "service.warmMediaSearchIndex", func() { c.warmMediaSearchIndex(c.stopCtx) })
 
 	// 启动调度器定时任务
 	c.Scheduler.Start(c.stopCtx)
@@ -119,7 +120,7 @@ func (c *Container) Boot() {
 	// Mgo 保号规则巡检：默认关闭，由管理员通过 Telegram Bot 命令开启。
 	// 每天触发一次评估；规则里的窗口可随机，不固定。
 	if c.Device != nil {
-		go c.runInactivitySweeper(c.stopCtx)
+		helper.Go(c.Log, "service.inactivitySweeper", func() { c.runInactivitySweeper(c.stopCtx) })
 	}
 }
 

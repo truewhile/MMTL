@@ -28,18 +28,25 @@ export function usePermission(
   options: { autoFetch?: boolean } = {}
 ): boolean {
   const { autoFetch = true } = options
-  const { hasPermission, isSuper, permissions, isLoading, fetchPermissions } = usePermissionStore()
+  // selector 订阅：store 任何无关字段变化不会触发本组件重渲染
+  const hasPermission = usePermissionStore((s) => s.hasPermission)
+  const isSuper = usePermissionStore((s) => s.isSuper)
+  const fetchPermissions = usePermissionStore((s) => s.fetchPermissions)
   const tier = useAuthStore((state) => state.tier)
   const role = useAuthStore((state) => state.user?.role)
   const isAuthenticated = useAuthStore((state) => state.token !== null)
   const hasSuperAccess = isSuper || tier === 'plus' || role === 'admin'
 
-  // 权限未加载时自动获取
+  // 权限未加载时自动获取；用 getState() 读最新快照而不是渲染闭包，
+  // 同一次 commit 内挂载的多个消费方也只会有一个发出请求（store 内还有 inflight 去重兜底）。
   useEffect(() => {
-    if (!hasSuperAccess && isAuthenticated && autoFetch && Object.keys(permissions).length === 0 && !isLoading) {
-      fetchPermissions()
+    if (!hasSuperAccess && isAuthenticated && autoFetch) {
+      const { permissions, isLoading } = usePermissionStore.getState()
+      if (Object.keys(permissions).length === 0 && !isLoading) {
+        fetchPermissions()
+      }
     }
-  }, [autoFetch, fetchPermissions, hasSuperAccess, isAuthenticated, isLoading, permissions])
+  }, [autoFetch, fetchPermissions, hasSuperAccess, isAuthenticated])
 
   // 超级用户有所有权限
   if (hasSuperAccess) {
@@ -78,7 +85,11 @@ export function usePermission(
  * ```
  */
 export function usePermissions() {
-  const { permissions, isSuper, isLoading, fetchPermissions } = usePermissionStore()
+  // selector 订阅：只关注 permissions/isSuper/isLoading 变化
+  const permissions = usePermissionStore((s) => s.permissions)
+  const isSuper = usePermissionStore((s) => s.isSuper)
+  const isLoading = usePermissionStore((s) => s.isLoading)
+  const fetchPermissions = usePermissionStore((s) => s.fetchPermissions)
   const tier = useAuthStore((state) => state.tier)
   const role = useAuthStore((state) => state.user?.role)
   const isAuthenticated = useAuthStore((state) => state.token !== null)

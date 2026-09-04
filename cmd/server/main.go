@@ -23,6 +23,7 @@ import (
 
 	"github.com/truewhile/MeBox/internal/config"
 	"github.com/truewhile/MeBox/internal/database"
+	"github.com/truewhile/MeBox/internal/helper"
 	"github.com/truewhile/MeBox/internal/repository"
 	"github.com/truewhile/MeBox/internal/service"
 )
@@ -121,7 +122,7 @@ func main() {
 			)
 		}
 	}()
-	go services.Boot()
+	helper.Go(logger, "services.boot", services.Boot)
 
 	// Graceful shutdown.
 	stop := make(chan os.Signal, 1)

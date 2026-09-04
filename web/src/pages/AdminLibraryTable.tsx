@@ -169,7 +169,7 @@ function LibraryTableRow({ library, dragging, dragOver, onDragStart, onDragOver,
       </td>
       <td className="py-2 pr-3 font-medium text-ink-600">
         <div className="flex items-center gap-2">
-          {library.cover_url && <img src={library.cover_url} alt="" className="h-10 w-8 rounded object-cover" />}
+          {library.cover_url && <img src={library.cover_url} alt="" loading="lazy" decoding="async" className="h-10 w-8 rounded object-cover" />}
           <span>{library.name}</span>
         </div>
       </td>

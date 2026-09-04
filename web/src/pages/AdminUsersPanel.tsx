@@ -31,7 +31,10 @@ export function AdminUsersPanel() {
   }
   useEffect(() => {
     refresh().catch(() => undefined)
-    const timer = window.setInterval(() => refresh().catch(() => undefined), 10000)
+    const timer = window.setInterval(() => {
+      if (document.hidden) return
+      refresh().catch(() => undefined)
+    }, 10000)
     return () => window.clearInterval(timer)
   }, [])
 
