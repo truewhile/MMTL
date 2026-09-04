@@ -102,8 +102,9 @@ func (c *Container) Boot() {
 	// 启动调度器定时任务
 	c.Scheduler.Start(c.stopCtx)
 
-	// 远程 Emby 挂载兼容迁移：旧账号无挂载时自动全量挂载
+	// 远程 Emby 挂载兼容迁移：清理已删账号的残留挂载；旧账号无挂载时自动全量挂载
 	if c.EmbyRemote != nil {
+		c.EmbyRemote.CleanupOrphanMounts(c.stopCtx)
 		c.EmbyRemote.AutoSeedMounts(c.stopCtx)
 	}
 

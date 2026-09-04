@@ -10,19 +10,20 @@ import (
 )
 
 type embySeriesGroup struct {
-	ID          string
-	LibraryID   string
-	Name        string
-	PosterURL   string
-	BackdropURL string
-	Overview    string
-	Rating      float32
-	Year        int
-	ReleaseDate string
-	TMDbID      int
-	BangumiID   int
-	CreatedAt   time.Time
-	Episodes    []model.Media
+	ID                 string
+	LibraryID          string
+	Name               string
+	PosterURL          string
+	BackdropURL        string
+	Overview           string
+	Rating             float32
+	Year               int
+	ReleaseDate        string
+	TMDbID             int
+	BangumiID          int
+	CreatedAt          time.Time
+	DateLastMediaAdded time.Time
+	Episodes           []model.Media
 }
 
 type embySeasonGroup struct {
@@ -67,19 +68,20 @@ func (e *EmbyService) findSeriesGroup(ctx context.Context, id, userID string) (e
 		if series, err := e.repo.Series.FindByID(ctx, id); err != nil {
 			return embySeriesGroup{}, false, err
 		} else if series != nil {
-			return embySeriesGroup{
-				ID:          series.ID,
-				LibraryID:   series.LibraryID,
-				Name:        series.Title,
-				PosterURL:   series.PosterURL,
-				BackdropURL: series.BackdropURL,
-				Overview:    series.Overview,
-				Rating:      series.Rating,
-				Year:        series.Year,
-				TMDbID:      series.TMDbID,
-				BangumiID:   series.BangumiID,
-				CreatedAt:   series.CreatedAt,
-			}, true, nil
+				return embySeriesGroup{
+					ID:                 series.ID,
+					LibraryID:          series.LibraryID,
+					Name:               series.Title,
+					PosterURL:          series.PosterURL,
+					BackdropURL:        series.BackdropURL,
+					Overview:           series.Overview,
+					Rating:             series.Rating,
+					Year:               series.Year,
+					TMDbID:             series.TMDbID,
+					BangumiID:          series.BangumiID,
+					CreatedAt:          series.CreatedAt,
+					DateLastMediaAdded: series.CreatedAt,
+				}, true, nil
 		}
 	}
 	return embySeriesGroup{}, false, nil
@@ -189,22 +191,26 @@ func (e *EmbyService) seriesGroupsFromMedia(ctx context.Context, rows []model.Me
 		seriesID := e.seriesIDForMedia(ctx, &row)
 		group, ok := byID[seriesID]
 		if !ok {
-			group = &embySeriesGroup{
-				ID:          seriesID,
-				LibraryID:   row.LibraryID,
-				Name:        e.seriesNameForMedia(ctx, &row),
-				Year:        row.Year,
-				ReleaseDate: row.ReleaseDate,
-				TMDbID:      row.TMDbID,
-				BangumiID:   row.BangumiID,
-				CreatedAt:   row.CreatedAt,
+				group = &embySeriesGroup{
+					ID:                 seriesID,
+					LibraryID:          row.LibraryID,
+					Name:               e.seriesNameForMedia(ctx, &row),
+					Year:               row.Year,
+					ReleaseDate:        row.ReleaseDate,
+					TMDbID:             row.TMDbID,
+					BangumiID:          row.BangumiID,
+					CreatedAt:          row.CreatedAt,
+					DateLastMediaAdded: row.CreatedAt,
+				}
+				byID[seriesID] = group
+				order = append(order, seriesID)
 			}
-			byID[seriesID] = group
-			order = append(order, seriesID)
-		}
-		if row.CreatedAt.After(group.CreatedAt) {
-			group.CreatedAt = row.CreatedAt
-		}
+			if row.CreatedAt.Before(group.CreatedAt) || group.CreatedAt.IsZero() {
+				group.CreatedAt = row.CreatedAt
+			}
+			if row.CreatedAt.After(group.DateLastMediaAdded) {
+				group.DateLastMediaAdded = row.CreatedAt
+			}
 		if strings.TrimSpace(row.ReleaseDate) != "" && mediaReleaseSortTime(row).After(embySeriesReleaseSortTime(*group)) {
 			group.ReleaseDate = row.ReleaseDate
 			if row.Year > 0 {

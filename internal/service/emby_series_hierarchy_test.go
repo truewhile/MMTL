@@ -429,10 +429,87 @@ func TestInferSeriesNameFromPath(t *testing.T) {
 			want: "间谍过家家",
 		},
 	}
-	for _, tc := range tests {
-		got := inferSeriesNameFromPath(tc.path)
-		if got != tc.want {
-			t.Errorf("inferSeriesNameFromPath(%q) = %q, want %q", tc.path, got, tc.want)
+			for _, tc := range tests {
+				got := inferSeriesNameFromPath(tc.path)
+				if got != tc.want {
+					t.Errorf("inferSeriesNameFromPath(%q) = %q, want %q", tc.path, got, tc.want)
+				}
+			}
 		}
+
+func TestEmbySeriesSortByDateLastMediaAdded(t *testing.T) {
+	svc := newTestEmbyService(t)
+	lib := model.Library{Name: "测试剧库", Path: `/media/tv`, Type: "tv", Enabled: true}
+	if err := svc.repo.Library.Create(t.Context(), &lib); err != nil {
+		t.Fatalf("create library: %v", err)
+	}
+	t0 := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	tOld := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
+	tNew := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+
+	// Series A: 较早创建，但最近添加了新一集 (Last episode at tNew)
+	// Series B: 较晚创建，但最后一集在 tOld
+	rows := []model.Media{
+		{
+			Base:       model.Base{ID: "showA-ep01", CreatedAt: t0, UpdatedAt: t0},
+			LibraryID:  lib.ID,
+			Title:      "剧集A",
+			Path:       `/media/tv/剧集A/Season 01/剧集A.S01E01.mkv`,
+			SeasonNum:  1,
+			EpisodeNum: 1,
+		},
+		{
+			Base:       model.Base{ID: "showA-ep02", CreatedAt: tNew, UpdatedAt: tNew},
+			LibraryID:  lib.ID,
+			Title:      "剧集A",
+			Path:       `/media/tv/剧集A/Season 01/剧集A.S01E02.mkv`,
+			SeasonNum:  1,
+			EpisodeNum: 2,
+		},
+		{
+			Base:       model.Base{ID: "showB-ep01", CreatedAt: tOld.Add(-24 * time.Hour), UpdatedAt: tOld.Add(-24 * time.Hour)},
+			LibraryID:  lib.ID,
+			Title:      "剧集B",
+			Path:       `/media/tv/剧集B/Season 01/剧集B.S01E01.mkv`,
+			SeasonNum:  1,
+			EpisodeNum: 1,
+		},
+		{
+			Base:       model.Base{ID: "showB-ep02", CreatedAt: tOld, UpdatedAt: tOld},
+			LibraryID:  lib.ID,
+			Title:      "剧集B",
+			Path:       `/media/tv/剧集B/Season 01/剧集B.S01E02.mkv`,
+			SeasonNum:  1,
+			EpisodeNum: 2,
+		},
+	}
+	for _, m := range rows {
+		if err := svc.repo.DB.Create(&m).Error; err != nil {
+			t.Fatalf("create media: %v", err)
+		}
+	}
+
+	// 降序排序：剧集A最后一集在 tNew，剧集B最后一集在 tOld，剧集A应排在第一位
+	res, err := svc.Items(t.Context(), ItemsParams{
+		ParentID:  lib.ID,
+		SortBy:    "DateLastMediaAdded",
+		SortOrder: "Descending",
+		Limit:     10,
+	})
+	if err != nil {
+		t.Fatalf("items DateLastMediaAdded: %v", err)
+	}
+	items := res["Items"].([]map[string]any)
+	if len(items) != 2 {
+		t.Fatalf("items count = %d, want 2", len(items))
+	}
+	if items[0]["Name"] != "剧集A" {
+		t.Fatalf("first item = %v, want 剧集A (last episode at tNew)", items[0]["Name"])
+	}
+	if items[1]["Name"] != "剧集B" {
+		t.Fatalf("second item = %v, want 剧集B", items[1]["Name"])
+	}
+	if items[0]["DateLastMediaAdded"] != tNew {
+		t.Fatalf("DateLastMediaAdded = %v, want %v", items[0]["DateLastMediaAdded"], tNew)
 	}
 }

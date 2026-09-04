@@ -10,22 +10,27 @@ func (e *EmbyService) seriesPayload(group embySeriesGroup) map[string]any {
 	if group.BackdropURL != "" {
 		backdropTags = append(backdropTags, group.ID+"-bd")
 	}
-	item := map[string]any{
-		"Id":                 group.ID,
-		"Name":               group.Name,
-		"ServerId":           embyServerID,
-		"Type":               "Series",
-		"MediaType":          "Video",
-		"IsFolder":           true,
-		"ParentId":           group.LibraryID,
-		"ProductionYear":     group.Year,
-		"Overview":           group.Overview,
-		"CommunityRating":    group.Rating,
-		"RecursiveItemCount": len(group.Episodes),
-		"ChildCount":         len(e.seasonsForSeries(group)),
-		"DateCreated":        group.CreatedAt,
-		"ImageTags":          imageTags,
-		"BackdropImageTags":  backdropTags,
+		lastMediaAdded := group.DateLastMediaAdded
+		if lastMediaAdded.IsZero() {
+			lastMediaAdded = group.CreatedAt
+		}
+		item := map[string]any{
+			"Id":                 group.ID,
+			"Name":               group.Name,
+			"ServerId":           embyServerID,
+			"Type":               "Series",
+			"MediaType":          "Video",
+			"IsFolder":           true,
+			"ParentId":           group.LibraryID,
+			"ProductionYear":     group.Year,
+			"Overview":           group.Overview,
+			"CommunityRating":    group.Rating,
+			"RecursiveItemCount": len(group.Episodes),
+			"ChildCount":         len(e.seasonsForSeries(group)),
+			"DateCreated":        group.CreatedAt,
+			"DateLastMediaAdded": lastMediaAdded,
+			"ImageTags":          imageTags,
+			"BackdropImageTags":  backdropTags,
 		"ProviderIds": map[string]string{
 			"Tmdb":    intToStr(group.TMDbID),
 			"Bangumi": intToStr(group.BangumiID),

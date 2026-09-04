@@ -75,9 +75,9 @@ func (e *EmbyService) mediaItems(ctx context.Context, p ItemsParams) (map[string
 		orderIncludesDirection = false
 	case "premieredate", "productionyear":
 		order = mediaReleaseOrderSQL(desc)
-	case "datecreated":
-		order = "media.created_at"
-		orderIncludesDirection = false
+		case "datecreated", "datelastmediaadded", "datelastcontentadded":
+			order = "media.created_at"
+			orderIncludesDirection = false
 	case "dateplayed":
 		order = "resume.watched_at"
 		orderIncludesDirection = false

@@ -47,10 +47,14 @@ func TestListRecentSeriesCardsCountsAllEpisodesInSeries(t *testing.T) {
 	if len(cards) != 1 {
 		t.Fatalf("recent cards = %#v, want one series card", cards)
 	}
-	if cards[0].Count != 40 {
-		t.Fatalf("recent series count = %d, want full 40 episodes", cards[0].Count)
+		if cards[0].Count != 40 {
+			t.Fatalf("recent series count = %d, want full 40 episodes", cards[0].Count)
+		}
+		expectedLastAdded := now.Add(40 * time.Minute)
+		if cards[0].LastAddedAt == nil || !cards[0].LastAddedAt.Equal(expectedLastAdded) {
+			t.Fatalf("recent series LastAddedAt = %v, want %v", cards[0].LastAddedAt, expectedLastAdded)
+		}
 	}
-}
 
 func TestMediaSeriesKeyCollapsesNestedSpecialFolders(t *testing.T) {
 	main := model.Media{

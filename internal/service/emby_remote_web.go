@@ -58,7 +58,7 @@ func (r *EmbyRemoteService) RemoteLibraries(ctx context.Context) ([]RemoteLibrar
 			acctData[m.AccountID] = nil
 			continue
 		}
-		cfg, cfgErr := r.configOf(acct)
+		cfg, cfgErr := r.remoteConfigWithToken(ctx, acct)
 		if cfgErr != nil {
 			acctData[m.AccountID] = nil
 			continue
@@ -199,6 +199,9 @@ func (r *EmbyRemoteService) MapRemoteItemToMedia(ctx context.Context, mount *mod
 		media.CreatedAt = date
 		media.UpdatedAt = date
 	}
+	if date, ok := parseEmbyRemoteDate(remoteItemString(item, "DateLastMediaAdded")); ok {
+		media.UpdatedAt = date
+	}
 	// 只有远程明确存在图片标签才下发图片 URL。
 	if remoteItemHasImageTag(item, "Primary") {
 		media.PosterURL = r.remoteItemImageURL(cfg, remoteID, "Primary")
@@ -302,28 +305,28 @@ func (r *EmbyRemoteService) MapRemoteItemToMedia(ctx context.Context, mount *mod
 		media.SeasonNum = 0
 		media.EpisodeNum = 0
 	}
-		if mount != nil && strings.TrimSpace(mount.RemoteViewID) != "" {
-			libID := EncodeEmbyRemoteID(mount.ID, mount.RemoteViewID)
-			media.DisplayLibraryID = libID
-			media.LibraryID = libID
-			libName := strings.TrimSpace(mount.Name)
-			if libName == "" {
-				libName = strings.TrimSpace(mount.RemoteViewName)
-			}
-			if libName == "" && acct != nil {
-				libName = acct.Name
-			} else if acct != nil && acct.Name != "" && !strings.Contains(libName, acct.Name) {
-				libName = acct.Name + " · " + libName
-			}
-			media.LibraryName = libName
-			media.DisplayLibraryName = libName
+	if mount != nil && strings.TrimSpace(mount.RemoteViewID) != "" {
+		libID := EncodeEmbyRemoteID(mount.ID, mount.RemoteViewID)
+		media.DisplayLibraryID = libID
+		media.LibraryID = libID
+		libName := strings.TrimSpace(mount.Name)
+		if libName == "" {
+			libName = strings.TrimSpace(mount.RemoteViewName)
 		}
+		if libName == "" && acct != nil {
+			libName = acct.Name
+		} else if acct != nil && acct.Name != "" && !strings.Contains(libName, acct.Name) {
+			libName = acct.Name + " · " + libName
+		}
+		media.LibraryName = libName
+		media.DisplayLibraryName = libName
+	}
 	return media
 }
 
 // RemoteLibraryMedia 拉远程库直属条目（电影库=Movie，剧集库=Series），映射分页。
 func (r *EmbyRemoteService) RemoteLibraryMedia(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, remoteViewID string, itemTypes string, offset, limit int) ([]model.Media, int64, error) {
-	cfg, err := r.configOf(acct)
+	cfg, err := r.remoteConfigWithToken(ctx, acct)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -368,7 +371,7 @@ func (r *EmbyRemoteService) RemoteLibraryMedia(ctx context.Context, mount *model
 
 // RemoteMediaDetail 拉远程单条目映射为 Media（网页详情页）。
 func (r *EmbyRemoteService) RemoteMediaDetail(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, remoteID string) (*model.Media, error) {
-	cfg, err := r.configOf(acct)
+	cfg, err := r.remoteConfigWithToken(ctx, acct)
 	if err != nil {
 		return nil, err
 	}
@@ -424,7 +427,7 @@ func (r *EmbyRemoteService) RemoteEpisodes(ctx context.Context, mount *model.Emb
 }
 
 func (r *EmbyRemoteService) remoteEpisodesOf(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, parentID string) ([]model.Media, int64, error) {
-	cfg, err := r.configOf(acct)
+	cfg, err := r.remoteConfigWithToken(ctx, acct)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -452,8 +455,14 @@ func (r *EmbyRemoteService) remoteEpisodesOf(ctx context.Context, mount *model.E
 }
 
 // RemoteSeriesCards 远程剧集库的系列卡片（ChildCount 作为集数）。
+//
+// 远程 Emby 的 Series DTO 不会返回 DateLastMediaAdded 字段（即使请求 Fields
+// 也缺失），但其服务端排序支持 SortBy=DateLastContentAdded——即客户端"上次
+// 添加集日期"排序。因此这里直接按该键倒序分页拉全量，返回的卡片顺序与对方
+// Emby 客户端选择"上次添加集日期"完全一致；LastAddedAt 在远程提供字段时
+// 才填充，否则保持 nil（前端对无该值的卡片维持服务器顺序，不再回退加入日期）。
 func (r *EmbyRemoteService) RemoteSeriesCards(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, remoteViewID string) ([]SeriesCard, error) {
-	cfg, err := r.configOf(acct)
+	cfg, err := r.remoteConfigWithToken(ctx, acct)
 	if err != nil {
 		return nil, err
 	}
@@ -466,28 +475,44 @@ func (r *EmbyRemoteService) RemoteSeriesCards(ctx context.Context, mount *model.
 	q.Set("ParentId", remoteViewID)
 	q.Set("IncludeItemTypes", "Series")
 	q.Set("Recursive", "false")
-	q.Set("StartIndex", "0")
+	q.Set("SortBy", "DateLastContentAdded")
+	q.Set("SortOrder", "Descending")
 	q.Set("Limit", "1000")
-	q.Set("Fields", "Overview,Genres,ProviderIds,Path,RecursiveItemCount,SeriesPrimaryImage,DateCreated,PremiereDate,ProductionYear,CommunityRating,CriticRating")
+	q.Set("Fields", "Overview,Genres,ProviderIds,Path,RecursiveItemCount,SeriesPrimaryImage,DateCreated,DateLastMediaAdded,PremiereDate,ProductionYear,CommunityRating,CriticRating")
 	var body struct {
-		Items []map[string]any `json:"Items"`
+		Items            []map[string]any `json:"Items"`
+		TotalRecordCount int64            `json:"TotalRecordCount"`
 	}
-	if err := r.doGet(ctx, acct, cfg, "/Users/"+url.PathEscape(r.remoteUserID(cfg))+"/Items", q, &body); err != nil {
-		return nil, err
-	}
-	cards := make([]SeriesCard, 0, len(body.Items))
-	for _, it := range body.Items {
-		RewriteEmbyRemoteIDs(it, mount.ID)
-		m := r.MapRemoteItemToMedia(ctx, mount, acct, cfg, it)
-		// 集数优先用递归条目数（ChildCount 只算直属 Season 文件夹数）。
-		count := remoteItemInt(it, "RecursiveItemCount")
-		if count == 0 {
-			count = remoteItemInt(it, "ChildCount")
+	cards := make([]SeriesCard, 0)
+	for startIndex := 0; ; startIndex += 1000 {
+		q.Set("StartIndex", strconv.Itoa(startIndex))
+		body.Items = nil
+		if err := r.doGet(ctx, acct, cfg, "/Users/"+url.PathEscape(r.remoteUserID(cfg))+"/Items", q, &body); err != nil {
+			return nil, err
 		}
-		if count == 0 {
-			count = 1
+		if len(body.Items) == 0 {
+			break
 		}
-		cards = append(cards, SeriesCard{Key: m.ID, Rep: m, LinkMedia: m, Count: count})
+		for _, it := range body.Items {
+			RewriteEmbyRemoteIDs(it, mount.ID)
+			m := r.MapRemoteItemToMedia(ctx, mount, acct, cfg, it)
+			// 集数优先用递归条目数（ChildCount 只算直属 Season 文件夹数）。
+			count := remoteItemInt(it, "RecursiveItemCount")
+			if count == 0 {
+				count = remoteItemInt(it, "ChildCount")
+			}
+			if count == 0 {
+				count = 1
+			}
+			var lastAdded *time.Time
+			if date, ok := parseEmbyRemoteDate(remoteItemString(it, "DateLastMediaAdded")); ok {
+				lastAdded = &date
+			}
+			cards = append(cards, SeriesCard{Key: m.ID, Rep: m, LinkMedia: m, Count: count, LastAddedAt: lastAdded})
+		}
+		if int64(len(cards)) >= body.TotalRecordCount || len(body.Items) < 1000 {
+			break
+		}
 	}
 	if r.cache != nil {
 		r.cache.SetJSON(ctx, cacheKey, cards, r.remoteMediaCacheTTL())
@@ -497,7 +522,7 @@ func (r *EmbyRemoteService) RemoteSeriesCards(ctx context.Context, mount *model.
 
 // RemoteLatestCards 远程库最新条目（首页预览卡片），映射 SeriesCard。
 func (r *EmbyRemoteService) RemoteLatestCards(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, remoteViewID string, limit int) ([]SeriesCard, error) {
-	cfg, err := r.configOf(acct)
+	cfg, err := r.remoteConfigWithToken(ctx, acct)
 	if err != nil {
 		return nil, err
 	}
@@ -513,13 +538,21 @@ func (r *EmbyRemoteService) RemoteLatestCards(ctx context.Context, mount *model.
 	cards := make([]SeriesCard, 0, len(items))
 	for _, it := range items {
 		m := r.MapRemoteItemToMedia(ctx, mount, acct, cfg, it)
-		cards = append(cards, SeriesCard{Key: m.ID, Rep: m, LinkMedia: m, Count: 0})
-	}
-		if r.cache != nil {
-			r.cache.SetJSON(ctx, cacheKey, cards, r.remoteMediaCacheTTL())
+		var lastAdded *time.Time
+		if !m.UpdatedAt.IsZero() {
+			t := m.UpdatedAt
+			lastAdded = &t
+		} else if !m.CreatedAt.IsZero() {
+			t := m.CreatedAt
+			lastAdded = &t
 		}
-		return cards, nil
+		cards = append(cards, SeriesCard{Key: m.ID, Rep: m, LinkMedia: m, Count: 0, LastAddedAt: lastAdded})
 	}
+	if r.cache != nil {
+		r.cache.SetJSON(ctx, cacheKey, cards, r.remoteMediaCacheTTL())
+	}
+	return cards, nil
+}
 
 // RemoteSearchMedia 在全部启用的挂载库中并发搜索影视条目（Movie,Series），
 // 并将远程结果映射为 model.Media。遵循当前用户的 MediaVisibility 权限规则。
@@ -580,7 +613,7 @@ func (r *EmbyRemoteService) RemoteSearchMedia(ctx context.Context, query string,
 		if acct == nil {
 			continue
 		}
-		cfg, cfgErr := r.configOf(acct)
+		cfg, cfgErr := r.remoteConfigWithToken(ctx, acct)
 		if cfgErr != nil {
 			continue
 		}
@@ -616,7 +649,7 @@ func (r *EmbyRemoteService) RemoteSearchMedia(ctx context.Context, query string,
 				q.Set("Recursive", "true")
 				q.Set("SearchTerm", query)
 				q.Set("IncludeItemTypes", "Movie,Series")
-				q.Set("Fields", "Overview,Genres,ProviderIds,Path,SeriesPrimaryImage,MediaStreams,MediaSources,DateCreated,PremiereDate,ProductionYear,CommunityRating,CriticRating")
+				q.Set("Fields", "Overview,Genres,ProviderIds,Path,SeriesPrimaryImage,MediaStreams,MediaSources,DateCreated,DateLastMediaAdded,PremiereDate,ProductionYear,CommunityRating,CriticRating")
 				q.Set("Limit", strconv.Itoa(limit))
 				q.Set("StartIndex", "0")
 
@@ -664,7 +697,7 @@ func (r *EmbyRemoteService) WebStreamURL(ctx context.Context, acct *model.StrmAc
 
 // remoteItemType 轻量查询远程条目 Type（避免依赖映射载荷）。
 func (r *EmbyRemoteService) remoteItemType(ctx context.Context, acct *model.StrmAccount, remoteID string) string {
-	cfg, err := r.configOf(acct)
+	cfg, err := r.remoteConfigWithToken(ctx, acct)
 	if err != nil {
 		return ""
 	}
@@ -677,7 +710,7 @@ func (r *EmbyRemoteService) remoteItemType(ctx context.Context, acct *model.Strm
 
 // remoteItemSeriesID 轻量查询 Episode 的 SeriesId。
 func (r *EmbyRemoteService) remoteItemSeriesID(ctx context.Context, acct *model.StrmAccount, remoteID string) string {
-	cfg, err := r.configOf(acct)
+	cfg, err := r.remoteConfigWithToken(ctx, acct)
 	if err != nil {
 		return ""
 	}

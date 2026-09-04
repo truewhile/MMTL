@@ -126,13 +126,28 @@ func sortSeriesGroups(groups []embySeriesGroup, p ItemsParams) {
 			}
 			return groups[i].Name < groups[j].Name
 		})
-	case "datecreated":
-		sort.SliceStable(groups, func(i, j int) bool {
-			if strings.EqualFold(p.SortOrder, "Ascending") {
-				return groups[i].CreatedAt.Before(groups[j].CreatedAt)
-			}
-			return groups[i].CreatedAt.After(groups[j].CreatedAt)
-		})
+		case "datecreated":
+			sort.SliceStable(groups, func(i, j int) bool {
+				if strings.EqualFold(p.SortOrder, "Ascending") {
+					return groups[i].CreatedAt.Before(groups[j].CreatedAt)
+				}
+				return groups[i].CreatedAt.After(groups[j].CreatedAt)
+			})
+		case "datelastmediaadded", "datelastcontentadded":
+			sort.SliceStable(groups, func(i, j int) bool {
+				tI := groups[i].DateLastMediaAdded
+				if tI.IsZero() {
+					tI = groups[i].CreatedAt
+				}
+				tJ := groups[j].DateLastMediaAdded
+				if tJ.IsZero() {
+					tJ = groups[j].CreatedAt
+				}
+				if strings.EqualFold(p.SortOrder, "Ascending") {
+					return tI.Before(tJ)
+				}
+				return tI.After(tJ)
+			})
 	default:
 		sort.SliceStable(groups, func(i, j int) bool {
 			if strings.EqualFold(p.SortOrder, "Ascending") {

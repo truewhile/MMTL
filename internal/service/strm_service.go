@@ -92,8 +92,8 @@ type StrmService struct {
 	oauthSessions map[string]*strm115AuthSession
 	wafUntil      time.Time // 115 风控/限流熔断截止时间（由 mu 保护）
 
-	downloadSem115 chan struct{} // 115 换直链+下载并发上限（风控兜底）
-	downloadSemDAV chan struct{} // WebDAV/OpenList/CloudDrive2 元数据下载并发上限
+	downloadSem115  chan struct{} // 115 换直链+下载并发上限（风控兜底）
+	downloadSemDAV  chan struct{} // WebDAV/OpenList/CloudDrive2 元数据下载并发上限
 	downloadSemOnce sync.Once
 }
 
@@ -379,13 +379,13 @@ func (s *StrmService) UpdateStrmAccount(ctx context.Context, id, name string, en
 	if enabled != nil {
 		acct.Enabled = *enabled
 	}
-		if len(config) > 0 {
-			enc, err := s.mergeStrmAccountConfig(acct.Config, config)
-			if err != nil {
-				return nil, err
-			}
-			acct.Config = enc
+	if len(config) > 0 {
+		enc, err := s.mergeStrmAccountConfig(acct.Config, config)
+		if err != nil {
+			return nil, err
 		}
+		acct.Config = enc
+	}
 	if err := s.repo.StrmAccount.Update(ctx, acct); err != nil {
 		return nil, err
 	}
@@ -405,6 +405,11 @@ func (s *StrmService) DeleteStrmAccount(ctx context.Context, id string) error {
 	}
 	if err := s.repo.StrmAccount.Delete(ctx, id); err != nil {
 		return err
+	}
+	// 级联清理远程 Emby 挂载：否则留下孤儿挂载，挂载计数/列表仍会显示。
+	// 账号已删，挂载清理失败只记日志，不让删除请求报错。
+	if _, err := s.repo.EmbyMount.DeleteByAccountID(ctx, id); err != nil && s.log != nil {
+		s.log.Warn("delete emby mounts for account failed", zap.String("account", id), zap.Error(err))
 	}
 	return nil
 }

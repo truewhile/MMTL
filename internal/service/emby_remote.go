@@ -316,6 +316,71 @@ func (r *EmbyRemoteService) AutoSeedMounts(ctx context.Context) {
 	}
 }
 
+// remoteConfigWithToken 解密账号配置并确保已有可用凭据（首次请求自动认证并
+// 回写 token 与 remote_user_id，等价于管理端「测试连接」），保证后续构造的
+// /Users/{userId} 路径使用远程真实用户 GUID，而不是未认证兜底的 "0"。
+func (r *EmbyRemoteService) remoteConfigWithToken(ctx context.Context, acct *model.StrmAccount) (*EmbyRemoteConfig, error) {
+	cfg, err := r.configOf(acct)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.ensureToken(ctx, acct, cfg); err != nil {
+		return nil, err
+	}
+	// api_key 直连（未配用户名/密码）的账号认证步骤不会回填用户 ID；此时用
+	// api_key 拉一次用户列表取真实用户 ID 并回写，避免 /Users/{uid} 请求路径
+	// 落回兜底 "0" 被远程 Emby 拒绝（Unrecognized Guid format）。
+	if strings.TrimSpace(cfg.RemoteUserID) == "" {
+		r.resolveRemoteUserID(ctx, acct, cfg)
+	}
+	return cfg, nil
+}
+
+// resolveRemoteUserID 用已有 api_key 拉远程用户列表，把首个用户 ID 回写账号
+// 配置（取不到时静默跳过，保持兜底行为不变）。
+func (r *EmbyRemoteService) resolveRemoteUserID(ctx context.Context, acct *model.StrmAccount, cfg *EmbyRemoteConfig) {
+	if acct == nil || cfg == nil || strings.TrimSpace(cfg.Token) == "" || strings.TrimSpace(cfg.RemoteUserID) != "" {
+		return
+	}
+	q := url.Values{"api_key": {cfg.Token}}
+	var users []map[string]any
+	if err := r.doGet(ctx, acct, cfg, "/Users", q, &users); err != nil || len(users) == 0 {
+		return
+	}
+	uid := strings.TrimSpace(remoteItemString(users[0], "Id"))
+	if uid == "" {
+		return
+	}
+	cfg.RemoteUserID = uid
+	raw := map[string]string{}
+	_ = json.Unmarshal([]byte(acct.Config), &raw)
+	raw["remote_user_id"] = uid
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return
+	}
+	acct.Config = string(data)
+	_ = r.repo.StrmAccount.Update(ctx, acct)
+}
+
+// CleanupOrphanMounts 清理账号已删除的残留挂载（老版本删除账号未级联），
+// 避免挂载计数/列表出现永远清不掉的孤儿数据。
+func (r *EmbyRemoteService) CleanupOrphanMounts(ctx context.Context) {
+	n, err := r.repo.EmbyMount.DeleteOrphans(ctx)
+	if err != nil {
+		if r.log != nil {
+			r.log.Warn("cleanup orphan emby mounts failed", zap.Error(err))
+		}
+		return
+	}
+	if n > 0 {
+		r.invalidateRemoteMediaCache(ctx)
+		if r.log != nil {
+			r.log.Info("cleaned up orphan emby mounts", zap.Int64("mounts", n))
+		}
+	}
+}
+
 // configOf 解密账号配置。
 func (r *EmbyRemoteService) configOf(acct *model.StrmAccount) (*EmbyRemoteConfig, error) {
 	raw := map[string]string{}
@@ -469,6 +534,10 @@ func (r *EmbyRemoteService) doGet(ctx context.Context, acct *model.StrmAccount, 
 		}
 	}
 	if lastErr != nil {
+		if r.log != nil && acct != nil {
+			r.log.Warn("remote emby request failed",
+				zap.String("account", acct.Name), zap.String("path", path), zap.Error(lastErr))
+		}
 		return lastErr
 	}
 	return errors.New("远程 Emby 请求失败")
@@ -553,7 +622,7 @@ func (r *EmbyRemoteService) ProxyPlayOf(acct *model.StrmAccount) (bool, error) {
 
 // RemoteViews 拉取远程媒体库（View）列表，返回远程原始 view map（未重写）。
 func (r *EmbyRemoteService) RemoteViews(ctx context.Context, acct *model.StrmAccount) ([]map[string]any, error) {
-	cfg, err := r.configOf(acct)
+	cfg, err := r.remoteConfigWithToken(ctx, acct)
 	if err != nil {
 		return nil, err
 	}
@@ -588,7 +657,7 @@ func (r *EmbyRemoteService) remoteUserID(cfg *EmbyRemoteConfig) string {
 // RemoteItems 向远程 Emby 转发 /Items 浏览/搜索请求，返回重写后的响应载荷。
 // p 的分页/排序/过滤参数原样转发，分页语义完全由远程承接。
 func (r *EmbyRemoteService) RemoteItems(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, p ItemsParams) (map[string]any, error) {
-	cfg, err := r.configOf(acct)
+	cfg, err := r.remoteConfigWithToken(ctx, acct)
 	if err != nil {
 		return nil, err
 	}
@@ -633,7 +702,7 @@ func (r *EmbyRemoteService) RemoteItems(ctx context.Context, mount *model.EmbyMo
 // RemoteSearchMount 对单个挂载的媒体库执行全局搜索（ParentId=挂载的远程库，
 // Recursive 返回库内全部命中），结果归属明确可直接伪装。
 func (r *EmbyRemoteService) RemoteSearchMount(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, p ItemsParams) (map[string]any, error) {
-	cfg, err := r.configOf(acct)
+	cfg, err := r.remoteConfigWithToken(ctx, acct)
 	if err != nil {
 		return nil, err
 	}
@@ -666,7 +735,7 @@ func (r *EmbyRemoteService) RemoteSearchMount(ctx context.Context, mount *model.
 
 // RemoteItem 拉取远程单条目详情（含响应的重写）。
 func (r *EmbyRemoteService) RemoteItem(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, remoteID string) (map[string]any, error) {
-	cfg, err := r.configOf(acct)
+	cfg, err := r.remoteConfigWithToken(ctx, acct)
 	if err != nil {
 		return nil, err
 	}
@@ -681,7 +750,7 @@ func (r *EmbyRemoteService) RemoteItem(ctx context.Context, mount *model.EmbyMou
 
 // RemoteLatest 拉取远程「最近添加」（用于 /Items/Latest 聚合）。
 func (r *EmbyRemoteService) RemoteLatest(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, parentID string, limit int) ([]map[string]any, error) {
-	cfg, err := r.configOf(acct)
+	cfg, err := r.remoteConfigWithToken(ctx, acct)
 	if err != nil {
 		return nil, err
 	}
@@ -702,7 +771,7 @@ func (r *EmbyRemoteService) RemoteLatest(ctx context.Context, mount *model.EmbyM
 // 播放 URL：不代理=指向远程绝对地址（播放字节不过 MeBox）；代理=指向 MeBox
 // 本地 /Videos/{encodedID} 端点（由 ProxyVideoStream 反代）。
 func (r *EmbyRemoteService) RemotePlaybackInfo(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, remoteID, userID string) (map[string]any, error) {
-	cfg, err := r.configOf(acct)
+	cfg, err := r.remoteConfigWithToken(ctx, acct)
 	if err != nil {
 		return nil, err
 	}

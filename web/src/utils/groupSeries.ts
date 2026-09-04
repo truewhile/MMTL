@@ -30,7 +30,13 @@ import type { Media } from '../types'
  *
  * 同一组内取最早 created_at 的那条作为代表卡片，并带 count 表示集数。
  */
-export type SeriesCard = { key: string; rep: Media; linkMedia: Media; count: number }
+export type SeriesCard = {
+  key: string
+  rep: Media
+  linkMedia: Media
+  count: number
+  last_added_at?: string
+}
 
 export function getSeriesKey(media: Media): string {
   return compactSeriesKey(getSeriesRawKey(media))
@@ -327,10 +333,22 @@ export function groupSeries(items: Media[] = []): SeriesCard[] {
             ? compactSeriesKey(externalKey)
             : getSeriesKey(m)
 
+    const mAddedAt = m.created_at || m.updated_at || ''
     const g = groups.get(key)
     if (!g) {
-      groups.set(key, { key, rep: m, linkMedia: m, count: 1 })
+      groups.set(key, { key, rep: m, linkMedia: m, count: 1, last_added_at: mAddedAt })
     } else {
+      if (mAddedAt) {
+        if (!g.last_added_at) {
+          g.last_added_at = mAddedAt
+        } else {
+          const prevTime = new Date(g.last_added_at).getTime()
+          const curTime = new Date(mAddedAt).getTime()
+          if (!isNaN(curTime) && (isNaN(prevTime) || curTime > prevTime)) {
+            g.last_added_at = mAddedAt
+          }
+        }
+      }
       // Repeated movie IDs represent alternate locations/encodes, not
       // episodes. Fold the versions but keep the card in movie mode.
       if (isEpisodeLike(m) || pathLooksEpisodic(m) || isEpisodeLike(g.linkMedia) || pathLooksEpisodic(g.linkMedia)) {

@@ -114,7 +114,7 @@ export function sortMediaList(
       case 'created_at':
         return compareDates(a.created_at, b.created_at, order) || compareStrings(a.title, b.title, 'asc')
       case 'updated_at':
-        return compareDates(a.updated_at || a.created_at, b.updated_at || b.created_at, order) || compareStrings(a.title, b.title, 'asc')
+        return compareDates(a.created_at || a.updated_at, b.created_at || b.updated_at, order) || compareStrings(a.title, b.title, 'asc')
       case 'rating':
       case 'imdb_rating': {
         const cmp = compareNumbers(a.rating || 0, b.rating || 0, order)
@@ -175,8 +175,12 @@ export function sortSeriesList(
       case 'created_at':
         return compareDates(repA.created_at, repB.created_at, order) || compareStrings(titleA, titleB, 'asc')
       case 'updated_at': {
-        const updateA = repA.updated_at || repA.created_at
-        const updateB = repB.updated_at || repB.created_at
+        // 远程挂载库的卡片由服务器按 DateLastContentAdded（上次添加集日期）
+        // 倒序返回且不回传日期值：缺失时保持服务器顺序，避免错误回退成加入日期。
+        // 本地库卡片（groupSeries）始终带 last_added_at，按真实值排序。
+        if (!a.last_added_at && !b.last_added_at) return 0
+        const updateA = a.last_added_at || ''
+        const updateB = b.last_added_at || ''
         return compareDates(updateA, updateB, order) || compareStrings(titleA, titleB, 'asc')
       }
       case 'rating':

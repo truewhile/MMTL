@@ -27,10 +27,11 @@ type libraryRowsCacheValue struct {
 }
 
 type SeriesCard struct {
-	Key       string      `json:"key"`
-	Rep       model.Media `json:"rep"`
-	LinkMedia model.Media `json:"linkMedia"`
-	Count     int         `json:"count"`
+	Key         string      `json:"key"`
+	Rep         model.Media `json:"rep"`
+	LinkMedia   model.Media `json:"linkMedia"`
+	Count       int         `json:"count"`
+	LastAddedAt *time.Time  `json:"last_added_at,omitempty"`
 }
 
 type seriesCardGroup struct {
@@ -277,12 +278,20 @@ func groupMediaSeriesCards(items []model.Media) []SeriesCard {
 		if key == "" {
 			continue
 		}
+		itemAdded := item.CreatedAt
+		if itemAdded.IsZero() {
+			itemAdded = item.UpdatedAt
+		}
 		if idx, ok := byKey[key]; ok {
 			group := &groups[idx]
 			if latest := seriesMediaTime(item); latest.After(group.latest) {
 				group.latest = latest
 			}
 			card := &group.card
+			if card.LastAddedAt == nil || (!itemAdded.IsZero() && itemAdded.After(*card.LastAddedAt)) {
+				t := itemAdded
+				card.LastAddedAt = &t
+			}
 			// A shared external ID means duplicate encodes/locations for movies,
 			// not multiple episodes. Keep a single movie card without presenting
 			// its versions as an "N episodes" collection.
@@ -305,9 +314,14 @@ func groupMediaSeriesCards(items []model.Media) []SeriesCard {
 			}
 			continue
 		}
+		var initialLastAdded *time.Time
+		if !itemAdded.IsZero() {
+			t := itemAdded
+			initialLastAdded = &t
+		}
 		byKey[key] = len(groups)
 		groups = append(groups, seriesCardGroup{
-			card:   SeriesCard{Key: key, Rep: item, LinkMedia: item, Count: 1},
+			card:   SeriesCard{Key: key, Rep: item, LinkMedia: item, Count: 1, LastAddedAt: initialLastAdded},
 			latest: seriesMediaTime(item),
 		})
 	}
