@@ -2,25 +2,34 @@
 import { lazy, type ReactElement } from 'react'
 import { Navigate } from 'react-router-dom'
 
-const HomePage = lazy(() => import('./pages/HomePage').then((m) => ({ default: m.HomePage })))
-const LibraryPage = lazy(() => import('./pages/LibraryPage').then((m) => ({ default: m.LibraryPage })))
-const LibrariesPage = lazy(() => import('./pages/LibrariesPage').then((m) => ({ default: m.LibrariesPage })))
-const FavouritesPage = lazy(() => import('./pages/FavouritesPage').then((m) => ({ default: m.FavouritesPage })))
-const PlaylistsPage = lazy(() => import('./pages/PlaylistsPage').then((m) => ({ default: m.PlaylistsPage })))
-const PlaylistDetailPage = lazy(() =>
-  import('./pages/PlaylistDetailPage').then((m) => ({ default: m.PlaylistDetailPage })),
-)
-const MediaDetailPage = lazy(() => import('./pages/MediaDetailPage').then((m) => ({ default: m.MediaDetailPage })))
-const PlayerPage = lazy(() => import('./pages/PlayerPage').then((m) => ({ default: m.PlayerPage })))
+const HomePageLoader = () => import('./pages/HomePage').then((m) => ({ default: m.HomePage }))
+const LibraryPageLoader = () => import('./pages/LibraryPage').then((m) => ({ default: m.LibraryPage }))
+const LibrariesPageLoader = () => import('./pages/LibrariesPage').then((m) => ({ default: m.LibrariesPage }))
+const FavouritesPageLoader = () => import('./pages/FavouritesPage').then((m) => ({ default: m.FavouritesPage }))
+const PlaylistsPageLoader = () => import('./pages/PlaylistsPage').then((m) => ({ default: m.PlaylistsPage }))
+const PlaylistDetailPageLoader = () =>
+  import('./pages/PlaylistDetailPage').then((m) => ({ default: m.PlaylistDetailPage }))
+const MediaDetailPageLoader = () =>
+  import('./pages/MediaDetailPage').then((m) => ({ default: m.MediaDetailPage }))
+const PlayerPageLoader = () => import('./pages/PlayerPage').then((m) => ({ default: m.PlayerPage }))
+const WatchHistoryPageLoader = () =>
+  import('./pages/WatchHistoryPage').then((m) => ({ default: m.WatchHistoryPage }))
+
+const HomePage = lazy(HomePageLoader)
+const LibraryPage = lazy(LibraryPageLoader)
+const LibrariesPage = lazy(LibrariesPageLoader)
+const FavouritesPage = lazy(FavouritesPageLoader)
+const PlaylistsPage = lazy(PlaylistsPageLoader)
+const PlaylistDetailPage = lazy(PlaylistDetailPageLoader)
+const MediaDetailPage = lazy(MediaDetailPageLoader)
+const PlayerPage = lazy(PlayerPageLoader)
 const AdminPage = lazy(() => import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })))
 const ProfilePage = lazy(() => import('./pages/ProfilePage').then((m) => ({ default: m.ProfilePage })))
 const DlnaPage = lazy(() => import('./pages/DlnaPage').then((m) => ({ default: m.DlnaPage })))
 const FileManagerPage = lazy(() =>
   import('./pages/FileManagerPage').then((m) => ({ default: m.FileManagerPage })),
 )
-const WatchHistoryPage = lazy(() =>
-  import('./pages/WatchHistoryPage').then((m) => ({ default: m.WatchHistoryPage })),
-)
+const WatchHistoryPage = lazy(WatchHistoryPageLoader)
 const PosterWallPage = lazy(() => import('./pages/PosterWallPage').then((m) => ({ default: m.PosterWallPage })))
 const ProfileManagementPage = lazy(() =>
   import('./pages/ProfileManagementPage').then((m) => ({ default: m.ProfileManagementPage })),
@@ -36,6 +45,34 @@ const StrmUploadQueuePage = lazy(() =>
 )
 const ScraperQueuePage = lazy(() => import('./pages/ScraperQueuePage').then((m) => ({ default: m.ScraperQueuePage })))
 const TaskQueuePage = lazy(() => import('./pages/TaskQueuePage').then((m) => ({ default: m.TaskQueuePage })))
+
+// 常用页面的路由 chunk 空闲预取：应用加载完成后浏览器一空闲就把浏览路径
+// （库列表/库详情/媒体详情/播放/收藏/历史等）的 chunk 拉下来，
+// 首次点击进入时不再出现"加载中…"等 chunk 下载。失败静默（导航时会重试）。
+let prefetchStarted = false
+export function prefetchCommonRouteChunks() {
+  if (prefetchStarted || typeof window === 'undefined') return
+  prefetchStarted = true
+  const loaders = [
+    LibrariesPageLoader,
+    LibraryPageLoader,
+    MediaDetailPageLoader,
+    PlayerPageLoader,
+    FavouritesPageLoader,
+    WatchHistoryPageLoader,
+    PlaylistsPageLoader,
+  ]
+  const run = () => {
+    for (const load of loaders) {
+      load().catch(() => undefined)
+    }
+  }
+  if (typeof requestIdleCallback !== 'undefined') {
+    requestIdleCallback(run, { timeout: 5000 })
+  } else {
+    window.setTimeout(run, 2000)
+  }
+}
 
 export type AppRoute = {
   path?: string

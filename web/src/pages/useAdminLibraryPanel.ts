@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 
 import { libraryAPI } from '../api/library'
 import type { Library, LibraryRoot } from '../types'
+import { invalidateLibraries } from '../utils/libraryCache'
 import { confirmAction } from '../components/confirmAction'
 import { apiErrorMessage, createRootPayload, displayLibraryRootName, displayLibraryRootPath, emptyRootDraft, rootDraftKey, type RootDraft } from './adminLibraryPanelModel'
 
@@ -18,10 +19,14 @@ export function useAdminLibraryPanel() {
 
 function useAdminLibraryList() {
   const [libs, setLibs] = useState<Library[]>([])
-  const refresh = () =>
-    libraryAPI
+  const refresh = () => {
+    // 后台任何库变更都会走到这里；顺带清掉前台会话缓存，
+    // 避免返回首页/媒体库页后 30 秒 TTL 内还显示旧列表。
+    invalidateLibraries()
+    return libraryAPI
       .list({ includeHidden: true })
       .then((libs) => setLibs(libs.filter((l) => !l.is_remote_emby)))  // 远程挂载库只读，不在后台管理列表内
+  }
 
   useEffect(() => {
     refresh().catch(() => undefined)

@@ -1,5 +1,7 @@
+import { useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
+import { prefetchCommonRouteChunks } from '../appRoutes'
 import { useAuthStore } from '../stores/auth'
 import { usePlayProfileStore } from '../stores/playProfile'
 import {
@@ -37,6 +39,13 @@ function isMediaView(pathname: string, search: string): boolean {
 export function Layout() {
   const navigate = useNavigate()
   const location = useLocation()
+
+  // 登录后的外壳挂载即开始空闲预取常用页面的路由 chunk，
+  // 让首次点击进入各页面时不出现"加载中…"等 chunk 下载。
+  useEffect(() => {
+    prefetchCommonRouteChunks()
+  }, [])
+
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
   const activeProfileId = usePlayProfileStore((s) => s.activeProfileId)

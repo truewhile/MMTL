@@ -143,21 +143,27 @@ function useMediaDetailRefresh({
     setLoading(true)
     setLoadingEpisodes(true)
     try {
-      const nextMedia = await mediaAPI.get(id)
+      // 三个请求并行发出；详情一到就解锁整页渲染，收藏状态与分集列表
+      // 到达后各自补齐（原先完全串行，首屏要排队等满三个往返）。
+      const nextMediaPromise = mediaAPI.get(id)
+      const favouritesPromise = playbackAPI.listFavourites().catch(() => [])
+      const episodesPromise = mediaAPI
+        .getEpisodes(id)
+        .then((r) => r.items ?? [])
+        .catch(() => [])
+
+      const nextMedia = await nextMediaPromise
       setMedia(nextMedia)
-      const favourites = await playbackAPI.listFavourites().catch(() => [])
+      setLoading(false)
+
+      const favourites = await favouritesPromise
       setFavourite(favourites.some((item) => item.id === nextMedia.id))
-      // 异步加载分集列表
-      try {
-        const epRes = await mediaAPI.getEpisodes(id)
-        setEpisodes(epRes.items ?? [])
-      } catch {
-        setEpisodes([])
-      } finally {
-        setLoadingEpisodes(false)
-      }
+
+      const episodes = await episodesPromise
+      setEpisodes(episodes)
     } finally {
       setLoading(false)
+      setLoadingEpisodes(false)
     }
   }, [id, setFavourite, setLoading, setMedia, setEpisodes, setLoadingEpisodes])
 }

@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 
 import { libraryAPI } from '../api/library'
 import type { Library, Media } from '../types'
+import { peekLibrary, resolveLibrary } from '../utils/libraryCache'
 import { groupSeries, isEpisodeLike, type SeriesCard } from '../utils/groupSeries'
 
 export function useLibraryData(libraryID: string, selectedSeries: SeriesCard | null) {
@@ -25,74 +26,79 @@ export function useLibraryData(libraryID: string, selectedSeries: SeriesCard | n
     return groupSeries(items)
   }, [isSeries, isSeriesLibrary, items, serverSeriesCards])
 
+  // reloadCurrentLibrary 通过自增 tick 重跑加载（原实现靠克隆 library 对象
+  // 触发第二个 effect，这里合并成单个 bootstrap effect 后改用显式信号）。
+  const [reloadTick, setReloadTick] = useState(0)
+
   useEffect(() => {
     if (!libraryID) return
     let cancelled = false
     setLoading(true)
+    setLoadingAll(false)
     setLibrary(null)
     setItems([])
     setServerSeriesCards([])
     setSeriesEpisodeItems([])
-    libraryAPI.get(libraryID)
-      .then((lib) => {
-        if (!cancelled) setLibrary(lib)
-      })
-      .catch(() => {
+
+    const bootstrap = async () => {
+      // 库信息先查会话缓存（首页/全部媒体库页已拉过全量列表），命中则
+      // 同步就绪，内容请求在挂载当帧即发出；未命中才退回单独请求，
+      // 消除原先"先等库信息、再等内容"的两段串行首屏等待。
+      let lib = peekLibrary(libraryID)
+      if (lib) setLibrary(lib)
+      try {
+        const resolved = await resolveLibrary(libraryID)
+        if (cancelled) return
+        if (!lib) {
+          lib = resolved
+          setLibrary(lib)
+        }
+      } catch {
         if (!cancelled) {
-          setLibrary(null)
           setLoading(false)
           toast.error('媒体库不存在或无权限')
         }
-      })
-    return () => { cancelled = true }
-  }, [libraryID])
-
-  useEffect(() => {
-    if (!libraryID || !library) return
-    let cancelled = false
-    setLoading(true)
-    setLoadingAll(true)
-    setItems([])
-    setServerSeriesCards([])
-    setSeriesEpisodeItems([])
-
-    const loadAll = async () => {
-      if (isSeriesLibrary) {
-        const collected = await loadAllSeriesCards(libraryID, library.is_remote_emby, (next) => {
-          if (cancelled) return
-          setTotal(next.total)
-          if (next.firstPage) {
-            setServerSeriesCards(next.items)
-            setLoading(false)
-          }
-        })
-        if (!cancelled) setServerSeriesCards(collected.items)
         return
       }
 
-      const collected = await loadAllMedia(libraryID, library.is_remote_emby, (next) => {
-        if (cancelled) return
-        setTotal(next.total)
-        if (next.firstPage) {
-          setItems(next.items)
-          setLoading(false)
+      const seriesLibrary = isSeriesLibraryType(lib.type)
+      setLoadingAll(true)
+      try {
+        if (seriesLibrary) {
+          const collected = await loadAllSeriesCards(libraryID, lib.is_remote_emby, (next) => {
+            if (cancelled) return
+            setTotal(next.total)
+            if (next.firstPage) {
+              setServerSeriesCards(next.items)
+              setLoading(false)
+            }
+          })
+          if (!cancelled) setServerSeriesCards(collected.items)
+          return
         }
-      })
-      if (!cancelled) setItems(collected.items)
-    }
 
-    loadAll()
-      .catch(() => {
+        const collected = await loadAllMedia(libraryID, lib.is_remote_emby, (next) => {
+          if (cancelled) return
+          setTotal(next.total)
+          if (next.firstPage) {
+            setItems(next.items)
+            setLoading(false)
+          }
+        })
+        if (!cancelled) setItems(collected.items)
+      } catch {
         if (!cancelled) toast.error('媒体库加载失败')
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) {
           setLoading(false)
           setLoadingAll(false)
         }
-      })
+      }
+    }
+
+    void bootstrap()
     return () => { cancelled = true }
-  }, [libraryID, library, isSeriesLibrary])
+  }, [libraryID, reloadTick])
 
   useEffect(() => {
     if (!libraryID || !isSeriesLibrary || !selectedSeries) {
@@ -117,7 +123,7 @@ export function useLibraryData(libraryID: string, selectedSeries: SeriesCard | n
   }, [libraryID, isSeriesLibrary, selectedSeries])
 
   const reloadCurrentLibrary = useCallback(() => {
-    setLibrary((current) => (current ? { ...current } : current))
+    setReloadTick((tick) => tick + 1)
   }, [])
 
   const loadingAllText = loadingAll && !loading && (isSeriesLibrary ? total > serverSeriesCards.length : total > items.length)

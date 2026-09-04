@@ -5,6 +5,7 @@ import { historyAPI } from '../api/history'
 import type { HistoryItem } from '../api/playback'
 import type { Library, Media } from '../types'
 import type { SeriesCard } from '../utils/groupSeries'
+import { fetchLibraries, peekLibraries } from '../utils/libraryCache'
 import { usePinnedLibraries } from '../hooks/usePinnedLibraries'
 import { sortByPinnedIds } from '../utils/pinnedLibraries'
 import {
@@ -18,7 +19,6 @@ import {
 } from './HomePageSections'
 
 const hasArtwork = (media?: Media | null) => !!(media?.poster_url || media?.backdrop_url)
-const asArray = <T,>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : [])
 
 export function HomePage() {
   const [libraries, setLibraries] = useState<Library[]>([])
@@ -30,17 +30,24 @@ export function HomePage() {
   const [historyLoading, setHistoryLoading] = useState(true)
   const { pinnedIds } = usePinnedLibraries()
 
-  // 1. 媒体库元数据极速加载（不带 preview，毫秒级秒开首屏）
+  // 1. 媒体库元数据极速加载（不带 preview，毫秒级秒开首屏）。
+  //    会话内已有缓存则先用缓存立即渲染，后台仍刷新一次兜底。
   useEffect(() => {
     let cancelled = false
 
-    libraryAPI
-      .list()
-      .then((rows) => asArray<Library>(rows))
+    const cached = peekLibraries()
+    if (cached && cached.length > 0) {
+      setLibraries(cached)
+      setLibrariesLoading(false)
+    }
+
+    fetchLibraries()
+      .then((rows) => (Array.isArray(rows) ? rows : []))
       .catch(() => [] as Library[])
       .then((libs) => {
         if (cancelled) return
-        setLibraries(libs)
+        // 失败兜底返回空数组时，不要覆盖已先行渲染的缓存数据
+        setLibraries((prev) => (libs.length === 0 && prev.length > 0 ? prev : libs))
         setLibrariesLoading(false)
       })
 

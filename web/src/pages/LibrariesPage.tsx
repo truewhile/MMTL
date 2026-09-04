@@ -12,6 +12,7 @@ import {
 import type { LibraryPreview } from './librariesPageModel'
 import type { Library } from '../types'
 import type { SeriesCard } from '../utils/groupSeries'
+import { fetchLibraries, invalidateLibraries, peekLibraries } from '../utils/libraryCache'
 import { sortLibraryPreviews } from '../utils/pinnedLibraries'
 
 export function LibrariesPage() {
@@ -53,10 +54,18 @@ export function LibrariesPage() {
     }
   }, [])
 
-  const loadLibraries = useCallback(async () => {
-    setLoading(true)
+  const loadLibraries = useCallback(async (options?: { force?: boolean }) => {
+    if (options?.force) invalidateLibraries()
+    // 会话缓存命中时先行渲染，避免每次进入都白等一轮请求
+    const cached = peekLibraries()
+    if (cached) {
+      setLibraries(cached)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
     try {
-      const libs = await libraryAPI.list()
+      const libs = await fetchLibraries()
       setLibraries(libs)
       // 优先拉取入口卡片网格当前页（前 20 个库）的预览
       const topIds = libs.slice(0, 20).map((l) => l.id)
@@ -82,7 +91,7 @@ export function LibrariesPage() {
 
   const handleManageLibraries = async () => {
     await openManageLibrariesDialog()
-    await loadLibraries()
+    await loadLibraries({ force: true })
   }
 
   useEffect(() => {
