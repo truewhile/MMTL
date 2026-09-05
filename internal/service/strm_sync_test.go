@@ -368,19 +368,18 @@ func TestScanLocalMetaForUpload(t *testing.T) {
 	}
 
 	st := &strmSyncState{
-		s:             svc,
-		ctx:           context.Background(),
-		p:             p,
-		cfg:           &strmPathConfig{UploadMeta: true, MetaExt: []string{"jpg", "nfo"}},
-		rec:           &model.StrmSyncRecord{},
-		seenMeta:      map[string]bool{},
-		remoteMeta:    map[string]int64{},
-		remoteMetaRef: map[string]string{},
+		s:          svc,
+		ctx:        context.Background(),
+		p:          p,
+		cfg:        &strmPathConfig{UploadMeta: true, MetaExt: []string{"jpg", "nfo"}},
+		rec:        &model.StrmSyncRecord{},
+		seenMeta:   map[string]bool{},
+		remoteMeta: map[string][]remoteMetaItem{},
 	}
 
 	// 模拟远端已存在 poster.jpg（与本地同一文件）和 tvshow.nfo（与本地不同）
-	st.remoteMeta["m:动漫/poster.jpg"] = int64(len("poster-data"))
-	st.remoteMeta["m:动漫/tvshow.nfo"] = 999
+	st.remoteMeta["m:动漫/poster.jpg"] = []remoteMetaItem{{ID: "f1", Size: int64(len("poster-data"))}}
+	st.remoteMeta["m:动漫/tvshow.nfo"] = []remoteMetaItem{{ID: "f2", Size: 999}}
 
 	if err := st.scanLocalMetaForUpload(); err != nil {
 		t.Fatalf("scanLocalMetaForUpload failed: %v", err)
@@ -442,17 +441,15 @@ func TestScanLocalMetaForUpload115CarriesRemoteRef(t *testing.T) {
 	}
 
 	st := &strmSyncState{
-		s:             svc,
-		ctx:           context.Background(),
-		p:             p,
-		cfg:           &strmPathConfig{UploadMeta: true, MetaExt: []string{"jpg", "nfo"}},
-		rec:           &model.StrmSyncRecord{},
-		seenMeta:      map[string]bool{},
-		remoteMeta:    map[string]int64{},
-		remoteMetaRef: map[string]string{},
+		s:          svc,
+		ctx:        context.Background(),
+		p:          p,
+		cfg:        &strmPathConfig{UploadMeta: true, MetaExt: []string{"jpg", "nfo"}},
+		rec:        &model.StrmSyncRecord{},
+		seenMeta:   map[string]bool{},
+		remoteMeta: map[string][]remoteMetaItem{},
 	}
-	st.remoteMeta["m:movie.nfo"] = 1
-	st.remoteMetaRef["m:movie.nfo"] = "file-42"
+	st.remoteMeta["m:movie.nfo"] = []remoteMetaItem{{ID: "file-42", Size: 1}}
 
 	if err := st.scanLocalMetaForUpload(); err != nil {
 		t.Fatalf("scanLocalMetaForUpload failed: %v", err)
@@ -522,7 +519,7 @@ func TestPruneLocalKeepsLocalMeta(t *testing.T) {
 		syncType:   model.StrmSyncTypeFull,
 		seenVideo:  map[string]bool{},
 		seenMeta:   map[string]bool{},
-		remoteMeta: map[string]int64{},
+		remoteMeta: map[string][]remoteMetaItem{},
 	}
 	// 本次远端扫描既没有看到视频，也没有看到任何元数据
 	if err := st.pruneLocal(); err != nil {
@@ -569,8 +566,7 @@ func TestHandleMetaKeepsLocalWhenUploadEnabled(t *testing.T) {
 		cfg:            &strmPathConfig{DownloadMeta: true, UploadMeta: true, MetaExt: []string{"nfo"}},
 		rec:            &model.StrmSyncRecord{},
 		seenMeta:       map[string]bool{},
-		remoteMeta:     map[string]int64{},
-		remoteMetaRef:  map[string]string{},
+		remoteMeta:     map[string][]remoteMetaItem{},
 		seenMetaTarget: map[string]cloud.FileEntry{},
 	}
 
@@ -630,22 +626,21 @@ func TestScanLocalMetaForUploadSha1Identity(t *testing.T) {
 		UploadMeta: true,
 	}
 	st := &strmSyncState{
-		s:              svc,
-		ctx:            context.Background(),
-		p:              p,
-		cfg:            &strmPathConfig{UploadMeta: true, MetaExt: []string{"nfo"}},
-		rec:            &model.StrmSyncRecord{},
-		seenMeta:       map[string]bool{},
-		remoteMeta:     map[string]int64{},
-		remoteMetaRef:  map[string]string{},
-		remoteMetaSha1: map[string]string{},
+		s:          svc,
+		ctx:        context.Background(),
+		p:          p,
+		cfg:        &strmPathConfig{UploadMeta: true, MetaExt: []string{"nfo"}},
+		rec:        &model.StrmSyncRecord{},
+		seenMeta:   map[string]bool{},
+		remoteMeta: map[string][]remoteMetaItem{},
 	}
 	// 115 返回大写 SHA1，本地计算为小写：同时验证大小写不敏感比对
-	st.remoteMeta["m:same.nfo"] = int64(len("same-content"))
-	st.remoteMetaSha1["m:same.nfo"] = strings.ToUpper(sameSha)
-	st.remoteMeta["m:diff.nfo"] = int64(len("diff-content"))
-	st.remoteMetaSha1["m:diff.nfo"] = strings.ToUpper(otherSha)
-	st.remoteMetaRef["m:diff.nfo"] = "old-diff-1"
+	st.remoteMeta["m:same.nfo"] = []remoteMetaItem{
+		{ID: "same-1", Size: int64(len("same-content")), Sha1: strings.ToUpper(sameSha)},
+	}
+	st.remoteMeta["m:diff.nfo"] = []remoteMetaItem{
+		{ID: "old-diff-1", Size: int64(len("diff-content")), Sha1: strings.ToUpper(otherSha)},
+	}
 
 	if err := st.scanLocalMetaForUpload(); err != nil {
 		t.Fatalf("scanLocalMetaForUpload failed: %v", err)
@@ -703,9 +698,7 @@ func TestHandleMetaSha1Identity(t *testing.T) {
 		cfg:            &strmPathConfig{DownloadMeta: true, UploadMeta: false, MetaExt: []string{"nfo"}},
 		rec:            &model.StrmSyncRecord{},
 		seenMeta:       map[string]bool{},
-		remoteMeta:     map[string]int64{},
-		remoteMetaRef:  map[string]string{},
-		remoteMetaSha1: map[string]string{},
+		remoteMeta:     map[string][]remoteMetaItem{},
 		seenMetaTarget: map[string]cloud.FileEntry{},
 	}
 
@@ -802,7 +795,7 @@ func TestWalkRemoteConcurrent(t *testing.T) {
 		rec:        &model.StrmSyncRecord{},
 		seenVideo:  map[string]bool{},
 		seenMeta:   map[string]bool{},
-		remoteMeta: map[string]int64{},
+		remoteMeta: map[string][]remoteMetaItem{},
 	}
 	if err := st.walkRemote(); err != nil {
 		t.Fatalf("walkRemote failed: %v", err)
@@ -911,7 +904,7 @@ func TestStrmDuplicateFileConflictResolution(t *testing.T) {
 		cfg:             &strmPathConfig{DownloadMeta: true, MetaExt: []string{"nfo"}},
 		rec:             &model.StrmSyncRecord{},
 		seenMeta:        map[string]bool{},
-		remoteMeta:      map[string]int64{},
+		remoteMeta:      map[string][]remoteMetaItem{},
 		seenMetaTarget:  map[string]cloud.FileEntry{},
 		seenVideoTarget: map[string]cloud.FileEntry{},
 	}
@@ -950,7 +943,7 @@ func TestStrmDuplicateFileConflictResolution(t *testing.T) {
 		cfg:             &strmPathConfig{DownloadMeta: true, MetaExt: []string{"nfo"}},
 		rec:             &model.StrmSyncRecord{},
 		seenMeta:        map[string]bool{},
-		remoteMeta:      map[string]int64{},
+		remoteMeta:      map[string][]remoteMetaItem{},
 		seenMetaTarget:  map[string]cloud.FileEntry{},
 		seenVideoTarget: map[string]cloud.FileEntry{},
 	}
@@ -1019,7 +1012,7 @@ func TestWalk115FlatAbortsOnDirResolveFailure(t *testing.T) {
 		dirCache:   sync.Map{},
 		seenVideo:  map[string]bool{},
 		seenMeta:   map[string]bool{},
-		remoteMeta: map[string]int64{},
+		remoteMeta: map[string][]remoteMetaItem{},
 	}
 	err := st.walk115Flat(oc)
 	if err == nil {
@@ -1088,9 +1081,7 @@ func TestWalk115FlatConcurrentProcessing(t *testing.T) {
 		dirCache:        sync.Map{},
 		seenVideo:       map[string]bool{},
 		seenMeta:        map[string]bool{},
-		remoteMeta:      map[string]int64{},
-		remoteMetaRef:   map[string]string{},
-		remoteMetaSha1:  map[string]string{},
+		remoteMeta:      map[string][]remoteMetaItem{},
 		seenMetaTarget:  map[string]cloud.FileEntry{},
 		seenVideoTarget: map[string]cloud.FileEntry{},
 	}
@@ -1145,9 +1136,7 @@ func TestWalk115FlatConcurrentProcessing(t *testing.T) {
 		dirCache:        sync.Map{},
 		seenVideo:       map[string]bool{},
 		seenMeta:        map[string]bool{},
-		remoteMeta:      map[string]int64{},
-		remoteMetaRef:   map[string]string{},
-		remoteMetaSha1:  map[string]string{},
+		remoteMeta:      map[string][]remoteMetaItem{},
 		seenMetaTarget:  map[string]cloud.FileEntry{},
 		seenVideoTarget: map[string]cloud.FileEntry{},
 	}
@@ -1204,5 +1193,129 @@ func TestCloud115FullPath(t *testing.T) {
 	d = &cloud115.RemoteFileDetail{FileId: "0"}
 	if got := cloud115FullPath(d); got != "" {
 		t.Fatalf("root full path = %q, want empty", got)
+	}
+}
+
+// TestScanLocalMetaForUploadMultipleCopiesBestEffortMatch 验证：
+// 当远端同一路径存在多个副本（1个与本地一致的副本 + 1个脏副本）时，
+// 能够择优识别出匹配的副本，跳过上传（uploaded = 0），避免盲盒覆盖导致的重复上传。
+func TestScanLocalMetaForUploadMultipleCopiesBestEffortMatch(t *testing.T) {
+	svc := testStrmService(t)
+	localDir := t.TempDir()
+
+	nfoPath := filepath.Join(localDir, "test.nfo")
+	writeFile(t, nfoPath, "correct-content")
+	correctSha, err := cloud115.FileSHA1(nfoPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p := &model.StrmSyncPath{
+		Base:       model.Base{ID: "multi-copy-match-path"},
+		Provider:   model.StrmProvider115,
+		RemotePath: "root-cid",
+		LocalPath:  localDir,
+		UploadMeta: true,
+	}
+
+	st := &strmSyncState{
+		s:          svc,
+		ctx:        context.Background(),
+		p:          p,
+		cfg:        &strmPathConfig{UploadMeta: true, MetaExt: []string{"nfo"}},
+		rec:        &model.StrmSyncRecord{},
+		seenMeta:   map[string]bool{},
+		remoteMeta: map[string][]remoteMetaItem{},
+	}
+
+	// 模拟远端存在两个同名副本：一个脏副本（较早），一个正确副本（较晚）
+	st.recordRemoteMeta(cloud.FileEntry{
+		ID:    "stale-id",
+		Name:  "test.nfo",
+		Size:  int64(len("stale-dirty-content")),
+		Sha1:  "STALE_SHA1",
+		MTime: 1000,
+	}, "test.nfo")
+
+	st.recordRemoteMeta(cloud.FileEntry{
+		ID:    "correct-id",
+		Name:  "test.nfo",
+		Size:  int64(len("correct-content")),
+		Sha1:  correctSha,
+		MTime: 2000,
+	}, "test.nfo")
+
+	if err := st.scanLocalMetaForUpload(); err != nil {
+		t.Fatalf("scanLocalMetaForUpload failed: %v", err)
+	}
+
+	// 择优匹配：命中 correct-id，不产生上传任务
+	tasks, _, err := svc.repo.StrmUpload.List(context.Background(), "", 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 0 {
+		t.Fatalf("expected 0 upload tasks when a matching copy exists, got %d: %v", len(tasks), taskNames(tasks))
+	}
+}
+
+// TestScanLocalMetaForUploadMultipleCopiesAllStale 验证：
+// 当远端同一路径存在多个副本，且所有副本均与本地内容不一致时，
+// 上传任务应携带所有旧副本的 ID（逗号分隔），以便上传前批量清理所有旧副本。
+func TestScanLocalMetaForUploadMultipleCopiesAllStale(t *testing.T) {
+	svc := testStrmService(t)
+	localDir := t.TempDir()
+
+	nfoPath := filepath.Join(localDir, "test.nfo")
+	writeFile(t, nfoPath, "brand-new-content")
+
+	p := &model.StrmSyncPath{
+		Base:       model.Base{ID: "multi-copy-stale-path"},
+		Provider:   model.StrmProvider115,
+		RemotePath: "root-cid",
+		LocalPath:  localDir,
+		UploadMeta: true,
+	}
+
+	st := &strmSyncState{
+		s:          svc,
+		ctx:        context.Background(),
+		p:          p,
+		cfg:        &strmPathConfig{UploadMeta: true, MetaExt: []string{"nfo"}},
+		rec:        &model.StrmSyncRecord{},
+		seenMeta:   map[string]bool{},
+		remoteMeta: map[string][]remoteMetaItem{},
+	}
+
+	// 模拟远端存在两个不同大小和哈希的旧副本
+	st.recordRemoteMeta(cloud.FileEntry{
+		ID:    "old-1",
+		Name:  "test.nfo",
+		Size:  10,
+		Sha1:  "OLD_SHA1",
+		MTime: 1000,
+	}, "test.nfo")
+
+	st.recordRemoteMeta(cloud.FileEntry{
+		ID:    "old-2",
+		Name:  "test.nfo",
+		Size:  20,
+		Sha1:  "OLD_SHA2",
+		MTime: 2000,
+	}, "test.nfo")
+
+	if err := st.scanLocalMetaForUpload(); err != nil {
+		t.Fatalf("scanLocalMetaForUpload failed: %v", err)
+	}
+
+	tasks, _, err := svc.repo.StrmUpload.List(context.Background(), "", 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 upload task, got %d", len(tasks))
+	}
+	if tasks[0].RemoteRef != "old-1,old-2" {
+		t.Fatalf("expected RemoteRef to be 'old-1,old-2', got %q", tasks[0].RemoteRef)
 	}
 }

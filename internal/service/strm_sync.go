@@ -25,6 +25,14 @@ import (
 	"github.com/truewhile/MeBox/internal/service/cloud115"
 )
 
+// remoteMetaItem 记录远端存在的单个元数据文件副本信息（大小、文件ID、内容SHA1、修改时间）。
+type remoteMetaItem struct {
+	ID    string
+	Size  int64
+	Sha1  string
+	MTime int64
+}
+
 // strmSyncState 是一次同步执行的上下文。
 type strmSyncState struct {
 	s        *StrmService
@@ -37,13 +45,11 @@ type strmSyncState struct {
 	syncType string
 
 	mu                  sync.Mutex
-	processed           int               // 已处理文件计数（用于定期落库进度）
-	lastProgressFlush   time.Time         // 上次进度落库时间
-	seenVideo           map[string]bool   // "v:"+去掉扩展名的相对路径 → 远端存在该视频
-	seenMeta            map[string]bool   // "m:"+相对路径 → 远端存在该元数据
-	remoteMeta          map[string]int64  // 远端元数据大小（上传比对用）
-	remoteMetaRef       map[string]string // "m:"+相对路径 → 远端元数据文件引用（115 文件 ID，覆盖上传前删除旧文件用）
-	remoteMetaSha1      map[string]string // "m:"+相对路径 → 远端元数据内容 SHA1（115 列表返回；上传/下载精确比对用，其他网盘为空）
+	processed           int                         // 已处理文件计数（用于定期落库进度）
+	lastProgressFlush   time.Time                   // 上次进度落库时间
+	seenVideo           map[string]bool             // "v:"+去掉扩展名的相对路径 → 远端存在该视频
+	seenMeta            map[string]bool             // "m:"+相对路径 → 远端存在该元数据
+	remoteMeta          map[string][]remoteMetaItem // "m:"+相对路径 → 远端元数据副本列表（多副本聚合，支持择优比对与冗余清理）
 	seenMetaTarget      map[string]cloud.FileEntry
 	seenVideoTarget     map[string]cloud.FileEntry
 	activeDownloadPaths map[string]bool // 本地已在排队/进行的下载任务路径（内存去重）
@@ -263,9 +269,7 @@ func (s *StrmService) runSync(ctx context.Context, p *model.StrmSyncPath, rec *m
 		syncType:        rec.SyncType,
 		seenVideo:       map[string]bool{},
 		seenMeta:        map[string]bool{},
-		remoteMeta:      map[string]int64{},
-		remoteMetaRef:   map[string]string{},
-		remoteMetaSha1:  map[string]string{},
+		remoteMeta:      map[string][]remoteMetaItem{},
 		seenMetaTarget:  map[string]cloud.FileEntry{},
 		seenVideoTarget: map[string]cloud.FileEntry{},
 	}
@@ -1109,25 +1113,21 @@ func (st *strmSyncState) localSha1Matches(path, remoteSha1 string) bool {
 	return strings.EqualFold(local, remoteSha1)
 }
 
-// recordRemoteMeta 记录远端存在的元数据索引、文件大小、文件引用及内容 SHA1。
+// recordRemoteMeta 记录远端存在的元数据索引、文件大小、文件引用及内容 SHA1（多副本聚合追加）。
 func (st *strmSyncState) recordRemoteMeta(entry cloud.FileEntry, rel string) {
 	st.mu.Lock()
+	defer st.mu.Unlock()
 	if st.remoteMeta == nil {
-		st.remoteMeta = map[string]int64{}
+		st.remoteMeta = map[string][]remoteMetaItem{}
 	}
-	if st.remoteMetaRef == nil {
-		st.remoteMetaRef = map[string]string{}
-	}
-	if st.remoteMetaSha1 == nil {
-		st.remoteMetaSha1 = map[string]string{}
-	}
-	st.seenMeta["m:"+rel] = true
-	st.remoteMeta["m:"+rel] = entry.Size
-	st.remoteMetaRef["m:"+rel] = entry.ID
-	if sha := usableSha1(entry.Sha1); sha != "" {
-		st.remoteMetaSha1["m:"+rel] = sha
-	}
-	st.mu.Unlock()
+	key := "m:" + rel
+	st.seenMeta[key] = true
+	st.remoteMeta[key] = append(st.remoteMeta[key], remoteMetaItem{
+		ID:    entry.ID,
+		Size:  entry.Size,
+		Sha1:  usableSha1(entry.Sha1),
+		MTime: entry.MTime,
+	})
 }
 
 func (st *strmSyncState) flushPendingDownloads() {
@@ -1379,22 +1379,41 @@ func (st *strmSyncState) scanLocalMetaForUpload() error {
 			return nil
 		}
 		st.mu.Lock()
-		remoteSize, exists := st.remoteMeta["m:"+rel]
-		remoteRef := st.remoteMetaRef["m:"+rel]
-		remoteSha1 := st.remoteMetaSha1["m:"+rel]
+		entries, exists := st.remoteMeta["m:"+rel]
 		st.mu.Unlock()
-		if exists && remoteSize == info.Size() {
-			// 网盘端同名同大小：候选同一文件。115 提供远端 SHA1 时做内容级比对，
-			// 识别"同大小不同内容"（如 nfo 改一个字符长度不变）避免漏传；
-			// 无哈希（其他网盘/列表未返回）视为同一文件，保持大小比对兜底。
-			if remoteSha1 == "" || st.localSha1Matches(path, remoteSha1) {
+
+		if exists && len(entries) > 0 {
+			// 择优比对：只要远端存在任一副本的大小匹配且 SHA1 匹配（或无 SHA1），即判定远端已有最新副本，无需上传
+			matchedIdx := -1
+			for i, it := range entries {
+				if it.Size == info.Size() {
+					if it.Sha1 == "" || st.localSha1Matches(path, it.Sha1) {
+						matchedIdx = i
+						break
+					}
+				}
+			}
+			if matchedIdx >= 0 {
+				// 远端已存在完全一致的副本，跳过上传！
+				// 若远端还存在其他同名脏副本（副本总数 > 1），在 115 下顺手异步清理其余冗余副本
+				if len(entries) > 1 && st.p.Provider == model.StrmProvider115 {
+					var redundantIDs []string
+					for i, it := range entries {
+						if i != matchedIdx && it.ID != "" {
+							redundantIDs = append(redundantIDs, it.ID)
+						}
+					}
+					if len(redundantIDs) > 0 {
+						st.cleanupRedundantRemoteFiles(st.uploadRemoteTarget(rel), redundantIDs)
+					}
+				}
 				return nil
 			}
 		}
-		// 入队上传（以本地为准）：网盘端不存在；或同名但大小不同（必然内容不同）；
-		// 或同名同大小但 SHA1 不同（精确比对发现的同大小不同内容）。
-		// 115 的上传接口不保证同名覆盖，任务携带远端旧文件 ID（RemoteRef），
-		// 由上传端先删旧文件再上传；WebDAV/OpenList 的 PutFile 本身即覆盖上传。
+
+		// 入队上传（以本地为准）：网盘端不存在；或所有远端副本均内容不同。
+		// 115 的上传接口不保证同名覆盖，任务携带远端所有旧副本 ID（RemoteRef，以逗号连接），
+		// 由上传端一次性批量删除所有旧文件后再上传，彻底根除同名文件堆积。
 		st.mu.Lock()
 		if st.activeUploadPaths != nil && st.activeUploadPaths[path] {
 			st.mu.Unlock()
@@ -1415,8 +1434,14 @@ func (st *strmSyncState) scanLocalMetaForUpload() error {
 			Size:       info.Size(),
 			Status:     model.StrmTaskPending,
 		}
-		if exists && st.p.Provider == model.StrmProvider115 {
-			task.RemoteRef = remoteRef
+		if exists && len(entries) > 0 && st.p.Provider == model.StrmProvider115 {
+			var oldIDs []string
+			for _, it := range entries {
+				if it.ID != "" {
+					oldIDs = append(oldIDs, it.ID)
+				}
+			}
+			task.RemoteRef = strings.Join(oldIDs, ",")
 		}
 		st.mu.Lock()
 		st.pendingUploads = append(st.pendingUploads, task)
@@ -1429,6 +1454,31 @@ func (st *strmSyncState) scanLocalMetaForUpload() error {
 		}
 		return nil
 	})
+}
+
+// cleanupRedundantRemoteFiles 异步清理 115 远端某个父目录下的冗余同名旧元数据副本。
+func (st *strmSyncState) cleanupRedundantRemoteFiles(parentCID string, fileIDs []string) {
+	if len(fileIDs) == 0 || st.provider == nil {
+		return
+	}
+	open115, ok := st.provider.(cloud.OpenAPI115Provider)
+	if !ok {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := open115.OpenClient().DeleteFiles(ctx, parentCID, fileIDs...); err != nil {
+			st.s.log.Warn("清理 115 冗余旧元数据副本失败",
+				zap.String("parent_cid", parentCID),
+				zap.Strings("file_ids", fileIDs),
+				zap.Error(err))
+		} else {
+			st.s.log.Info("已清理 115 冗余旧元数据副本",
+				zap.String("parent_cid", parentCID),
+				zap.Strings("file_ids", fileIDs))
+		}
+	}()
 }
 
 // remoteUploadPath 远端元数据目标路径 = 同步目录远端根 + 相对路径。

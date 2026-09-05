@@ -366,7 +366,7 @@ func (s *StrmService) processUpload115(ctx context.Context, task *model.StrmUplo
 		finish(model.StrmTaskFailed, "该网盘不支持元数据上传")
 		return
 	}
-	// 以本地为准：网盘端已有同名但内容不同的旧元数据时，先删除旧文件再上传。
+	// 以本地为准：网盘端已有同名但内容不同的旧元数据时，先批量删除所有旧副本再上传。
 	// 115 的上传接口不保证同名覆盖，直接上传可能产生同名重复文件；删除失败则
 	// 任务重试（旧文件 ID 失效的场景会在下次同步后自动修复）。
 	if task.RemoteRef != "" {
@@ -375,7 +375,8 @@ func (s *StrmService) processUpload115(ctx context.Context, task *model.StrmUplo
 			finish(model.StrmTaskFailed, "该网盘不支持删除远端旧元数据")
 			return
 		}
-		if err := open115.OpenClient().DeleteFiles(ctx, task.RemotePath, task.RemoteRef); err != nil {
+		refs := strings.Split(task.RemoteRef, ",")
+		if err := open115.OpenClient().DeleteFiles(ctx, task.RemotePath, refs...); err != nil {
 			s.uploadTaskFailWithRetry(task, "删除网盘旧元数据失败："+err.Error())
 			return
 		}
