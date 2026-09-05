@@ -1349,8 +1349,12 @@ func (st *strmSyncState) scanLocalMetaForUpload() error {
 			st.activeUploadPaths = map[string]bool{}
 		}
 	}
+	var pendingDeletes map[string][]string
+	if st.p.Provider == model.StrmProvider115 {
+		pendingDeletes = map[string][]string{}
+	}
 	localRoot := filepath.Clean(st.p.LocalPath)
-	return filepath.WalkDir(localRoot, func(path string, d os.DirEntry, err error) error {
+	err := filepath.WalkDir(localRoot, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -1395,20 +1399,25 @@ func (st *strmSyncState) scanLocalMetaForUpload() error {
 			}
 			if matchedIdx >= 0 {
 				// 远端已存在完全一致的副本，跳过上传！
-				// 若远端还存在其他同名脏副本（副本总数 > 1），在 115 下顺手异步清理其余冗余副本
+				// 若远端还存在其他同名脏副本（副本总数 > 1），在 115 下收集待删除 ID，稍后按目录批量删除
 				if len(entries) > 1 && st.p.Provider == model.StrmProvider115 {
-					var redundantIDs []string
-					for i, it := range entries {
-						if i != matchedIdx && it.ID != "" {
-							redundantIDs = append(redundantIDs, it.ID)
+					parentCID := st.uploadRemoteTarget(rel)
+					if parentCID != "" {
+						for i, it := range entries {
+							if i != matchedIdx && it.ID != "" {
+								pendingDeletes[parentCID] = append(pendingDeletes[parentCID], it.ID)
+							}
 						}
-					}
-					if len(redundantIDs) > 0 {
-						st.cleanupRedundantRemoteFiles(st.uploadRemoteTarget(rel), redundantIDs)
 					}
 				}
 				return nil
 			}
+		}
+
+		remoteTarget := st.uploadRemoteTarget(rel)
+		if st.p.Provider == model.StrmProvider115 && remoteTarget == "" {
+			// 115 远端不存在对应父目录（如孤儿子目录），禁止降级到根目录上传以防错位死循环
+			return nil
 		}
 
 		// 入队上传（以本地为准）：网盘端不存在；或所有远端副本均内容不同。
@@ -1430,7 +1439,7 @@ func (st *strmSyncState) scanLocalMetaForUpload() error {
 			Provider:   st.p.Provider,
 			FileName:   filepath.Base(rel),
 			LocalPath:  path,
-			RemotePath: st.uploadRemoteTarget(rel),
+			RemotePath: remoteTarget,
 			Size:       info.Size(),
 			Status:     model.StrmTaskPending,
 		}
@@ -1454,11 +1463,20 @@ func (st *strmSyncState) scanLocalMetaForUpload() error {
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	// 批量清理 115 冗余旧元数据副本（按父目录聚合，一次请求批量删除该目录下全部冗余文件，彻底避免并发触发限流器超时）
+	if len(pendingDeletes) > 0 {
+		st.cleanupBatchRedundantFiles(pendingDeletes)
+	}
+	return nil
 }
 
-// cleanupRedundantRemoteFiles 异步清理 115 远端某个父目录下的冗余同名旧元数据副本。
-func (st *strmSyncState) cleanupRedundantRemoteFiles(parentCID string, fileIDs []string) {
-	if len(fileIDs) == 0 || st.provider == nil {
+// cleanupBatchRedundantFiles 异步按父目录批量清理 115 远端冗余旧元数据副本。
+func (st *strmSyncState) cleanupBatchRedundantFiles(deletesByParent map[string][]string) {
+	if len(deletesByParent) == 0 || st.provider == nil {
 		return
 	}
 	open115, ok := st.provider.(cloud.OpenAPI115Provider)
@@ -1466,17 +1484,28 @@ func (st *strmSyncState) cleanupRedundantRemoteFiles(parentCID string, fileIDs [
 		return
 	}
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		if err := open115.OpenClient().DeleteFiles(ctx, parentCID, fileIDs...); err != nil {
-			st.s.log.Warn("清理 115 冗余旧元数据副本失败",
-				zap.String("parent_cid", parentCID),
-				zap.Strings("file_ids", fileIDs),
-				zap.Error(err))
-		} else {
-			st.s.log.Info("已清理 115 冗余旧元数据副本",
-				zap.String("parent_cid", parentCID),
-				zap.Strings("file_ids", fileIDs))
+		totalPruned := 0
+		for parentCID, fileIDs := range deletesByParent {
+			if ctx.Err() != nil {
+				break
+			}
+			if len(fileIDs) == 0 {
+				continue
+			}
+			if err := open115.OpenClient().DeleteFiles(ctx, parentCID, fileIDs...); err != nil {
+				st.s.log.Warn("批量清理 115 冗余旧元数据副本失败",
+					zap.String("parent_cid", parentCID),
+					zap.Int("count", len(fileIDs)),
+					zap.Error(err))
+			} else {
+				totalPruned += len(fileIDs)
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		if totalPruned > 0 {
+			st.s.log.Info("已完成批量清理 115 冗余旧元数据副本", zap.Int("total_pruned", totalPruned))
 		}
 	}()
 }
@@ -1508,9 +1537,9 @@ func (st *strmSyncState) uploadRemoteTarget(rel string) string {
 		if cid, ok := st.dirPathToID[dir]; ok && cid != "" {
 			return cid
 		}
-		// 父目录未在缓存中（父目录可能本次未扫描到），降级为用户配置的同步根 cid，
-		// 由上传端尽力处理（可能失败记日志，不影响下载）。
-		return st.p.RemotePath
+		// 子目录在 115 远端不存在（本地孤儿子目录或远端已删除该分类文件夹），
+		// 返回空串，禁止降级回退到根目录上传以防污染根目录与错位死循环。
+		return ""
 	}
 	return st.remoteUploadPath(rel)
 }
