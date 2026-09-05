@@ -7,7 +7,7 @@
 <h3 align="center">A self-hosted media center for NAS and home theater</h3>
 
 <p align="center">
-  <strong>Libraries · Metadata · Cloud STRM · Emby protocol · Remote Emby mounts · Multi-user · Docker-first</strong>
+  <strong>Libraries · Metadata · Cloud STRM · Emby/Jellyfin client compatible · Remote Emby mounts · Multi-user · Docker-first</strong>
 </p>
 
 <p align="center">
@@ -16,7 +16,8 @@
   <a href="#quick-start">Quick Start</a> ·
   <a href="#deployment-tiers">Deployment</a> ·
   <a href="#acknowledgements">Acknowledgements</a> ·
-  <a href="#development">Development</a>
+  <a href="#development">Development</a> ·
+  <a href="https://t.me/MeBoxGroup">Telegram</a>
 </p>
 
 <p align="center">
@@ -45,7 +46,7 @@ In practice, MeBox gives you:
 | **Libraries** | Movies, TV, anime, variety, music, custom libraries; multi-root scanning; poster wall; continue watching |
 | **Metadata** | TMDb, Bangumi, Douban, TheTVDB, Fanart, NFO import, manual matching, scrape queue |
 | **Playback** | Web player, HLS transcoding, danmaku, subtitles, play profiles, history and favourites |
-| **Emby protocol** | Add MeBox in Infuse, SenPlayer, Fileball, etc. and sign in with MeBox accounts |
+| **Emby/Jellyfin client compatible** | Full Emby server protocol implementation: Infuse, SenPlayer, Fileball, and official Emby/Jellyfin clients can add MeBox as an Emby server and sign in with MeBox accounts — poster walls, watch progress, and multi-user work out of the box |
 | **Remote Emby mounts** | Browse remote Emby libraries inside MeBox without a separate Emby client |
 | **Cloud & STRM** | OpenList, CloudDrive2, 115, WebDAV; STRM sync; upload/download queues; direct or 302 playback |
 | **Downloads & organize** | qBittorrent, site search/subscriptions, post-download organization, file manager |
@@ -83,6 +84,8 @@ http://SERVER_IP:18080
 ```
 
 Default login: `admin` / `admin123` — change the password immediately.
+
+> 💡 **Seamless for Emby users**: MeBox fully implements the Emby/Jellyfin client protocol. Infuse, SenPlayer, Fileball, and official Emby/Jellyfin apps on phones, TVs, and tablets can add it as an Emby server at `http://SERVER_IP:18080` and sign in with MeBox accounts — no change to your existing workflow.
 
 Image:
 
@@ -227,3 +230,18 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md) before ope
 ## License
 
 This project is licensed under [GPL-3.0](LICENSE).
+
+---
+
+## Support & Donate
+
+If MeBox makes your home theater life easier, feel free to buy the maintainer a coffee ☕
+
+<p align="center">
+  <img src="docs/images/donation-qr.png" width="320" alt="WhileTrue donation QR" />
+</p>
+
+<p align="center">
+  <strong>Telegram group</strong>: <a href="https://t.me/MeBoxGroup">https://t.me/MeBoxGroup</a><br/>
+  Questions, feature requests, and release news — come chat with us
+</p>

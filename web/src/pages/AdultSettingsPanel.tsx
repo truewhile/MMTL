@@ -425,7 +425,7 @@ export function AdultSettingsPanel() {
                 <span className="text-sm font-semibold text-ink-600">MetaTube 后端配置</span>
               </div>
               <a
-                href="https://github.com/metatube-community/metatube-server"
+                href="https://metatube-community.github.io/README_ZH/"
                 target="_blank"
                 rel="noreferrer"
                 className="text-xs text-brand-500 hover:underline flex items-center gap-1"

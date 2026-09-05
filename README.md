@@ -7,7 +7,7 @@
 <h3 align="center">面向 NAS 与家庭影音场景的私人媒体中心</h3>
 
 <p align="center">
-  <strong>媒体库 · 刮削整理 · 网盘 STRM · Emby 协议 · 远程 Emby 挂载 · 多用户权限 · Docker 一键部署</strong>
+  <strong>媒体库 · 刮削整理 · 网盘 STRM · 兼容 Emby/Jellyfin 客户端 · 远程 Emby 挂载 · 多用户权限 · Docker 一键部署</strong>
 </p>
 
 <p align="center">
@@ -17,7 +17,8 @@
   <a href="#鸣谢">鸣谢</a> ·
   <a href="#开发构建">开发构建</a> ·
   <a href="README_EN.md">English</a> ·
-  <a href="CONTRIBUTING.md">贡献规范</a>
+  <a href="CONTRIBUTING.md">贡献规范</a> ·
+  <a href="https://t.me/MeBoxGroup">Telegram 群组</a>
 </p>
 
 <p align="center">
@@ -46,7 +47,7 @@
 | **媒体库** | 电影、电视剧、动漫、综艺、音乐与自定义库；多根目录、扫库、海报墙、继续观看 |
 | **元数据刮削** | TMDb、Bangumi、Douban、TheTVDB、Fanart 等；支持 NFO、手动匹配、刮削队列 |
 | **播放** | 网页播放器、HLS 转码、弹幕、字幕、播放配置档、观看历史与收藏 |
-| **Emby 协议** | Infuse、SenPlayer、Fileball 等客户端可直接添加本服务，使用 MeBox 账号登录 |
+| **Emby/Jellyfin 客户端兼容** | 内置完整 Emby 服务端协议实现：Infuse、SenPlayer、Fileball、Emby/Jellyfin 官方客户端等可直接把本服务当作 Emby 服务器添加，使用 MeBox 账号登录，海报墙、进度同步、多用户无缝衔接 |
 | **远程 Emby 挂载** | 将远程 Emby 媒体库挂载到本地界面统一浏览（无需单独开 Emby 客户端） |
 | **网盘与 STRM** | OpenList、CloudDrive2、115、WebDAV 等；STRM 同步、上传/下载队列、直链/302 播放 |
 | **下载与整理** | qBittorrent 接入、站点搜索与订阅、下载后自动整理、文件管理器（复制/移动/硬链/软链） |
@@ -84,6 +85,8 @@ http://服务器IP:18080
 ```
 
 默认账号：`admin` / `admin123`（首次登录后请立即修改密码）
+
+> 💡 **Emby 用户无缝切换**：MeBox 完整兼容 Emby/Jellyfin 客户端协议。手机、电视、平板上的 Infuse、SenPlayer、Fileball、Emby/Jellyfin 官方客户端，直接按「添加 Emby 服务器」填入 `http://服务器IP:18080`，用 MeBox 账号登录即可，无需改变原有使用习惯。
 
 镜像地址：
 
@@ -251,3 +254,18 @@ MeBox 在 [MediaStationGo](https://github.com/ShukeBta/MediaStationGo) 的基础
 ## 许可证
 
 本项目采用 [GPL-3.0](LICENSE) 许可证。
+
+---
+
+## 赞赏
+
+如果 MeBox 帮你把家庭影音折腾明白了，欢迎请作者喝杯咖啡 ☕
+
+<p align="center">
+  <img src="docs/images/donation-qr.png" width="320" alt="WhileTrue 的赞赏码" />
+</p>
+
+<p align="center">
+  <strong>Telegram 交流群</strong>：<a href="https://t.me/MeBoxGroup">https://t.me/MeBoxGroup</a><br/>
+  使用问题、功能建议、更新动态，欢迎来群里聊
+</p>
