@@ -1,6 +1,6 @@
 # 【开源推荐】MeBox：把 NAS / 网盘 / 远程 Emby 统一家里的观影入口，Docker 一键部署
 
-> 配图位于 `docs/tutorial-screenshots/`，发帖时按文中标注的文件名上传即可。
+> 配图已托管在 GitHub 仓库（`raw.githubusercontent.com` 直链），发帖时可直接引用，或下载 `docs/tutorial-screenshots/` 后作为附件上传。
 
 ---
 
@@ -34,27 +34,27 @@ GitHub：https://github.com/truewhile/MeBox
 
 **1. 现代化 Web UI，海报墙开箱即用**
 
-![登录页](tutorial-screenshots/01-login.png)
+![登录页](https://raw.githubusercontent.com/truewhile/MeBox/main/docs/tutorial-screenshots/01-login.png)
 
 深色系登录页，默认账号 `admin / admin123`（首次登录请立即改密）。
 
-![首页](tutorial-screenshots/02-home.png)
+![首页](https://raw.githubusercontent.com/truewhile/MeBox/main/docs/tutorial-screenshots/02-home.png)
 
 首页自带焦点推荐轮播 + 媒体库入口卡片，继续观看、最近添加直接呈现。
 
 **2. 媒体库与刮削**
 
-![媒体库总览](tutorial-screenshots/03-libraries.png)
+![媒体库总览](https://raw.githubusercontent.com/truewhile/MeBox/main/docs/tutorial-screenshots/03-libraries.png)
 
 20 个媒体库、1600+ 条目一眼尽收：每库自带封面拼贴、条目数统计，支持「全库修复+重刮」「刮削队列」批量处理。
 
-![海报墙](tutorial-screenshots/04-library-posters.png)
+![海报墙](https://raw.githubusercontent.com/truewhile/MeBox/main/docs/tutorial-screenshots/04-library-posters.png)
 
 库内海报墙带评分、集数角标，支持按最后集添加日期排序，点开即看。
 
 **3. 详情页与多季管理**
 
-![详情页](tutorial-screenshots/05-media-detail.png)
+![详情页](https://raw.githubusercontent.com/truewhile/MeBox/main/docs/tutorial-screenshots/05-media-detail.png)
 
 剧情简介、类型标签、多季分集（特别篇/第 1-N 季）、每集缩略图与时长；一键立即播放、调用外部播放器、加入收藏。
 
@@ -64,47 +64,47 @@ GitHub：https://github.com/truewhile/MeBox
 
 **5. 网页播放器 + 弹幕自动匹配**
 
-![播放器与弹幕](tutorial-screenshots/06-player-danmu.png)
+![播放器与弹幕](https://raw.githubusercontent.com/truewhile/MeBox/main/docs/tutorial-screenshots/06-player-danmu.png)
 
 内置网页播放器支持 HLS 转码、字幕、播放配置档；**弹幕按剧名自动匹配全季分集**（截图中自动匹配到《一拳超人》39 集），屏幕占比/透明度/字号随意调，追新番体验直接拉满。
 
 **6. 网盘 STRM：网盘当本地盘用**
 
-![STRM 管理](tutorial-screenshots/07-strm-cloud.png)
+![STRM 管理](https://raw.githubusercontent.com/truewhile/MeBox/main/docs/tutorial-screenshots/07-strm-cloud.png)
 
 添加网盘账号（**115 支持二维码扫码登录**）→ 添加同步目录 → 系统把网盘/本地目录里的视频生成 `.strm` 文件，元数据经下载/上传队列双向同步，播放走直链/302 不落盘。
 
 **7. 远程 Emby 挂载（特色功能）**
 
-![Emby 挂载](tutorial-screenshots/08-emby-mount.png)
+![Emby 挂载](https://raw.githubusercontent.com/truewhile/MeBox/main/docs/tutorial-screenshots/08-emby-mount.png)
 
 已有远程 Emby 服务器？填一次账号，按需勾选要挂载的媒体库（支持同服务器多线路自动切换、直连开关、排序），远程库直接出现在 MeBox 首页，不必再开 Emby 客户端。
 
 **8. 任务队列统一管理**
 
-![任务队列](tutorial-screenshots/09-task-queue.png)
+![任务队列](https://raw.githubusercontent.com/truewhile/MeBox/main/docs/tutorial-screenshots/09-task-queue.png)
 
 刮削 / 下载 / 上传三类任务统一看板，排队中、进行中、已匹配、失败分类计数，支持搜索与批量清理。
 
 **9. 下载与自动整理**
 
-![文件管理](tutorial-screenshots/11-file-manager.png)
+![文件管理](https://raw.githubusercontent.com/truewhile/MeBox/main/docs/tutorial-screenshots/11-file-manager.png)
 
 接入 qBittorrent，下载目录定时自动整理入媒体库：智能分类子库、自动注册目的地媒体库、复制/移动/硬链/软链多种整理方式，命名规则可配。
 
 **10. 多用户与权限**
 
-![用户管理](tutorial-screenshots/12-user-admin.png)
+![用户管理](https://raw.githubusercontent.com/truewhile/MeBox/main/docs/tutorial-screenshots/12-user-admin.png)
 
 管理员/普通用户分级、单实例用户数上限、账号有效期、成人内容开关、播放配置 PIN——给家人开号放心给。
 
 **11. 运维省心**
 
-![系统设置](tutorial-screenshots/10-settings.png)
+![系统设置](https://raw.githubusercontent.com/truewhile/MeBox/main/docs/tutorial-screenshots/10-settings.png)
 
 FFmpeg/FFprobe 一键下载安装、转码与硬件加速开关、TMDb 语言、识别词、弹幕、Adult/NSFW 开关全在设置页分组管理；另有 DLNA 投屏、存储统计、海报墙聚合视图：
 
-![海报墙聚合](tutorial-screenshots/13-poster-wall.png)
+![海报墙聚合](https://raw.githubusercontent.com/truewhile/MeBox/main/docs/tutorial-screenshots/13-poster-wall.png)
 
 ---
 
