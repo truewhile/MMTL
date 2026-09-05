@@ -1,11 +1,13 @@
 name: Build & Publish
 
-# 版本策略（无回写）：
-# - push 到 main：发布 latest 镜像并部署服务器，CI 不再修改 VERSION / 不再向 main 提交 bump，
-#   本地与远程永远不会因 CI 抢提交而产生推送冲突。
-# - push tag v*：正式发版，按 tag 名发布版本镜像、GitHub Release 与多平台二进制。
-# - 手动触发：等同正式发版，版本号取 VERSION 文件当前内容。
-# 需要发正式版时：修改 VERSION（可选）→ git tag v1.2.3 → git push origin v1.2.3
+# 版本策略（version 分支托管，main 零污染）：
+# - VERSION 文件单独存放在 version 分支，CI 构建时读取并自增写回 version 分支，
+#   main 分支不再出现任何 CI 提交，本地推送永不与远程冲突。
+# - push 到 main：发布 latest 镜像并部署服务器，版本号自动 patch+1。
+# - push tag v*：正式发版，版本号取 tag 名（不 bump version 分支），
+#   发布版本镜像、GitHub Release 与多平台单文件二进制。
+# - 手动触发：等同正式发版，版本号在 version 分支当前值上自增。
+# 查看当前版本号：git show origin/version:VERSION
 on:
   push:
     branches: [main]
@@ -14,7 +16,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write  # 发布 Release 与上传二进制需要
+  contents: write  # 读写 version 分支、发布 Release 与上传二进制需要
   packages: write
 
 jobs:
@@ -27,17 +29,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 1. 解析版本号：tag 触发取 tag 名（去掉 v 前缀），其余场景读 VERSION 文件
+      # 1. 解析版本号：tag 触发取 tag 名（去掉 v 前缀）；其余场景读 version 分支并 patch+1
       - name: Resolve version
         id: version
         run: |
-          if [[ "${{ github.ref_type }}" = "tag" ]]; then
+          if [ "${{ github.ref_type }}" = "tag" ]; then
             VERSION="${GITHUB_REF_NAME#v}"
           else
-            VERSION=$(cat VERSION 2>/dev/null || echo "0.0.0")
+            git fetch origin version
+            BASE=$(git show FETCH_HEAD:VERSION 2>/dev/null || echo "0.0.0")
+            MAJOR=$(echo "$BASE" | cut -d. -f1)
+            MINOR=$(echo "$BASE" | cut -d. -f2)
+            PATCH=$(echo "$BASE" | cut -d. -f3)
+            VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
           fi
-          # 手动触发视为正式发版；日常 push main 仅滚动 latest
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [[ "${{ github.ref_type }}" = "tag" ]]; then
+          # tag / 手动触发视为正式发版；日常 push main 仅滚动 latest
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.ref_type }}" = "tag" ]; then
             IS_RELEASE=true
           else
             IS_RELEASE=false
@@ -45,8 +52,31 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "release_tag=mebox-v${VERSION}" >> "$GITHUB_OUTPUT"
           echo "is_release=${IS_RELEASE}" >> "$GITHUB_OUTPUT"
+          echo "new_version=${VERSION}" >> "$GITHUB_OUTPUT"
 
-      # 2. 设置 Docker QEMU 和 Buildx
+      # 2. 把新版本号写回 version 分支（clone 单分支写入，冲突时 rebase 重试）
+      #    tag 触发的正式发版版本号来自 tag 本身，跳过自增。
+      - name: Bump version branch
+        if: github.ref_type != 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPO="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          git clone --depth 1 --branch version "$REPO" "$RUNNER_TEMP/version-branch"
+          cd "$RUNNER_TEMP/version-branch"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          echo "${{ steps.version.outputs.new_version }}" > VERSION
+          git commit -am "chore: bump version to ${{ steps.version.outputs.new_version }}"
+          ok=0
+          for i in 1 2 3 4 5; do
+            if git push origin version; then ok=1; break; fi
+            git pull --rebase origin version || true
+            sleep 5
+          done
+          [ "$ok" = "1" ] || { echo "::error::version 分支推送冲突，重试 5 次仍失败"; exit 1; }
+
+      # 3. 设置 Docker QEMU 和 Buildx
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
