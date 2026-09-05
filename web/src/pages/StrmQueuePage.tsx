@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import {
   AlertCircle,
@@ -53,6 +53,9 @@ export function StrmQueuePanel({
   const [batchBusy, setBatchBusy] = useState(false)
   const { selectedIds, setSelectedIds, reset: clearSelection, toggleRow: toggleSelectRow, toggleAll: toggleAllIds } = useTaskSelection()
   const [detailTask, setDetailTask] = useState<StrmTask | null>(null)
+  // 轮询/翻页/切筛选并发时用递增序号丢弃过期响应
+  const refreshSeqRef = useRef(0)
+  const [pollFailures, setPollFailures] = useState(0)
 
   const isDownload = kind === 'download'
   const Icon = isDownload ? Download : Upload
@@ -60,11 +63,15 @@ export function StrmQueuePanel({
   const refresh = useCallback(
     async (showLoading = false) => {
       if (showLoading) setIsRefreshing(true)
+      const seq = ++refreshSeqRef.current
       try {
         const status = filter === 'all' ? undefined : filter
         const data = isDownload
           ? await strmAPI.downloads(status, page, PAGE_SIZE)
           : await strmAPI.uploads(status, page, PAGE_SIZE)
+        // 序号不符说明已有更新的请求发出（翻页/切筛选/轮询并发），丢弃旧响应
+        if (seq !== refreshSeqRef.current) return
+        setPollFailures(0)
         const tp = Math.max(1, Math.ceil((data.total ?? data.tasks.length) / PAGE_SIZE))
         if (page > tp) {
           setPage(tp)
@@ -73,7 +80,8 @@ export function StrmQueuePanel({
         setTotalPages(tp)
         setSnapshot(data)
       } catch {
-        /* keep existing data */
+        // 保留旧数据；连续失败 ≥3 次时页头徽标切换为「连接失败，重试中」
+        if (seq === refreshSeqRef.current) setPollFailures((n) => n + 1)
       } finally {
         setLoading(false)
         if (showLoading) setIsRefreshing(false)
@@ -227,12 +235,18 @@ export function StrmQueuePanel({
               <h1 className="font-display text-2xl font-bold text-ink-600 sm:text-3xl">
                 {isDownload ? '下载队列' : '上传队列'}
               </h1>
-              {autoRefresh && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-                  实时同步
-                </span>
-              )}
+              {autoRefresh &&
+                (pollFailures >= 3 ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-rose-300/40 bg-rose-500/10 px-2 py-0.5 text-[11px] font-semibold text-rose-600">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-rose-500" />
+                    连接失败，重试中
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+                    实时同步
+                  </span>
+                ))}
             </div>
             <p className="text-xs text-sand-500 mt-0.5">
               {isDownload

@@ -13,6 +13,7 @@ import type { Media } from '../types'
 import { getSeriesKey, seriesTitleFromPath } from '../utils/groupSeries'
 import { isRemoteEmbyID } from '../utils/remoteEmby'
 import { pickPlayerMode, needsTranscodeForBrowser, isDirectStreamMedia, type PlayerMode } from './playerPageModel'
+import { apiErrorMessage } from './StrmManagePage'
 import { PlayerTopBar } from './PlayerTopBar'
 import { PlayerVideoStage } from './PlayerVideoStage'
 import { PlayerDanmakuPanel } from '../components/PlayerDanmakuPanel'
@@ -62,6 +63,8 @@ export function PlayerPage() {
   const [subtitleIndex, setSubtitleIndex] = useState<number>(initialSubtitleIndex)
   const [hlsUnavailable, setHlsUnavailable] = useState(false)
   const [playerError, setPlayerError] = useState('')
+  // 媒体元数据加载失败（404 / 无权限等）：舞台区直接展示错误而不是永远「加载中」
+  const [loadError, setLoadError] = useState('')
   // 「客户端直连解码」模式：宿主机不转码，播放器强制 direct play、隐藏 HLS 切换。
   const [directOnly, setDirectOnly] = useState(false)
   const [resumePosition, setResumePosition] = useState(0)
@@ -176,6 +179,7 @@ export function PlayerPage() {
   // 切换视频时重置媒体与弹幕状态，确保新视频自动重新识别并加载弹幕
   useEffect(() => {
     setMedia(null)
+    setLoadError('')
     setDanmakuEpisodeId(null)
     setDanmakuCandidates([])
     setDanmakuSearch(null)
@@ -184,29 +188,48 @@ export function PlayerPage() {
     setDanmakuSearching(true)
   }, [id])
 
+  // 依赖收敛为 mode 参数的字符串值：避免 params 对象引用每次变化都重复拉取元数据
+  const modeParam = params.get('mode') as PlayerMode | null
+
   // Load metadata and pick a default mode.
   useEffect(() => {
     if (!id) return
-    mediaAPI.get(id).then((m) => {
-      setMedia(m)
-      const isDirect = isDirectStreamMedia(m)
-      const forced = params.get('mode') as PlayerMode | null
-      const auto = pickPlayerMode(m)
-      // 直连解码模式以及 STRM / Emby 挂载等直连媒体，忽略 ?mode=hls，始终 direct play。
-      setMode(directOnly || isDirect ? 'direct' : (forced ?? auto))
-      setPlayerError('')
-    })
+    let cancelled = false
+    mediaAPI
+      .get(id)
+      .then((m) => {
+        if (cancelled) return
+        setMedia(m)
+        const isDirect = isDirectStreamMedia(m)
+        const auto = pickPlayerMode(m)
+        // 直连解码模式以及 STRM / Emby 挂载等直连媒体，忽略 ?mode=hls，始终 direct play。
+        setMode(directOnly || isDirect ? 'direct' : (modeParam ?? auto))
+        setPlayerError('')
+        setLoadError('')
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        // 404 / 无权限等：给出可见错误提示，避免永久「加载中」
+        setLoadError(`无法加载该媒体：${apiErrorMessage(err)}`)
+      })
     subtitlesAPI
       .list(id)
       .then((tracks) => {
+        if (cancelled) return
         const list = tracks ?? []
         setSubs(list)
         // 记忆的轨道下标可能超出当前媒体的轨道数（不同媒体字幕数量不同），
         // 越界时回退到第一条；无字幕则关闭。
         setSubtitleIndex((cur) => (cur >= list.length ? (list.length > 0 ? 0 : -1) : cur))
       })
-      .catch(() => setSubs([]))
-  }, [id, params, directOnly])
+      .catch(() => {
+        if (cancelled) return
+        setSubs([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [id, modeParam, directOnly])
 
   // Wire up the actual <video> element when we know the mode.
   useEffect(() => {
@@ -544,6 +567,7 @@ export function PlayerPage() {
       />
       <PlayerVideoStage
         media={media}
+        loadError={loadError}
         playerError={playerError}
         subs={subs}
         subtitleIndex={subtitleIndex}

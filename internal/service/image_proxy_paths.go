@@ -35,11 +35,16 @@ func isPrivateHost(host string) bool {
 	if host == "" {
 		return true
 	}
-	ip := net.ParseIP(host)
-	if ip != nil {
-		return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified()
+	if ip := net.ParseIP(host); ip != nil {
+		return isPrivateIP(ip)
 	}
 	return false
+}
+
+// isPrivateIP 判定单个 IP 是否属于回环/私网/链路本地/未指定地址。
+func isPrivateIP(ip net.IP) bool {
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() || ip.IsUnspecified()
 }
 
 // isAllowedLocalPath restricts local file reads to known-safe roots.

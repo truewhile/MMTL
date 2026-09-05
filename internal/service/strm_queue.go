@@ -67,9 +67,17 @@ func (s *StrmService) downloadWorker(ctx context.Context) {
 					return
 				}
 				defer s.releaseDownloadSlot(task.Provider)
-				// 单个任务 panic 不应拖垮整个下载 worker。
+				// 单个任务 panic 不应拖垮整个下载 worker，且 panic 时任务
+				// 会永远停在 running：兜底走失败重试路径。
+				completed := false
 				helper.Run(s.log, "strm.downloadTask", func() {
+					defer func() {
+						if !completed {
+							s.downloadTaskFailWithRetry(task, "任务执行异常中断")
+						}
+					}()
 					s.processDownloadTask(ctx, task)
+					completed = true
 				})
 			}(i)
 		}
@@ -78,9 +86,19 @@ func (s *StrmService) downloadWorker(ctx context.Context) {
 }
 
 // requeueDownloadTask 把已认领但未实际执行的任务退回 pending，避免长期停留在 running。
+// 退回时必须设置 NextTryAt（WAF 冷却剩余时间）：claim 只过滤 next_try_at
+// 已过期的任务，不设会让同一批任务被立刻再认领，形成 claim/requeue
+// 热循环（占用 SQLite 写锁并饿死上传队列）。
 func (s *StrmService) requeueDownloadTask(task *model.StrmDownloadTask) {
 	task.Status = model.StrmTaskPending
 	task.StartedAt = nil
+	task.NextTryAt = nil
+	if task.Provider == model.StrmProvider115 {
+		if left := s.wafCooldownLeft(); left > 0 {
+			next := time.Now().Add(left)
+			task.NextTryAt = &next
+		}
+	}
 	if err := s.repo.StrmDownload.Update(context.Background(), task); err != nil {
 		s.log.Warn("requeue strm download task failed", zap.Error(err), zap.String("id", task.ID))
 	}
@@ -97,8 +115,16 @@ func (s *StrmService) processDownloadTask(ctx context.Context, task *model.StrmD
 		task.Status = status
 		task.Error = message
 		task.FinishedAt = &now
-		if err := s.repo.StrmDownload.Update(context.Background(), task); err != nil {
+		// 条件化收尾：用户取消会直接把 running 改为 canceled，无条件
+		// Update 会把已取消任务覆盖回 done。
+		if ok, err := s.repo.StrmDownload.UpdateIfRunning(context.Background(), task.ID, map[string]any{
+			"status":      status,
+			"error":       message,
+			"finished_at": &now,
+		}); err != nil {
 			s.log.Warn("update strm download task failed", zap.Error(err))
+		} else if !ok {
+			s.log.Info("strm download task already closed elsewhere", zap.String("id", task.ID))
 		}
 	}
 	acct, err := s.repo.StrmAccount.FindByID(ctx, task.AccountID)
@@ -151,7 +177,19 @@ func (s *StrmService) uploadWorker(ctx context.Context) {
 			continue
 		}
 		for i := range tasks {
-			s.processUploadTask(ctx, &tasks[i])
+			t := &tasks[i]
+			// 与下载侧一致：单任务 panic 不损失 worker 线程，且兜底走
+			// 失败重试路径（否则任务永久 running）。
+			completed := false
+			helper.Run(s.log, "strm.uploadTask", func() {
+				defer func() {
+					if !completed {
+						s.uploadTaskFailWithRetry(t, "任务执行异常中断")
+					}
+				}()
+				s.processUploadTask(ctx, t)
+				completed = true
+			})
 		}
 	}
 }
@@ -162,8 +200,15 @@ func (s *StrmService) processUploadTask(ctx context.Context, task *model.StrmUpl
 		task.Status = status
 		task.Error = message
 		task.FinishedAt = &now
-		if err := s.repo.StrmUpload.Update(context.Background(), task); err != nil {
+		// 条件化收尾：与下载侧一致，防止覆盖已取消任务。
+		if ok, err := s.repo.StrmUpload.UpdateIfRunning(context.Background(), task.ID, map[string]any{
+			"status":      status,
+			"error":       message,
+			"finished_at": &now,
+		}); err != nil {
 			s.log.Warn("update strm upload task failed", zap.Error(err))
+		} else if !ok {
+			s.log.Info("strm upload task already closed elsewhere", zap.String("id", task.ID))
 		}
 	}
 	if task.Provider == model.StrmProvider115 {
@@ -213,8 +258,15 @@ func (s *StrmService) processUpload115(ctx context.Context, task *model.StrmUplo
 		task.Status = status
 		task.Error = message
 		task.FinishedAt = &now
-		if err := s.repo.StrmUpload.Update(context.Background(), task); err != nil {
+		// 条件化收尾：与下载侧一致，防止覆盖已取消任务。
+		if ok, err := s.repo.StrmUpload.UpdateIfRunning(context.Background(), task.ID, map[string]any{
+			"status":      status,
+			"error":       message,
+			"finished_at": &now,
+		}); err != nil {
 			s.log.Warn("update strm upload task failed", zap.Error(err))
+		} else if !ok {
+			s.log.Info("strm upload task already closed elsewhere", zap.String("id", task.ID))
 		}
 	}
 	acct, err := s.repo.StrmAccount.FindByID(ctx, task.AccountID)
@@ -253,7 +305,19 @@ func (s *StrmService) downloadTaskFailWithRetry(task *model.StrmDownloadTask, me
 	if !retryTask(&task.RetryCount, &task.Status, &task.Error, &task.NextTryAt, &task.FinishedAt, message) {
 		return
 	}
-	_ = s.repo.StrmDownload.Update(context.Background(), task)
+	// 条件化写入：任务已被取消（DB 中不再是 running）时不得覆盖回 pending，
+	// 否则用户刚取消的任务会“复活”并自动重试。
+	if ok, err := s.repo.StrmDownload.UpdateIfRunning(context.Background(), task.ID, map[string]any{
+		"status":      task.Status,
+		"error":       task.Error,
+		"retry_count": task.RetryCount,
+		"next_try_at": task.NextTryAt,
+		"finished_at": task.FinishedAt,
+	}); err != nil {
+		s.log.Warn("fail strm download task failed", zap.Error(err), zap.String("id", task.ID))
+	} else if !ok {
+		s.log.Info("strm download task already closed elsewhere, skip retry overwrite", zap.String("id", task.ID))
+	}
 }
 
 // uploadTaskFailWithRetry 上传失败任务按退避重试，超过上限标记 failed。
@@ -261,7 +325,17 @@ func (s *StrmService) uploadTaskFailWithRetry(task *model.StrmUploadTask, messag
 	if !retryTask(&task.RetryCount, &task.Status, &task.Error, &task.NextTryAt, &task.FinishedAt, message) {
 		return
 	}
-	_ = s.repo.StrmUpload.Update(context.Background(), task)
+	if ok, err := s.repo.StrmUpload.UpdateIfRunning(context.Background(), task.ID, map[string]any{
+		"status":      task.Status,
+		"error":       task.Error,
+		"retry_count": task.RetryCount,
+		"next_try_at": task.NextTryAt,
+		"finished_at": task.FinishedAt,
+	}); err != nil {
+		s.log.Warn("fail strm upload task failed", zap.Error(err), zap.String("id", task.ID))
+	} else if !ok {
+		s.log.Info("strm upload task already closed elsewhere, skip retry overwrite", zap.String("id", task.ID))
+	}
 }
 
 // retryTask 失败状态机：重试次数不足则回 pending 并设置退避时间，否则 failed。

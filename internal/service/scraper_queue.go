@@ -35,6 +35,13 @@ func (s *ScraperService) Start(ctx context.Context) {
 	if s == nil {
 		return
 	}
+	// 启动自愈：进程中断遗留的 running 任务重置为 pending，否则永久卡死
+	// （ClaimPending 只认 pending，重试按钮也拒绝 running）。
+	if n, err := s.repo.ScrapeTask.ResetRunningToPending(ctx); err == nil && n > 0 && s.log != nil {
+		s.log.Warn("scrape tasks reset from running to pending after restart", zap.Int64("count", n))
+	} else if err != nil && s.log != nil {
+		s.log.Warn("reset running scrape tasks failed", zap.Error(err))
+	}
 	go s.queueWorker(ctx)
 }
 
@@ -69,6 +76,9 @@ func (s *ScraperService) queueWorker(ctx context.Context) {
 				defer wg.Done()
 				select {
 				case <-ctx.Done():
+					// 任务已被 Claim 置为 running：停机前回写 pending，
+					// 避免留下永久卡死的任务。
+					s.requeueClaimedScrapeTask(t)
 					return
 				case sem <- struct{}{}:
 				}
@@ -81,6 +91,15 @@ func (s *ScraperService) queueWorker(ctx context.Context) {
 			}(&tasks[i])
 		}
 		wg.Wait()
+	}
+}
+
+// requeueClaimedScrapeTask 把已认领但未开始执行的任务回写为 pending。
+func (s *ScraperService) requeueClaimedScrapeTask(t *model.ScrapeTask) {
+	t.Status = model.ScrapeTaskPending
+	t.StartedAt = nil
+	if err := s.repo.ScrapeTask.Update(context.Background(), t); err != nil && s.log != nil {
+		s.log.Warn("requeue claimed scrape task failed", zap.Error(err), zap.String("id", t.ID))
 	}
 }
 
@@ -220,8 +239,22 @@ func (s *ScraperService) EnqueueLibrary(ctx context.Context, libraryID string, o
 		return 0, nil
 	}
 
+	// 去重：排除已有 pending/running 任务的媒体，防止"先单集入队再点
+	// 整库刮削"产生重复任务并被并发双刮（同一 Media 行被并发写两次）。
+	mediaIDs := make([]string, 0, len(rows))
+	for _, m := range rows {
+		mediaIDs = append(mediaIDs, m.ID)
+	}
+	activeByMedia, err := s.repo.ScrapeTask.FindActiveByMediaIDs(ctx, mediaIDs)
+	if err != nil {
+		activeByMedia = nil // 去重查询失败不阻塞入队，仅退化为不去重
+	}
+
 	tasks := make([]model.ScrapeTask, 0, len(rows))
 	for _, m := range rows {
+		if activeByMedia != nil && activeByMedia[m.ID] {
+			continue
+		}
 		tasks = append(tasks, model.ScrapeTask{
 			MediaID:        m.ID,
 			LibraryID:      lib.ID,
@@ -310,7 +343,16 @@ func (s *ScraperService) RetryScrapeTask(ctx context.Context, id string) error {
 		return errors.New("刮削任务不存在")
 	}
 	if task.Status != model.ScrapeTaskFailed && task.Status != model.ScrapeTaskCanceled {
-		return errors.New("只有失败或已取消的任务可以重试")
+		// running 任务仅在其长时间无进展（>1h）时允许重试，作为卡死
+		// 任务的逃生通道；正常执行中的任务仍拒绝重试以防双跑。
+		stale := task.Status == model.ScrapeTaskRunning &&
+			(task.StartedAt == nil || time.Since(*task.StartedAt) > time.Hour)
+		if !stale {
+			return errors.New("只有失败或已取消的任务可以重试")
+		}
+		if s.log != nil {
+			s.log.Warn("retrying stuck running scrape task", zap.String("id", id))
+		}
 	}
 	task.Status = model.ScrapeTaskPending
 	task.Error = ""

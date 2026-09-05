@@ -16,6 +16,7 @@ export function AdminUsersPanel() {
   const [maxUsers, setMaxUsers] = useState(DEFAULT_MAX_USERS)
   const [maxUsersDraft, setMaxUsersDraft] = useState(String(DEFAULT_MAX_USERS))
   const [savingLimit, setSavingLimit] = useState(false)
+  const [creating, setCreating] = useState(false)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [editingID, setEditingID] = useState<string | null>(null)
@@ -69,18 +70,22 @@ export function AdminUsersPanel() {
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault()
+    if (creating) return
+    setCreating(true)
     try {
       await adminAPI.createUser({ username, password })
       toast.success('用户已添加，默认仅允许浏览与播放媒体')
       setUsername('')
       setPassword('')
-      await refresh()
     } catch (err: unknown) {
       const msg =
         userCreateErrorMessage(err) ??
         '添加用户失败'
       toast.error(msg)
+    } finally {
+      setCreating(false)
     }
+    await refresh().catch(() => undefined)
   }
 
   const startEdit = (u: User) => {
@@ -171,6 +176,7 @@ export function AdminUsersPanel() {
         maxUsers={maxUsers}
         maxUsersDraft={maxUsersDraft}
         savingLimit={savingLimit}
+        creating={creating}
         username={username}
         password={password}
         userLimitReached={userLimitReached}

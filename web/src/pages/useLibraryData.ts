@@ -72,7 +72,7 @@ export function useLibraryData(libraryID: string, selectedSeries: SeriesCard | n
               setServerSeriesCards(next.items)
               setLoading(false)
             }
-          })
+          }, () => cancelled)
           if (!cancelled) setServerSeriesCards(collected.items)
           return
         }
@@ -84,7 +84,7 @@ export function useLibraryData(libraryID: string, selectedSeries: SeriesCard | n
             setItems(next.items)
             setLoading(false)
           }
-        })
+        }, () => cancelled)
         if (!cancelled) setItems(collected.items)
       } catch {
         if (!cancelled) toast.error('媒体库加载失败')
@@ -165,12 +165,16 @@ async function loadAllSeriesCards(
   libraryID: string,
   isRemoteEmby: boolean | undefined,
   onPage: (state: { items: SeriesCard[]; total: number; firstPage: boolean }) => void,
+  isCancelled: () => boolean,
 ) {
   const pageSize = isRemoteEmby ? 100 : 500
   let page = 1
   let collected: SeriesCard[] = []
   for (;;) {
+    // 切库/卸载后取消标志置位，立即停止继续拉取剩余页
+    if (isCancelled()) return { items: collected }
     const data = await libraryAPI.listSeries(libraryID, page, pageSize)
+    if (isCancelled()) return { items: collected }
     // 后端对空库可能返回 items: null（Go nil slice）；不兜底会 concat 出 [null] 并崩溃。
     const pageItems = data.items ?? []
     collected = collected.concat(pageItems)
@@ -186,12 +190,16 @@ async function loadAllMedia(
   libraryID: string,
   isRemoteEmby: boolean | undefined,
   onPage: (state: { items: Media[]; total: number; firstPage: boolean }) => void,
+  isCancelled: () => boolean,
 ) {
   const pageSize = isRemoteEmby ? 100 : 2000
   let page = 1
   let collected: Media[] = []
   for (;;) {
+    // 切库/卸载后取消标志置位，立即停止继续拉取剩余页
+    if (isCancelled()) return { items: collected }
     const data = await libraryAPI.listMedia(libraryID, page, pageSize)
+    if (isCancelled()) return { items: collected }
     // 后端对空库可能返回 items: null（Go nil slice）；不兜底会 concat 出 [null] 并崩溃。
     const pageItems = data.items ?? []
     collected = collected.concat(pageItems)

@@ -41,9 +41,13 @@ function useCreateLibraryForm(refresh: () => Promise<void>) {
   const [type, setType] = useState('movie')
   const [coverURL, setCoverURL] = useState('')
   const [createPerSubfolder, setCreatePerSubfolder] = useState(false)
+  // 提交中标记：防止重复点击创建出多个媒体库
+  const [creating, setCreating] = useState(false)
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault()
+    if (creating) return
+    setCreating(true)
     try {
       if (createPerSubfolder) {
         const parentPath = roots[0]?.path?.trim()
@@ -66,10 +70,12 @@ function useCreateLibraryForm(refresh: () => Promise<void>) {
       setRoots([emptyRootDraft()])
       setCoverURL('')
       setCreatePerSubfolder(false)
-      await refresh()
     } catch (err: unknown) {
       toast.error(apiErrorMessage(err, '创建失败'))
+    } finally {
+      setCreating(false)
     }
+    await refresh().catch(() => undefined)
   }
 
   const updateRoot = (index: number, patch: Partial<RootDraft>) => {
@@ -82,6 +88,7 @@ function useCreateLibraryForm(refresh: () => Promise<void>) {
     coverURL,
     roots,
     createPerSubfolder,
+    creating,
     setName,
     setType,
     setCoverURL,

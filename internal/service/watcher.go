@@ -279,12 +279,29 @@ func (w *WatcherService) process(ctx context.Context, d duePath) {
 		if removed, derr := w.scanner.RemovePath(ctx, d.path); derr != nil {
 			w.log.Warn("watcher remove failed", zap.String("path", d.path), zap.Error(derr))
 		} else if removed > 0 {
-			w.log.Info("watcher removed media", zap.String("path", d.path))
+			w.log.Info("watcher removed media", zap.String("path", d.path), zap.Int64("count", removed))
 		}
 		return
 	}
 	if fi.IsDir() {
-		return // directory events only matter for registering new watches
+		// 目录事件（新建 / 重命名进入）：注册递归监听之外，还要对子树
+		// 做一次增量 ingest——否则目录改名后新路径下的文件永远不会入库，
+		// 旧路径记录已由消失侧的 RemovePath 子树删除。
+		w.mu.Lock()
+		w.watchDirRecursive(d.path, d.libraryID)
+		w.mu.Unlock()
+		_ = filepath.WalkDir(d.path, func(p string, entry os.DirEntry, werr error) error {
+			if werr != nil || entry.IsDir() {
+				return nil
+			}
+			if added, ierr := w.scanner.IngestPath(ctx, d.libraryID, p); ierr != nil {
+				w.log.Warn("watcher dir ingest failed", zap.String("path", p), zap.Error(ierr))
+			} else if added {
+				w.log.Info("watcher ingested media", zap.String("path", p))
+			}
+			return nil
+		})
+		return
 	}
 	if added, ierr := w.scanner.IngestPath(ctx, d.libraryID, d.path); ierr != nil {
 		w.log.Warn("watcher ingest failed", zap.String("path", d.path), zap.Error(ierr))

@@ -158,16 +158,30 @@ export function Strm115AuthPanel({
           : { sessionId: result.session_id, accountId: account.id, mode: 'url', authUrl: result.auth_url },
       )
       stopPolling()
+      // confirmed / expired 只处理一次，防止重叠的轮询回调重复触发
+      let settled = false
       pollRef.current = setInterval(async () => {
+        if (settled) return
         try {
           const status = await strmAPI.poll115OAuth(account.id, result.session_id)
+          if (settled) return
           setAuthStatus(status.tip)
           if (status.status === 'confirmed') {
+            settled = true
             stopPolling()
-            const updated = await strmAPI.testAccount(account.id)
-            onAuthed(updated)
+            setAuthStatus('授权成功，正在验证凭据…')
+            try {
+              const updated = await strmAPI.testAccount(account.id)
+              onAuthed(updated)
+            } catch (err) {
+              // 授权已确认、令牌已保存；凭据验证失败不阻塞授权完成，
+              // 避免轮询已停且 onAuthed 未回调导致弹窗卡死。
+              toast.error(`凭据验证失败：${apiErrorMessage(err)}，授权已保存，可稍后在账号列表重试`)
+              onAuthed(account)
+            }
           }
           if (status.status === 'expired') {
+            settled = true
             stopPolling()
             setAuthUI(null)
             toast.error('授权已过期，请重新发起')

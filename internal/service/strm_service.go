@@ -28,6 +28,7 @@ import (
 	"github.com/truewhile/MeBox/internal/model"
 	"github.com/truewhile/MeBox/internal/repository"
 	"github.com/truewhile/MeBox/internal/service/cloud"
+	"github.com/truewhile/MeBox/internal/service/cloud115"
 )
 
 // strm 全局设置键（存于 Setting 表，strm.* 前缀）。
@@ -169,6 +170,11 @@ func NewStrmService(cfg *config.Config, log *zap.Logger, repos *repository.Conta
 
 // Start 启动下载/上传队列 worker、定时同步巡检、115 token 刷新与队列清理。
 func (s *StrmService) Start(ctx context.Context) {
+	// baseCtx 挂到服务生命周期 ctx 上（Start 由启动流程传入 stopCtx）：
+	// 此前硬编码 context.Background()，Stop() 关 stopCh 后 worker 会退出，
+	// 但进行中的全量同步（可能持续数小时）完全不受停机控制，优雅停机
+	// 窗口内仍在批量写库/写盘。
+	s.baseCtx = ctx
 	s.sync115RelayKey(ctx)
 	s.recoverInterruptedSyncs(ctx)
 	downloadThreads := s.strmIntSetting(ctx, StrmSettingDownloadThreads, 6)
@@ -191,6 +197,18 @@ func (s *StrmService) Start(ctx context.Context) {
 	}
 	for i := 0; i < uploadThreads; i++ {
 		helper.Go(s.log, "strm.uploadWorker", func() { s.uploadWorker(ctx) })
+	}
+	// 队列任务自愈：进程崩溃/停机遗留的 running 任务重置为 pending，
+	// 否则永久卡死并会通过 GetActiveLocalPathMap 阻塞该文件的重复下载。
+	if n, err := s.repo.StrmDownload.ResetRunningToPending(ctx); err == nil && n > 0 {
+		s.log.Warn("strm download tasks reset from running to pending after restart", zap.Int64("count", n))
+	} else if err != nil {
+		s.log.Warn("reset running strm download tasks failed", zap.Error(err))
+	}
+	if n, err := s.repo.StrmUpload.ResetRunningToPending(ctx); err == nil && n > 0 {
+		s.log.Warn("strm upload tasks reset from running to pending after restart", zap.Int64("count", n))
+	} else if err != nil {
+		s.log.Warn("reset running strm upload tasks failed", zap.Error(err))
 	}
 	helper.Go(s.log, "strm.cronLoop", func() { s.cronLoop(ctx) })
 	helper.Go(s.log, "strm.queueCleanupLoop", func() { s.queueCleanupLoop(ctx) })
@@ -456,6 +474,15 @@ func (s *StrmService) providerFor(ctx context.Context, acct *model.StrmAccount) 
 	provider, err := cloud.New(acct.Provider, anyCfg, s.http)
 	if err != nil {
 		return nil, err
+	}
+	// 115 开放平台：运行中自动刷新得到的新令牌必须落库。否则长任务
+	// 里的新 token 只存在于内存，定时刷新线程又用 DB 里的旧
+	// refresh_token 再刷（一次性轮转），两者互相作废，最终把有效账号
+	// 标成“授权已失效”。
+	if oc, ok := provider.(interface{ OpenClient() *cloud115.OpenClient }); ok {
+		oc.OpenClient().OnTokenRefreshed = func(accessToken, refreshToken string) {
+			s.persist115Tokens(acct.ID, accessToken, refreshToken)
+		}
 	}
 	return provider, nil
 }

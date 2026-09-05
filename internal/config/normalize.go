@@ -68,8 +68,14 @@ func (c *Config) normalize() error {
 				return fmt.Errorf("generate jwt secret: %w", err)
 			}
 			c.Secrets.JWTSecret = hex.EncodeToString(buf)
-			_ = os.MkdirAll(c.App.DataDir, 0o750)
-			_ = os.WriteFile(path, []byte(c.Secrets.JWTSecret), 0o600)
+			// 持久化失败（DataDir 只读/权限异常）会导致每次重启重新生成
+			// 密钥、全部会话静默失效、多实例各持不同 secret——必须让
+			// 操作员感知。
+			if mkErr := os.MkdirAll(c.App.DataDir, 0o750); mkErr != nil {
+				fmt.Fprintf(os.Stderr, "warning: persist jwt secret failed (mkdir): %v\n", mkErr)
+			} else if wErr := os.WriteFile(path, []byte(c.Secrets.JWTSecret), 0o600); wErr != nil {
+				fmt.Fprintf(os.Stderr, "warning: persist jwt secret failed (write): %v\n", wErr)
+			}
 		}
 	}
 	return nil

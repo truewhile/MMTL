@@ -371,37 +371,52 @@ func (r *EmbyRemoteService) RemoteLibraryMedia(ctx context.Context, mount *model
 
 // RemoteMediaDetail 拉远程单条目映射为 Media（网页详情页）。
 func (r *EmbyRemoteService) RemoteMediaDetail(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, remoteID string) (*model.Media, error) {
+	m, _, err := r.remoteMediaDetailRaw(ctx, mount, acct, remoteID)
+	return m, err
+}
+
+// remoteMediaDetailRaw 拉取远程条目详情，同时返回原始载荷（ID 已伪装），
+// 供调用方免二次请求读取 Type / SeriesId 等字段。
+func (r *EmbyRemoteService) remoteMediaDetailRaw(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, remoteID string) (*model.Media, map[string]any, error) {
 	cfg, err := r.remoteConfigWithToken(ctx, acct)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	path := "/Users/" + url.PathEscape(r.remoteUserID(cfg)) + "/Items/" + url.PathEscape(remoteID)
 	path += "?Fields=Overview,Genres,ProviderIds,People,Studios,Path,MediaStreams,MediaSources,DateCreated,PremiereDate,ProductionYear,CommunityRating,CriticRating"
 	var out map[string]any
 	if err := r.doGet(ctx, acct, cfg, path, nil, &out); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	RewriteEmbyRemoteIDs(out, mount.ID)
 	m := r.MapRemoteItemToMedia(ctx, mount, acct, cfg, out)
-	return &m, nil
+	return &m, out, nil
 }
 
 // RemoteEpisodes 拉远程条目下的集列表（Series/Season/Folder→子集；Episode→同系列；
 // Movie→自身单条），按季/集排序，与本地 ListMediaEpisodes 行为一致。
 func (r *EmbyRemoteService) RemoteEpisodes(ctx context.Context, mount *model.EmbyMount, acct *model.StrmAccount, remoteID string) ([]model.Media, error) {
-	detail, err := r.RemoteMediaDetail(ctx, mount, acct, remoteID)
+	detail, rawDetail, err := r.remoteMediaDetailRaw(ctx, mount, acct, remoteID)
 	if err != nil {
 		return nil, err
 	}
 	// 用远程详情载荷精判类型（Episode→同系列；Series/Season/Folder→子集；Movie→单条）。
-	itemType := r.remoteItemType(ctx, acct, remoteID)
+	// Type/SeriesId 都在详情载荷里现成可用，不再为判定类型/系列额外发起
+	// 两次重复的远程全量 GET（远程慢时页面延迟直接×3）。
+	itemType := remoteItemString(rawDetail, "Type")
 	if itemType == "" {
 		itemType = remoteItemTypeOf(detail)
 	}
 	var parentID string
 	switch itemType {
 	case "Episode":
-		parentID = r.remoteItemSeriesID(ctx, acct, remoteID)
+		parentID = remoteItemString(rawDetail, "SeriesId")
+		if _, rid, ok := DecodeEmbyRemoteID(parentID); ok {
+			parentID = rid // 载荷 ID 已伪装，远程查询需要原始 ID
+		}
+		if parentID == "" {
+			parentID = r.remoteItemSeriesID(ctx, acct, remoteID)
+		}
 		if parentID == "" {
 			parentID = remoteID
 		}
@@ -435,23 +450,36 @@ func (r *EmbyRemoteService) remoteEpisodesOf(ctx context.Context, mount *model.E
 	q.Set("ParentId", parentID)
 	q.Set("IncludeItemTypes", "Episode")
 	q.Set("Recursive", "true")
-	q.Set("StartIndex", "0")
-	q.Set("Limit", "500")
 	q.Set("Fields", "Overview,Genres,ProviderIds,Path,SeriesPrimaryImage,MediaStreams,MediaSources,DateCreated,PremiereDate,ProductionYear,CommunityRating,CriticRating")
-	var body struct {
-		Items            []map[string]any `json:"Items"`
-		TotalRecordCount int64            `json:"TotalRecordCount"`
+	items := make([]model.Media, 0, 64)
+	total := int64(0)
+	// 每页 200 循环拉全：MediaStreams/MediaSources 重字段下单页 500 条
+	// 已贴近 8MB 截断上限；单次大页超限会静默解析失败。
+	const episodePageSize = 200
+	for startIndex := 0; ; startIndex += episodePageSize {
+		q.Set("StartIndex", strconv.Itoa(startIndex))
+		q.Set("Limit", strconv.Itoa(episodePageSize))
+		var body struct {
+			Items            []map[string]any `json:"Items"`
+			TotalRecordCount int64            `json:"TotalRecordCount"`
+		}
+		if err := r.doGet(ctx, acct, cfg, "/Users/"+url.PathEscape(r.remoteUserID(cfg))+"/Items", q, &body); err != nil {
+			return nil, 0, err
+		}
+		total = body.TotalRecordCount
+		if len(body.Items) == 0 {
+			break
+		}
+		for _, it := range body.Items {
+			RewriteEmbyRemoteIDs(it, mount.ID)
+			m := r.MapRemoteItemToMedia(ctx, mount, acct, cfg, it)
+			items = append(items, m)
+		}
+		if len(body.Items) < episodePageSize {
+			break
+		}
 	}
-	if err := r.doGet(ctx, acct, cfg, "/Users/"+url.PathEscape(r.remoteUserID(cfg))+"/Items", q, &body); err != nil {
-		return nil, 0, err
-	}
-	items := make([]model.Media, 0, len(body.Items))
-	for _, it := range body.Items {
-		RewriteEmbyRemoteIDs(it, mount.ID)
-		m := r.MapRemoteItemToMedia(ctx, mount, acct, cfg, it)
-		items = append(items, m)
-	}
-	return items, body.TotalRecordCount, nil
+	return items, total, nil
 }
 
 // RemoteSeriesCards 远程剧集库的系列卡片（ChildCount 作为集数）。
@@ -477,14 +505,16 @@ func (r *EmbyRemoteService) RemoteSeriesCards(ctx context.Context, mount *model.
 	q.Set("Recursive", "false")
 	q.Set("SortBy", "DateLastContentAdded")
 	q.Set("SortOrder", "Descending")
-	q.Set("Limit", "1000")
+	// 每页 200：Fields 带全量重字段（Overview/MediaStreams 等）时单页 1000
+	// 条的载荷会超过 doGet 的 8MB 截断上限，JSON 被静默截断直接解析失败。
+	q.Set("Limit", "200")
 	q.Set("Fields", "Overview,Genres,ProviderIds,Path,RecursiveItemCount,SeriesPrimaryImage,DateCreated,DateLastMediaAdded,PremiereDate,ProductionYear,CommunityRating,CriticRating")
 	var body struct {
 		Items            []map[string]any `json:"Items"`
 		TotalRecordCount int64            `json:"TotalRecordCount"`
 	}
 	cards := make([]SeriesCard, 0)
-	for startIndex := 0; ; startIndex += 1000 {
+	for startIndex := 0; ; startIndex += 200 {
 		q.Set("StartIndex", strconv.Itoa(startIndex))
 		body.Items = nil
 		if err := r.doGet(ctx, acct, cfg, "/Users/"+url.PathEscape(r.remoteUserID(cfg))+"/Items", q, &body); err != nil {

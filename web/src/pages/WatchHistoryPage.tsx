@@ -29,6 +29,10 @@ export function WatchHistoryPage() {
     historyAPI
       .list(200)
       .then(setItems)
+      .catch((err: unknown) => {
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? '加载观看历史失败'
+        toast.error(msg)
+      })
       .finally(() => setLoading(false))
   }
 
@@ -41,6 +45,9 @@ export function WatchHistoryPage() {
       await historyAPI.remove(id)
       setItems((prev) => prev.filter((item) => item.id !== id))
       toast.success('已移除观看历史')
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? '移除观看历史失败'
+      toast.error(msg)
     } finally {
       setBusy('')
     }
@@ -54,6 +61,9 @@ export function WatchHistoryPage() {
       await historyAPI.clear(undefined, status)
       setItems((prev) => prev.filter((item) => status === 'completed' ? !item.completed : item.completed))
       toast.success(`已清除${label}记录`)
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? `清除${label}记录失败`
+      toast.error(msg)
     } finally {
       setBusy('')
     }

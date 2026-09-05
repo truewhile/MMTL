@@ -132,22 +132,25 @@ func embyMeHandler(svc *service.Container) gin.HandlerFunc {
 
 func embyGetUserByIDHandler(svc *service.Container) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		u, err := svc.Emby.FindUser(c.Request.Context(), c.Param("userId"))
+		uid := embyUserID(c)
+		if uid == "" {
+			embyError(c, http.StatusUnauthorized, "not authenticated")
+			return
+		}
+		// 只返回调用者自己的用户对象：客户端误传其他 userId 时回退到
+		// 调用者自身（保留旧行为的兼容语义），但绝不返回他人数据。
+		u, err := svc.Emby.FindUser(c.Request.Context(), uid)
 		if err == nil && u != nil {
 			c.JSON(http.StatusOK, u)
 			return
 		}
-		if authUID := embyUserID(c); authUID != "" && authUID != c.Param("userId") {
-			u, err = svc.Emby.FindUser(c.Request.Context(), authUID)
-			if err == nil && u != nil {
-				c.JSON(http.StatusOK, u)
-				return
-			}
-		}
-		c.JSON(http.StatusOK, embyFallbackUser(c.Param("userId")))
+		c.JSON(http.StatusOK, embyFallbackUser(uid))
 	}
 }
 
+// embyFallbackUser 是查库失败时的最后兜底（保持客户端可渲染）。
+// Policy 必须是最小权限：不声明管理员/删除内容/控制他人等能力，
+// 实际权限始终由服务端各路由的校验决定。
 func embyFallbackUser(id string) gin.H {
 	if strings.TrimSpace(id) == "" {
 		id = "mebox-user"
@@ -161,10 +164,10 @@ func embyFallbackUser(id string) gin.H {
 		"HasConfiguredEasyPassword": false,
 		"EnableAutoLogin":           false,
 		"Policy": gin.H{
-			"IsAdministrator":                 true,
-			"EnableContentDeletion":           true,
-			"EnableRemoteControlOfOtherUsers": true,
-			"EnableSharedDeviceControl":       true,
+			"IsAdministrator":                 false,
+			"EnableContentDeletion":           false,
+			"EnableRemoteControlOfOtherUsers": false,
+			"EnableSharedDeviceControl":       false,
 			"EnableRemoteAccess":              true,
 			"EnableAllDevices":                true,
 			"EnableAllChannels":               true,

@@ -114,26 +114,31 @@ function LayoutHeaderSearch() {
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<Media[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
+  // 递增序号守卫：快速连续输入时丢弃过期响应
+  const searchSeqRef = useRef(0)
   const navigate = useNavigate()
 
   useEffect(() => {
     const trimmed = query.trim()
     if (!trimmed) {
+      searchSeqRef.current += 1
       setResults([])
       setLoading(false)
       return
     }
 
+    const seq = ++searchSeqRef.current
     setLoading(true)
     const timer = setTimeout(async () => {
       try {
         const res = await mediaAPI.search(trimmed, 8)
+        if (seq !== searchSeqRef.current) return
         setResults(res.items || [])
         setIsOpen(true)
       } catch {
-        setResults([])
+        // 请求失败时保留旧结果，避免网络抖动清空下拉
       } finally {
-        setLoading(false)
+        if (seq === searchSeqRef.current) setLoading(false)
       }
     }, 250)
 

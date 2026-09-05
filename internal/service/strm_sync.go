@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -97,7 +98,8 @@ func (s *StrmService) StartSync(ctx context.Context, pathID string, syncType ...
 		StartedAt:  &now,
 	}
 	if err := s.repo.StrmSyncRecord.Create(ctx, rec); err != nil {
-		s.clearRunning(pathID)
+		s.clearRunning(pathID, cancel)
+		cancel()
 		return err
 	}
 	status := model.StrmSyncRecordRunning
@@ -106,7 +108,7 @@ func (s *StrmService) StartSync(ctx context.Context, pathID string, syncType ...
 	p.LastSyncMessage = "同步进行中"
 	_ = s.repo.StrmSyncPath.Update(ctx, p)
 
-	helper.Go(s.log, "strm.sync", func() { s.runSync(runCtx, p, rec) })
+	helper.Go(s.log, "strm.sync", func() { s.runSync(runCtx, p, rec, cancel) })
 	return nil
 }
 
@@ -114,11 +116,10 @@ func (s *StrmService) StartSync(ctx context.Context, pathID string, syncType ...
 func (s *StrmService) CancelSync(ctx context.Context, pathID string) error {
 	s.mu.Lock()
 	cancel, exists := s.running[pathID]
-	if exists {
-		delete(s.running, pathID)
-	}
 	s.mu.Unlock()
 
+	// 不在这里预删 running 标记：runSync 退出时的 clearRunning 会按
+	// cancel 身份校验后删除，避免旧同步收尾误删新同步的标记。
 	if exists && cancel != nil {
 		cancel()
 	}
@@ -142,10 +143,22 @@ func (s *StrmService) IsSyncRunning(pathID string) bool {
 	return exists
 }
 
-func (s *StrmService) clearRunning(pathID string) {
+// clearRunning 清除同步的运行标记；仅当 map 中登记的 cancel 与本次同步
+// 一致时才删除，防止慢收尾的旧同步把随后启动的新同步标记误删掉。
+func (s *StrmService) clearRunning(pathID string, cancel context.CancelFunc) {
 	s.mu.Lock()
-	delete(s.running, pathID)
+	if cur, ok := s.running[pathID]; ok {
+		if cancel == nil || cur == nil || sameCancelFunc(cur, cancel) {
+			delete(s.running, pathID)
+		}
+	}
 	s.mu.Unlock()
+}
+
+// sameCancelFunc 比较两个 cancel 是否为同一实例（每次 WithCancel 返回
+// 独立闭包，函数指针即身份）。约定 running 表只登记 StartSync 的 cancel。
+func sameCancelFunc(a, b context.CancelFunc) bool {
+	return reflect.ValueOf(a).Pointer() == reflect.ValueOf(b).Pointer()
 }
 
 // ListRemoteDir 列出网盘账号某目录下的条目（供前端目录选择器使用）。
@@ -169,8 +182,9 @@ func (s *StrmService) ListRemoteDir(ctx context.Context, accountID, dir string) 
 }
 
 // runSync 执行同步主体；结束时更新记录与目录状态。
-func (s *StrmService) runSync(ctx context.Context, p *model.StrmSyncPath, rec *model.StrmSyncRecord) {
-	defer s.clearRunning(p.ID)
+func (s *StrmService) runSync(ctx context.Context, p *model.StrmSyncPath, rec *model.StrmSyncRecord, cancel context.CancelFunc) {
+	defer s.clearRunning(p.ID, cancel)
+	defer cancel()
 
 	cfg, err := s.strmEffectiveConfig(ctx, p)
 	if err != nil {
@@ -334,24 +348,34 @@ func (st *strmSyncState) walkRemote() error {
 	ctx, cancel := context.WithCancel(st.ctx)
 	defer cancel()
 
-	queue := make(chan dirTask, 512)
-	var pending atomic.Int64
+	// 工作队列用「互斥锁 + 条件变量 + 动态 slice」实现，而不是有界
+	// channel：有界缓冲下所有 worker 可能同时阻塞在发送上、无人接收，
+	// closer 又在等 pending 归零，形成永久死锁。push 永不阻塞即可保证
+	// 有进度就一定有推进。
+	// pending 计数 = 尚未处理完的任务数（在 work 里或正在被 List）。
+	var (
+		walkMu   sync.Mutex
+		walkCond = sync.NewCond(&walkMu)
+		work     []dirTask
+		pending  int
+	)
+	push := func(t dirTask) {
+		walkMu.Lock()
+		work = append(work, t)
+		pending++
+		walkCond.Signal()
+		walkMu.Unlock()
+	}
+	// ctx 取消时唤醒所有等待中的 worker 让其退出。
+	go func() {
+		<-ctx.Done()
+		walkMu.Lock()
+		walkCond.Broadcast()
+		walkMu.Unlock()
+	}()
 
 	// 根目录入队
-	pending.Add(1)
-	queue <- dirTask{id: root, rel: ""}
-
-	// 当队列中所有目录都被消费（pending 归零）或出错时关闭 channel，
-	// 让 worker 全部退出。
-	go func() {
-		for {
-			if ctx.Err() != nil || pending.Load() == 0 {
-				close(queue)
-				return
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-	}()
+	push(dirTask{id: root, rel: ""})
 
 	var (
 		wg       sync.WaitGroup
@@ -362,11 +386,27 @@ func (st *strmSyncState) walkRemote() error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			// worker 解析远端响应 panic 时取消整个同步，让 closer 与其余
-			// worker 正常收尾，避免队列与 pending 计数卡死；正常退出不取消。
+			// worker 解析远端响应 panic 时取消整个同步，让其余 worker
+			// 正常收尾；正常退出不取消。
 			if err := helper.Recover(st.s.log, "strm.sync.walkRemote", func() error {
-				for task := range queue {
+				for {
+					walkMu.Lock()
+					for len(work) == 0 {
+						if ctx.Err() != nil || pending == 0 {
+							walkMu.Unlock()
+							return nil
+						}
+						walkCond.Wait()
+					}
+					task := work[0]
+					work = work[1:]
+					walkMu.Unlock()
+
 					if ctx.Err() != nil {
+						walkMu.Lock()
+						pending--
+						walkCond.Broadcast()
+						walkMu.Unlock()
 						return nil
 					}
 					entries, err := st.provider.List(ctx, task.id)
@@ -376,6 +416,10 @@ func (st *strmSyncState) walkRemote() error {
 							firstErr = fmt.Errorf("列出远端目录 %s 失败：%w", task.id, err)
 						}
 						errMu.Unlock()
+						walkMu.Lock()
+						pending--
+						walkCond.Broadcast()
+						walkMu.Unlock()
 						cancel()
 						return nil
 					}
@@ -386,19 +430,18 @@ func (st *strmSyncState) walkRemote() error {
 							rel = task.rel + "/" + cleanName
 						}
 						if entry.IsDir {
-							pending.Add(1)
-							select {
-							case queue <- dirTask{id: entry.ID, rel: rel}:
-							case <-ctx.Done():
-								pending.Add(-1)
-							}
+							push(dirTask{id: entry.ID, rel: rel})
 						} else {
 							st.processRemoteFile(entry, rel)
 						}
 					}
-					pending.Add(-1)
+					walkMu.Lock()
+					pending--
+					if pending == 0 {
+						walkCond.Broadcast()
+					}
+					walkMu.Unlock()
 				}
-				return nil
 			}); err != nil {
 				cancel()
 			}
@@ -1329,6 +1372,10 @@ func (st *strmSyncState) updateSyncMessage(msg string) {
 func (s *StrmService) cronLoop(ctx context.Context) {
 	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
+	// 记录上次检查到的分钟：一轮循环若被慢操作拖过 60s（远端 List 慢、
+	// 串行 StartSync、DB 忙），ticker 会丢掉中间的 tick，命中排程的分钟
+	// 若只按"当前分钟相等"判定就会被静默跳过。逐分钟回放补触。
+	last := time.Now().Truncate(time.Minute)
 	for {
 		select {
 		case <-ctx.Done():
@@ -1336,8 +1383,18 @@ func (s *StrmService) cronLoop(ctx context.Context) {
 		case <-s.stopCh:
 			return
 		case now := <-ticker.C:
+			now = now.Truncate(time.Minute)
 			paths, err := s.repo.StrmSyncPath.List(ctx)
 			if err != nil {
+				last = now
+				continue
+			}
+			due := make([]time.Time, 0, 2)
+			for m := last.Add(time.Minute); !m.After(now); m = m.Add(time.Minute) {
+				due = append(due, m)
+			}
+			last = now
+			if len(due) == 0 {
 				continue
 			}
 			for i := range paths {
@@ -1345,7 +1402,14 @@ func (s *StrmService) cronLoop(ctx context.Context) {
 				if !p.Enabled || !p.EnableCron || strings.TrimSpace(p.Cron) == "" {
 					continue
 				}
-				if !cronMatches(p.Cron, now) {
+				matched := false
+				for _, m := range due {
+					if cronMatches(p.Cron, m) {
+						matched = true
+						break
+					}
+				}
+				if !matched {
 					continue
 				}
 				s.mu.Lock()

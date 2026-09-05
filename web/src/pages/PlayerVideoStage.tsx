@@ -9,6 +9,8 @@ import { PlayerControls } from '../components/PlayerControls'
 
 type PlayerVideoStageProps = {
   media: Media | null
+  /** 媒体元数据加载失败提示（非空时替代「加载中」展示）。 */
+  loadError?: string
   playerError: string
   subs: SubtitleTrack[]
   /** 当前激活字幕轨道：-1=关闭，0..n-1=对应轨道。 */
@@ -43,6 +45,7 @@ type PlayerVideoStageProps = {
 
 export function PlayerVideoStage({
   media,
+  loadError,
   playerError,
   subs,
   subtitleIndex,
@@ -317,6 +320,8 @@ export function PlayerVideoStage({
           {danmakuPanel}
           {playlistPanel}
         </>
+      ) : loadError ? (
+        <p className="max-w-[92%] text-center text-sm text-rose-400">{loadError}</p>
       ) : (
         <p className="text-sand-500">加载中…</p>
       )}

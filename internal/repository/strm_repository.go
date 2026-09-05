@@ -302,6 +302,39 @@ func (r *StrmDownloadTaskRepository) Update(ctx context.Context, t *model.StrmDo
 	})
 }
 
+// UpdateIfRunning 仅当任务在 DB 中仍为 running 时写入给定字段。
+// 返回 false 表示任务已被外部改变状态（如用户取消），收尾不得覆盖。
+func (r *StrmDownloadTaskRepository) UpdateIfRunning(ctx context.Context, id string, updates map[string]any) (bool, error) {
+	var ok bool
+	err := withSQLiteBusyRetry(ctx, func() error {
+		updates["updated_at"] = time.Now()
+		res := r.db.WithContext(ctx).Model(&model.StrmDownloadTask{}).
+			Where("id = ? AND status = ?", id, model.StrmTaskRunning).Updates(updates)
+		ok = res.RowsAffected > 0
+		return res.Error
+	})
+	return ok, err
+}
+
+// ResetRunningToPending 启动自愈：进程中断遗留的 running 任务全部重置为
+// pending（清空退避时间以便立即可被认领），否则任务永久卡死且会阻塞
+// 该文件的重复下载。
+func (r *StrmDownloadTaskRepository) ResetRunningToPending(ctx context.Context) (int64, error) {
+	var n int64
+	err := withSQLiteBusyRetry(ctx, func() error {
+		res := r.db.WithContext(ctx).Model(&model.StrmDownloadTask{}).
+			Where("status = ?", model.StrmTaskRunning).
+			Updates(map[string]any{
+				"status":     model.StrmTaskPending,
+				"error":      "服务重启，任务已重置",
+				"started_at": nil,
+			})
+		n = res.RowsAffected
+		return res.Error
+	})
+	return n, err
+}
+
 func (r *StrmDownloadTaskRepository) Delete(ctx context.Context, id string) error {
 	return withSQLiteBusyRetry(ctx, func() error {
 		return r.db.WithContext(ctx).Unscoped().Where("id = ?", id).Delete(&model.StrmDownloadTask{}).Error
@@ -618,6 +651,36 @@ func (r *StrmUploadTaskRepository) Update(ctx context.Context, t *model.StrmUplo
 			"updated_at":  time.Now(),
 		}).Error
 	})
+}
+
+// UpdateIfRunning 仅当任务在 DB 中仍为 running 时写入给定字段。
+func (r *StrmUploadTaskRepository) UpdateIfRunning(ctx context.Context, id string, updates map[string]any) (bool, error) {
+	var ok bool
+	err := withSQLiteBusyRetry(ctx, func() error {
+		updates["updated_at"] = time.Now()
+		res := r.db.WithContext(ctx).Model(&model.StrmUploadTask{}).
+			Where("id = ? AND status = ?", id, model.StrmTaskRunning).Updates(updates)
+		ok = res.RowsAffected > 0
+		return res.Error
+	})
+	return ok, err
+}
+
+// ResetRunningToPending 启动自愈：进程中断遗留的 running 任务全部重置为 pending。
+func (r *StrmUploadTaskRepository) ResetRunningToPending(ctx context.Context) (int64, error) {
+	var n int64
+	err := withSQLiteBusyRetry(ctx, func() error {
+		res := r.db.WithContext(ctx).Model(&model.StrmUploadTask{}).
+			Where("status = ?", model.StrmTaskRunning).
+			Updates(map[string]any{
+				"status":     model.StrmTaskPending,
+				"error":      "服务重启，任务已重置",
+				"started_at": nil,
+			})
+		n = res.RowsAffected
+		return res.Error
+	})
+	return n, err
 }
 
 func (r *StrmUploadTaskRepository) Delete(ctx context.Context, id string) error {

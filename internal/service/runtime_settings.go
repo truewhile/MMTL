@@ -28,6 +28,8 @@ func ApplyRuntimeSettings(ctx context.Context, cfg *config.Config, repos *reposi
 }
 
 func ApplyRuntimeSetting(cfg *config.Config, key, value string) {
+	config.RuntimeMu.Lock()
+	defer config.RuntimeMu.Unlock()
 	if cfg == nil {
 		return
 	}

@@ -48,7 +48,7 @@ func (p *openAPI115Provider) Ping(ctx context.Context) error {
 	if strings.TrimSpace(p.c.AppID) == "" {
 		return fmt.Errorf("115: 缺少开放平台应用 ID，请重新授权")
 	}
-	if strings.TrimSpace(p.c.AccessToken) == "" {
+	if strings.TrimSpace(p.c.CurrentAccessToken()) == "" {
 		return fmt.Errorf("115: 缺少访问令牌，请重新授权")
 	}
 	_, _, err := p.c.GetFsList(ctx, "0", 0, 1)
@@ -70,7 +70,7 @@ func (p *openAPI115Provider) List(ctx context.Context, dirID string) ([]FileEntr
 				Name:     f.FileName,
 				IsDir:    f.Category == cloud115.TypeDir,
 				Size:     f.FileSize,
-				MTime:    f.Utime,
+				MTime:    f.ModifiedAt(),
 				PickCode: f.PickCode,
 			})
 		}
@@ -127,12 +127,15 @@ func (p *openAPI115Provider) PutFileNamed(ctx context.Context, parentCID, fileNa
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("115: 关闭临时文件失败：%w", err)
 	}
-	// 重命名为目标文件名，保证上传到 115 后保留原始文件名
+	// 重命名为目标文件名，保证上传到 115 后保留原始文件名。
+	// 重命名失败必须 fail fast：静默用随机临时名上传会导致 115 上的文件名
+	// 变成 mebox-upload-xxx，破坏元数据文件名契约。
 	if fileName != "" && fileName != filepath.Base(tmpPath) {
 		namedPath := filepath.Join(filepath.Dir(tmpPath), fileName)
-		if err := os.Rename(tmpPath, namedPath); err == nil {
-			tmpPath = namedPath
+		if err := os.Rename(tmpPath, namedPath); err != nil {
+			return fmt.Errorf("115: 重命名临时文件为 %s 失败：%w", fileName, err)
 		}
+		tmpPath = namedPath
 	}
 	_, err = p.c.Upload(ctx, tmpPath, parentCID, "", "")
 	if err != nil {

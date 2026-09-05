@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"sync"
+	"time"
 )
 
 // cloudDrive2Provider bridges CloudDrive2 through its WebDAV endpoint.
@@ -22,11 +24,18 @@ type cloudDrive2Provider struct {
 	base     *url.URL
 	username string
 	password string
-	token    string
+	token    string // 配置的静态令牌（构造后只读）
 	ua       string
 	apiBase  *url.URL
 	client   *http.Client
 	proxy    bool
+
+	// tokenMu / loginToken / loginTokenSeen 保护 OpenList 用户名密码登录的
+	// token 缓存：多 worker 并发时单飞登录，缓存有效期内直接复用，
+	// 401 时清缓存重登（见 clouddrive2_openlist.go 的 openListAPIToken）。
+	tokenMu        sync.Mutex
+	loginToken     string
+	loginTokenSeen time.Time
 }
 
 func newCloudDrive2(cfg map[string]any, client *http.Client) *cloudDrive2Provider {

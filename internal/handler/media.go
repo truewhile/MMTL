@@ -368,7 +368,11 @@ func deleteLibraryHandler(svc *service.Container) gin.HandlerFunc {
 		}
 		uid, _ := c.Get("ctx_user_id")
 		svc.Audit.Record(c.Request.Context(), toString(uid), "library.delete", id, c.ClientIP(), "")
-		go func() { _ = svc.Watcher.Refresh(context.Background()) }()
+		// goroutine 内的 panic 无法被 gin.Recovery 捕获，会直接崩掉进程：
+		// 与其他调用点一致先判空。
+		if svc.Watcher != nil {
+			go func() { _ = svc.Watcher.Refresh(context.Background()) }()
+		}
 		c.Status(http.StatusNoContent)
 	}
 }

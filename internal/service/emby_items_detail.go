@@ -338,10 +338,12 @@ func (e *EmbyService) resumableItems(ctx context.Context, p ItemsParams) (map[st
 		return map[string]any{"Items": []any{}, "TotalRecordCount": int64(0), "StartIndex": p.StartIndex}, nil
 	}
 
+	// 历史记录限行：此前无上限全量加载，远程条目多时既拖慢 SQL 也放大
+	// 下面的远程详情请求量。
 	var hist []model.PlaybackHistory
 	if err := e.repo.DB.WithContext(ctx).
 		Where("user_id = ? AND completed = ? AND position_ms > 0", p.UserID, false).
-		Order("watched_at desc").Find(&hist).Error; err != nil {
+		Order("watched_at desc").Limit(200).Find(&hist).Error; err != nil {
 		return nil, err
 	}
 	if len(hist) == 0 {
@@ -367,16 +369,29 @@ func (e *EmbyService) resumableItems(ctx context.Context, p ItemsParams) (map[st
 		}
 	}
 
-	items := make([]map[string]any, 0, len(hist))
+	// 分页前置：凑满 StartIndex+Limit 条即停，不再为「总数」逐条发远程
+	// 详情 GET（此前每条远程记录一次串行 GET，远程慢时请求挂起数分钟）。
+	// 总数用候选行数（本地过滤后 + 远程候选），对继续观看行的翻页语义
+	// 足够准确。
+	needed := p.StartIndex + p.Limit
+	items := make([]map[string]any, 0, p.Limit)
+	localTotal, remoteTotal := 0, 0
 	for _, h := range hist {
 		if m, ok := byID[h.MediaID]; ok {
 			if p.ParentID != "" && m.LibraryID != p.ParentID && m.SeriesID != p.ParentID {
 				continue
 			}
-			items = append(items, e.itemPayload(ctx, m, false, h.PositionMs))
+			localTotal++
+			if produced := len(items); produced < needed {
+				items = append(items, e.itemPayload(ctx, m, false, h.PositionMs))
+			}
 			continue
 		}
 		if e.remote == nil || !IsEmbyRemoteID(h.MediaID) {
+			continue
+		}
+		remoteTotal++
+		if len(items) >= needed {
 			continue
 		}
 		mountID, remoteID, _ := DecodeEmbyRemoteID(h.MediaID)
@@ -399,7 +414,7 @@ func (e *EmbyService) resumableItems(ctx context.Context, p ItemsParams) (map[st
 		items = append(items, item)
 	}
 
-	total := int64(len(items))
+	total := int64(localTotal + remoteTotal)
 	if p.StartIndex >= len(items) {
 		return map[string]any{"Items": []map[string]any{}, "TotalRecordCount": total, "StartIndex": p.StartIndex}, nil
 	}

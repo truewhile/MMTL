@@ -39,10 +39,15 @@ func listSystemConfigHandler(svc *service.Container) gin.HandlerFunc {
 }
 
 func isSecretKey(k string) bool {
-	for _, suffix := range []string{".token", ".secret", ".password", ".api_key", ".cookie"} {
+	for _, suffix := range []string{".token", ".secret", ".password", ".api_key", ".cookie", ".pin"} {
 		if endsWith(k, suffix) {
 			return true
 		}
+	}
+	// 非后缀型敏感键：可触发服务端任意命令的更新命令等。
+	switch k {
+	case "system.update.command":
+		return true
 	}
 	return false
 }

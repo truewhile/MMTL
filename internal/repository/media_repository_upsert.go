@@ -22,45 +22,93 @@ import (
 //     显式写入）。这两个问题都让 EnrichLibrary(WHERE scrape_status='pending')
 //     永远捞不到数据。
 func (r *MediaRepository) Upsert(ctx context.Context, m *model.Media) error {
-	return withSQLiteBusyRetry(ctx, func() error {
-		return r.upsertWithDB(ctx, r.db, m)
+	var indexIDs []string
+	err := withSQLiteBusyRetry(ctx, func() error {
+		id, uerr := r.upsertWithDB(ctx, r.db, m)
+		if uerr != nil {
+			return uerr
+		}
+		indexIDs = append(indexIDs[:0], id)
+		return nil
 	})
+	if err != nil {
+		return err
+	}
+	r.indexByIDBestEffort(ctx, indexIDs)
+	return nil
 }
 
 // UpsertBatch 在单个事务里逐条执行 Upsert：扫描一批只提交（fsync）一次，
 // 而不是每条一个隐式事务。任一条目落库失败不影响批内已成功的条目——
 // 事务回滚后由调用方退回逐条 Upsert 兜底。
+//
+// OpenSearch 索引同步（HTTP，4s 超时）必须在事务提交之后统一执行：放在
+// 事务内会把 SQLite 写锁挂起在网络 IO 上，且批内用非事务连接回读只能
+// 拿到提交前的旧版本数据，把陈旧内容写进索引。
 func (r *MediaRepository) UpsertBatch(ctx context.Context, items []*model.Media) error {
 	if len(items) == 0 {
 		return nil
 	}
-	return withSQLiteBusyRetry(ctx, func() error {
+	indexIDs := make([]string, 0, len(items))
+	err := withSQLiteBusyRetry(ctx, func() error {
+		indexIDs = indexIDs[:0]
 		return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			for _, m := range items {
 				if m == nil {
 					continue
 				}
-				if err := r.upsertWithDB(ctx, tx, m); err != nil {
+				id, err := r.upsertWithDB(ctx, tx, m)
+				if err != nil {
 					return err
+				}
+				if id != "" {
+					indexIDs = append(indexIDs, id)
 				}
 			}
 			return nil
 		})
 	})
-}
-
-func (r *MediaRepository) upsertWithDB(ctx context.Context, db *gorm.DB, m *model.Media) error {
-	existing, created, err := r.findOrCreateMediaByPath(ctx, db, m)
 	if err != nil {
 		return err
 	}
+	r.indexByIDBestEffort(ctx, indexIDs)
+	return nil
+}
+
+// indexByIDBestEffort 在事务提交后按 ID 回读最新行并同步搜索索引。
+func (r *MediaRepository) indexByIDBestEffort(ctx context.Context, ids []string) {
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		if fresh, err := r.FindByID(ctx, id); err == nil && fresh != nil {
+			r.indexMediaBestEffort(ctx, *fresh)
+		}
+	}
+}
+
+// upsertWithDB 落库（新建或更新），返回需要重建索引的媒体 ID（无则空串）。
+func (r *MediaRepository) upsertWithDB(ctx context.Context, db *gorm.DB, m *model.Media) (string, error) {
+	existing, created, err := r.findOrCreateMediaByPath(ctx, db, m)
+	if err != nil {
+		return "", err
+	}
 	if created {
-		r.indexMediaBestEffort(ctx, *m)
-		return nil
+		return m.ID, nil
 	}
 
 	updates := mediaUpsertUpdates(existing, *m)
-	return r.applyMediaUpsertUpdates(ctx, db, m, existing, updates)
+	if len(updates) == 0 {
+		*m = existing
+		return "", nil
+	}
+	if err := db.WithContext(ctx).Unscoped().Model(&model.Media{}).
+		Where("id = ?", existing.ID).Updates(updates).Error; err != nil {
+		return "", err
+	}
+	// 回写 ID / 不可变字段，让 caller 拿到完整的现有行。
+	*m = existing
+	return existing.ID, nil
 }
 
 func (r *MediaRepository) findOrCreateMediaByPath(ctx context.Context, db *gorm.DB, m *model.Media) (model.Media, bool, error) {
@@ -75,6 +123,9 @@ func (r *MediaRepository) findOrCreateMediaByPath(ctx context.Context, db *gorm.
 			return *m, true, nil
 		} else if retryErr := db.WithContext(ctx).Unscoped().Where("path = ?", m.Path).First(&existing).Error; retryErr != nil {
 			return model.Media{}, false, createErr
+		} else {
+			// 并发插入竞态：重查已命中既有行，直接走更新分支。
+			return existing, false, nil
 		}
 	}
 	if err != nil {
@@ -257,24 +308,6 @@ func setNonEmptyMediaString(updates map[string]any, key, current, next string) {
 	if next != "" {
 		setIfChanged(updates, key, current, next)
 	}
-}
-
-func (r *MediaRepository) applyMediaUpsertUpdates(ctx context.Context, db *gorm.DB, m *model.Media, existing model.Media, updates map[string]any) error {
-	if len(updates) == 0 {
-		*m = existing
-		return nil
-	}
-	if err := db.WithContext(ctx).Unscoped().Model(&model.Media{}).
-		Where("id = ?", existing.ID).Updates(updates).Error; err != nil {
-		return err
-	}
-	// 回写 ID / 不可变字段，让 caller 拿到完整的现有行。
-	*m = existing
-	if fresh, err := r.FindByID(ctx, existing.ID); err == nil && fresh != nil {
-		*m = *fresh
-		r.indexMediaBestEffort(ctx, *fresh)
-	}
-	return nil
 }
 
 func setIfChanged[T comparable](updates map[string]any, key string, current, next T) {

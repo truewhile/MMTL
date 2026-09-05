@@ -26,6 +26,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -73,6 +74,7 @@ type EmbyRemoteService struct {
 	repo   *repository.Container
 	crypto *CryptoService
 	http   *http.Client
+	stream *http.Client // 流式代理专用（视频/字幕），无整体 Timeout
 	cache  *RuntimeCacheService
 }
 
@@ -85,6 +87,12 @@ func NewEmbyRemoteService(cfg *config.Config, log *zap.Logger, repo *repository.
 		crypto: crypto,
 		http: &http.Client{
 			Timeout:   embyRemoteHTTPTimeout,
+			Transport: &embyRemoteTransport{base: http.DefaultTransport},
+		},
+		// 流式代理必须用无整体 Timeout 的 client：http.Client.Timeout
+		// 覆盖整个响应体读取过程，15s 的常规超时会让代理播放播到
+		// 15 秒整被掐断。生命周期由请求 ctx 控制。
+		stream: &http.Client{
 			Transport: &embyRemoteTransport{base: http.DefaultTransport},
 		},
 	}
@@ -352,15 +360,9 @@ func (r *EmbyRemoteService) resolveRemoteUserID(ctx context.Context, acct *model
 		return
 	}
 	cfg.RemoteUserID = uid
-	raw := map[string]string{}
-	_ = json.Unmarshal([]byte(acct.Config), &raw)
-	raw["remote_user_id"] = uid
-	data, err := json.Marshal(raw)
-	if err != nil {
-		return
-	}
-	acct.Config = string(data)
-	_ = r.repo.StrmAccount.Update(ctx, acct)
+	_ = r.updateAccountConfig(ctx, acct, func(raw map[string]string) {
+		raw["remote_user_id"] = uid
+	})
 }
 
 // CleanupOrphanMounts 清理账号已删除的残留挂载（老版本删除账号未级联），
@@ -495,19 +497,28 @@ func (r *EmbyRemoteService) ensureTokenOnLine(ctx context.Context, acct *model.S
 	return nil
 }
 
-// persistToken 把认证得到的 token / user id 加密写回账号配置（下次请求免登录）。
-func (r *EmbyRemoteService) persistToken(ctx context.Context, acct *model.StrmAccount, cfg *EmbyRemoteConfig) error {
-	if acct == nil {
+// acctCfgMu 序列化对账号 Config 的读-改-写。并发请求若各自基于请求开始
+// 时的快照做整包覆盖，会互相丢失更新（刚持久化的 token / active_line 被
+// 旧快照覆盖回去）。
+var acctCfgMu sync.Mutex
+
+// updateAccountConfig 在互斥下重读账号最新 Config，应用 mutate 后写回，
+// 并同步调用方持有的 acct 快照。
+func (r *EmbyRemoteService) updateAccountConfig(ctx context.Context, acct *model.StrmAccount, mutate func(raw map[string]string)) error {
+	if acct == nil || r.repo == nil {
 		return nil
 	}
+	acctCfgMu.Lock()
+	defer acctCfgMu.Unlock()
 	raw := map[string]string{}
+	if fresh, err := r.repo.StrmAccount.FindByID(ctx, acct.ID); err == nil && fresh != nil {
+		acct.Config = fresh.Config // 以 DB 最新值为基线，避免覆盖并发写入
+	}
 	if strings.TrimSpace(acct.Config) != "" {
 		_ = json.Unmarshal([]byte(acct.Config), &raw)
 	}
-	raw["api_key"] = r.crypto.Encrypt(cfg.Token)
-	raw["remote_user_id"] = cfg.RemoteUserID
-	if strings.TrimSpace(raw["username"]) == "" {
-		raw["username"] = cfg.Username
+	if mutate != nil {
+		mutate(raw)
 	}
 	data, err := json.Marshal(raw)
 	if err != nil {
@@ -515,6 +526,20 @@ func (r *EmbyRemoteService) persistToken(ctx context.Context, acct *model.StrmAc
 	}
 	acct.Config = string(data)
 	return r.repo.StrmAccount.Update(ctx, acct)
+}
+
+// persistToken 把认证得到的 token / user id 加密写回账号配置（下次请求免登录）。
+func (r *EmbyRemoteService) persistToken(ctx context.Context, acct *model.StrmAccount, cfg *EmbyRemoteConfig) error {
+	if acct == nil {
+		return nil
+	}
+	return r.updateAccountConfig(ctx, acct, func(raw map[string]string) {
+		raw["api_key"] = r.crypto.Encrypt(cfg.Token)
+		raw["remote_user_id"] = cfg.RemoteUserID
+		if strings.TrimSpace(raw["username"]) == "" {
+			raw["username"] = cfg.Username
+		}
+	})
 }
 
 // doGet 向远程 Emby 发起带 api_key 的 GET，把响应 JSON 解码到 out。
@@ -567,22 +592,28 @@ func (r *EmbyRemoteService) doGetOnLine(ctx context.Context, acct *model.StrmAcc
 		if err != nil {
 			return fmt.Errorf("请求远程 Emby 失败: %w", err)
 		}
-		data, readErr := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+		// 读 8MB+1 以区分"刚好 8MB"与"被截断"：截断的 JSON 会让
+		// Unmarshal 报 unexpected end，难以定位；这里显式报错。
+		data, readErr := io.ReadAll(io.LimitReader(resp.Body, (8<<20)+1))
 		resp.Body.Close()
 		if readErr != nil {
 			return readErr
 		}
+		if len(data) > 8<<20 {
+			return fmt.Errorf("远程 Emby 响应超过 8MB 上限（路径 %s）：请减小分页或 Fields 字段", path)
+		}
 		if resp.StatusCode == http.StatusUnauthorized && attempt == 0 {
+			// 401：只清当前线路的内存 token 并立即重认证；不在此时删除
+			// DB 里的 api_key——①外层还会按线路故障转移（其他线路可能
+			// 存有自己的 token）；②纯 api_key 账号删除后无法再认证，一次
+			// 线路误报就会把账号“砖化”。重认证成功后 persistToken 会用
+			// 新 token 覆盖 api_key。
 			cfg.Token = ""
-			master.Token = ""
-			if acct != nil {
-				raw := map[string]string{}
-				_ = json.Unmarshal([]byte(acct.Config), &raw)
-				delete(raw, "api_key")
-				enc, _ := json.Marshal(raw)
-				acct.Config = string(enc)
-				_ = r.repo.StrmAccount.Update(ctx, acct)
+			if err := r.ensureTokenOnLine(ctx, acct, cfg); err != nil {
+				return fmt.Errorf("认证重试失败: %w", err)
 			}
+			master.Token = cfg.Token
+			master.RemoteUserID = cfg.RemoteUserID
 			continue
 		}
 		if resp.StatusCode >= 300 {
@@ -957,7 +988,7 @@ func (r *EmbyRemoteService) proxyVideoStreamOnLine(ctx context.Context, w http.R
 	if rangeHeader := req.Header.Get("Range"); rangeHeader != "" {
 		upstream.Header.Set("Range", rangeHeader)
 	}
-	resp, err := r.http.Do(upstream)
+	resp, err := r.stream.Do(upstream)
 	if err != nil {
 		return fmt.Errorf("连接远程 Emby 视频流失败: %w", err)
 	}
@@ -1028,7 +1059,7 @@ func (r *EmbyRemoteService) proxySubtitleOnLine(ctx context.Context, w http.Resp
 		return err
 	}
 	upstream.Header.Set("X-Emby-Token", cfg.Token)
-	resp, err := r.http.Do(upstream)
+	resp, err := r.stream.Do(upstream)
 	if err != nil {
 		return fmt.Errorf("连接远程 Emby 字幕流失败: %w", err)
 	}

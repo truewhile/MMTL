@@ -300,6 +300,11 @@ func (c *OpenClient) GetQrCode() (*QrCodeDataReturn, error) {
 	if err != nil {
 		return nil, err
 	}
+	// 关键字段缺失时显式报错：空 uid/sign 会导致后续扫码轮询必然失败，
+	// 不能把残缺响应当成功返回给界面。
+	if code.Uid == "" || code.Sign == "" {
+		return nil, fmt.Errorf("115: 设备码响应缺少 uid/sign，无法发起扫码授权")
+	}
 	return &QrCodeDataReturn{QrCodeData: *code, CodeVerifier: codeVerifier}, nil
 }
 
@@ -352,6 +357,10 @@ func (c *OpenClient) GetToken(qrCode *QrCodeDataReturn) (*TokenData, error) {
 	if err != nil {
 		return nil, err
 	}
+	// 空凭证绝不能 SetAuthToken 后当成功返回：界面会显示"授权成功"但账号不可用
+	if token.AccessToken == "" || token.RefreshToken == "" {
+		return nil, fmt.Errorf("115: 设备码换 token 返回空凭证（access_token/refresh_token 缺失）")
+	}
 	c.SetAuthToken(token.AccessToken, token.RefreshToken)
 	return token, nil
 }
@@ -359,11 +368,30 @@ func (c *OpenClient) GetToken(qrCode *QrCodeDataReturn) (*TokenData, error) {
 // RefreshToken 刷新访问令牌。
 func (c *OpenClient) RefreshToken(refreshToken string) (*TokenData, error) {
 	if refreshToken == "" {
-		refreshToken = c.RefreshTokenStr
+		refreshToken = c.currentRefreshToken()
 	}
 	if refreshToken == "" {
 		return nil, fmt.Errorf("没有可用的 refresh_token")
 	}
+	token, err := c.doRefreshToken(refreshToken)
+	if err != nil {
+		// refresh_token 已失效时清空内存令牌（提示需重新授权）
+		if IsRefreshTokenDead(err) {
+			c.SetAuthToken("", "")
+		}
+		return nil, err
+	}
+	if token.AccessToken == "" || token.RefreshToken == "" {
+		return nil, fmt.Errorf("115: 刷新返回空凭证（access_token/refresh_token 缺失）")
+	}
+	c.SetAuthToken(token.AccessToken, token.RefreshToken)
+	return token, nil
+}
+
+// doRefreshToken 调用 115 刷新接口换取新令牌，不修改客户端内存状态；
+// 拆出无状态方法供 tryRefreshTokenLocked（已持 tokenMu 写锁）复用，
+// 避免在持锁期间重入 SetAuthToken 造成死锁。
+func (c *OpenClient) doRefreshToken(refreshToken string) (*TokenData, error) {
 	params := map[string]string{"refresh_token": refreshToken}
 	resp, err := c.doJSON(context.Background(), "POST", PassportAPIBase+"/open/refreshToken", params, false, 0)
 	if err != nil && resp == nil {
@@ -373,18 +401,9 @@ func (c *OpenClient) RefreshToken(refreshToken string) (*TokenData, error) {
 		return nil, err
 	}
 	if !resp.State {
-		apiErr := NewOpenAPIResponseError(resp.Code, resp.Errno, resp.Message, resp.Error, "115 开放平台刷新访问凭证失败")
-		if IsRefreshTokenDead(apiErr) {
-			c.SetAuthToken("", "")
-		}
-		return nil, apiErr
+		return nil, NewOpenAPIResponseError(resp.Code, resp.Errno, resp.Message, resp.Error, "115 开放平台刷新访问凭证失败")
 	}
-	token, err := openFirstList[TokenData](resp.Data)
-	if err != nil {
-		return nil, err
-	}
-	c.SetAuthToken(token.AccessToken, token.RefreshToken)
-	return token, nil
+	return openFirstList[TokenData](resp.Data)
 }
 
 // ─── 用户信息 ──────────────────────────────────────────────────────────────────

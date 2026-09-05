@@ -132,13 +132,19 @@ func ensureEmbyMountsCompatibility(db *gorm.DB) error {
 			return err
 		}
 	}
-	// 针对已有数据：如果存在多个 sort_order=0/NULL 的记录，按创建时间顺序赋予稳定递增的序号
+	// 针对已有数据：只给 sort_order=0/NULL 的行按创建时间补号（从现有
+	// 最大值之后递增），不能整表重排——此前无条件按 created_at 从 0 重新
+	// 编号，会把用户自定义的顺序覆盖掉。
 	var zeroCount int64
-	if err := db.Model(&model.EmbyMount{}).Where("sort_order = 0 OR sort_order IS NULL").Count(&zeroCount).Error; err == nil && zeroCount > 1 {
+	if err := db.Model(&model.EmbyMount{}).Where("sort_order = 0 OR sort_order IS NULL").Count(&zeroCount).Error; err == nil && zeroCount > 0 {
+		// max 只统计非 0 行：sort_order=0 与 NULL 同样视为“未分配”，
+		// 全部为 0 时从 0 开始编号（与迁移前的初始化语义一致）。
+		var maxOrder int
+		_ = db.Raw("SELECT COALESCE(MAX(sort_order), -1) FROM emby_mounts WHERE sort_order > 0").Scan(&maxOrder).Error
 		var mounts []model.EmbyMount
-		if err := db.Order("created_at asc, id asc").Find(&mounts).Error; err == nil {
+		if err := db.Where("sort_order = 0 OR sort_order IS NULL").Order("created_at asc, id asc").Find(&mounts).Error; err == nil {
 			for i, m := range mounts {
-				_ = db.Exec("UPDATE emby_mounts SET sort_order = ? WHERE id = ?", i, m.ID).Error
+				_ = db.Exec("UPDATE emby_mounts SET sort_order = ? WHERE id = ?", maxOrder+1+i, m.ID).Error
 			}
 		}
 	}

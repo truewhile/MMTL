@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/truewhile/MeBox/internal/model"
@@ -218,7 +219,22 @@ func mergedRemoteUserData(raw any, history *model.PlaybackHistory) map[string]an
 	return userData
 }
 
+// embyInvalMu 节流全量缓存失效：播放期间客户端每 5-10s 上报一次进度，
+// 每次都 SCAN+DEL 全部 media:emby:* 缓存会把缓存命中率持续打穿（其他
+// 客户端每次翻页都回源 SQL）。条目载荷的 UserData 在请求时动态合并，
+// 进度类变更做 30s 节流即可，不影响正确性观感。
+var (
+	embyInvalMu   sync.Mutex
+	embyInvalLast time.Time
+)
+
 func (e *EmbyService) invalidateEmbyItemsCache(ctx context.Context) {
+	embyInvalMu.Lock()
+	defer embyInvalMu.Unlock()
+	if !embyInvalLast.IsZero() && time.Since(embyInvalLast) < 30*time.Second {
+		return
+	}
+	embyInvalLast = time.Now()
 	if e.cache != nil {
 		e.cache.DeletePrefix(ctx, "media:emby:")
 	}

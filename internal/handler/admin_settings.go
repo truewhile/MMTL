@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/truewhile/MeBox/internal/config"
 	"github.com/truewhile/MeBox/internal/model"
 	"github.com/truewhile/MeBox/internal/service"
 )
@@ -86,10 +87,19 @@ func applyHTTPSetting(svc *service.Container, key, value string) error {
 			svc.Log.Warn("https setting saved but not applied yet", zap.String("key", key), zap.String("reason", reason))
 		}
 	}
+
+	config.RuntimeMu.RLock()
+	httpsEnabled := svc.Cfg.App.HTTPSEnabled
+	cert := svc.Cfg.App.SSLCert
+	certPath := svc.Cfg.App.SSLCertPath
+	keyMaterial := svc.Cfg.App.SSLKey
+	keyPath := svc.Cfg.App.SSLKeyPath
+	config.RuntimeMu.RUnlock()
+
 	switch key {
 	case "https.enabled":
-		if svc.Cfg.App.HTTPSEnabled {
-			if _, err := service.ResolveSSLKeyPair(svc.Cfg.App.SSLCert, svc.Cfg.App.SSLCertPath, svc.Cfg.App.SSLKey, svc.Cfg.App.SSLKeyPath); err != nil {
+		if httpsEnabled {
+			if _, err := service.ResolveSSLKeyPair(cert, certPath, keyMaterial, keyPath); err != nil {
 				return fmt.Errorf("启用 HTTPS 失败：%v", err)
 			}
 		}
@@ -97,7 +107,7 @@ func applyHTTPSetting(svc *service.Container, key, value string) error {
 		if err := validateSSLMaterialSource(key, value); err != nil {
 			return err
 		}
-		if !svc.Cfg.App.HTTPSEnabled {
+		if !httpsEnabled {
 			return nil
 		}
 		if !httpsPairReady(svc) {
@@ -144,7 +154,13 @@ func validateSSLMaterialSource(key, value string) error {
 
 // httpsPairReady 判断基于当前配置解析出的证书/私钥是否完整且匹配。
 func httpsPairReady(svc *service.Container) bool {
-	_, err := service.ResolveSSLKeyPair(svc.Cfg.App.SSLCert, svc.Cfg.App.SSLCertPath, svc.Cfg.App.SSLKey, svc.Cfg.App.SSLKeyPath)
+	config.RuntimeMu.RLock()
+	cert := svc.Cfg.App.SSLCert
+	certPath := svc.Cfg.App.SSLCertPath
+	keyMaterial := svc.Cfg.App.SSLKey
+	keyPath := svc.Cfg.App.SSLKeyPath
+	config.RuntimeMu.RUnlock()
+	_, err := service.ResolveSSLKeyPair(cert, certPath, keyMaterial, keyPath)
 	return err == nil
 }
 

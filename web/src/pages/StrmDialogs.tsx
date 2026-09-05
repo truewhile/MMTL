@@ -899,18 +899,23 @@ function StrmDirBrowserDialog({
   const [crumbs, setCrumbs] = useState<string[]>([])
   const [entries, setEntries] = useState<StrmRemoteEntry[]>([])
   const [loading, setLoading] = useState(true)
+  // 递增序号守卫：快速连续进入目录时丢弃过期目录响应
+  const loadSeqRef = useRef(0)
 
   const load = async (target: string) => {
+    const seq = ++loadSeqRef.current
     setLoading(true)
     try {
       const list = await strmAPI.listRemoteDir(accountId, target)
+      if (seq !== loadSeqRef.current) return
       setEntries(list)
       setDir(target)
       setCrumbs(target ? target.split('/').filter(Boolean) : [])
     } catch (err) {
+      if (seq !== loadSeqRef.current) return
       toast.error(apiErrorMessage(err))
     } finally {
-      setLoading(false)
+      if (seq === loadSeqRef.current) setLoading(false)
     }
   }
 

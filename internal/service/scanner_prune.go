@@ -16,8 +16,33 @@ func (s *ScannerService) RemovePath(ctx context.Context, path string) (int64, er
 	if _, err := os.Stat(path); err == nil {
 		return 0, nil // still exists; nothing to remove
 	}
+	// 目录整体消失（删除/改名离开）：连同其子树下的媒体行一并移除。
+	// 此前只删 path 精确匹配的行——目录本身通常没有 media 行，导致目录
+	// 改名后旧子树记录全部失联，只有全量扫描才能修复。
+	prefix := filepath.Clean(path) + string(filepath.Separator)
+	var rows []struct {
+		ID   string
+		Path string
+	}
+	if err := s.repo.DB.WithContext(ctx).Model(&model.Media{}).
+		Select("id, path").
+		Where("path = ? OR path LIKE ?", path, prefix+"%").
+		Find(&rows).Error; err != nil {
+		return 0, err
+	}
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		// LIKE 里的 % _ 是通配符（候选集只会偏大），用 Go 前缀精确过滤，
+		// 避免对含 % / _ 的路径误删。
+		if row.Path == path || strings.HasPrefix(filepath.Clean(row.Path), prefix) {
+			ids = append(ids, row.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
 	res := s.repo.DB.WithContext(ctx).Unscoped().
-		Where("path = ?", path).
+		Where("id IN ?", ids).
 		Delete(&model.Media{})
 	if res.Error == nil && res.RowsAffected > 0 {
 		s.invalidateMediaCache(ctx)

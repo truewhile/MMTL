@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/truewhile/MeBox/internal/config"
+	"github.com/truewhile/MeBox/internal/model"
 	"github.com/truewhile/MeBox/internal/repository"
 	"go.uber.org/zap"
 )
@@ -267,12 +268,19 @@ func (e *EmbyService) aggregatedSearch(ctx context.Context, p ItemsParams) (map[
 	if err != nil {
 		return nil, err
 	}
-	type remoteResult struct {
-		items []any
+	type remoteReply struct {
+		acct     *model.StrmAccount
+		envelope map[string]any
 	}
 	mounts, aerr := e.remote.ListMounts(ctx)
-	results := make([]remoteResult, 0, len(mounts))
+	replies := make([]*remoteReply, 0, len(mounts))
 	if aerr == nil {
+		type mountSearchJob struct {
+			idx   int
+			mount *model.EmbyMount
+			acct  *model.StrmAccount
+		}
+		jobs := make([]*mountSearchJob, 0, len(mounts))
 		for i := range mounts {
 			m := mounts[i]
 			if !m.Enabled {
@@ -285,38 +293,74 @@ func (e *EmbyService) aggregatedSearch(ctx context.Context, p ItemsParams) (map[
 			if acct == nil {
 				continue
 			}
-			// 按挂载逐个搜索：搜索结果归属明确（伪装 ID 正确），也天然只搜已
-			// 挂载的媒体库。
-			searchParams := p
-			searchParams.ParentID = "" // RemoteSearchMount 内部设 ParentId
-			remote, rerr := e.remote.RemoteSearchMount(ctx, &m, acct, p)
-			if rerr != nil {
-				if e.log != nil {
-					e.log.Warn("remote emby search failed",
-						zap.String("account", acct.Name), zap.Error(rerr))
+			// idx 使用 jobs 内的序号（而非 mounts 下标）：fetched 按
+			// len(jobs) 分配，必须与 jobs 下标对齐，否则越界 panic。
+			jobs = append(jobs, &mountSearchJob{idx: len(jobs), mount: &mounts[i], acct: acct})
+		}
+		// 并发搜索各挂载（限并发 + 单挂载超时）：串行时每挂载最多
+		// 15s×线路数，多挂载下首屏延迟被成倍放大。结果按挂载顺序合并。
+		sem := make(chan struct{}, 4)
+		var wg sync.WaitGroup
+		fetched := make([]*remoteReply, len(jobs))
+		for _, job := range jobs {
+			wg.Add(1)
+			go func(job *mountSearchJob) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				sctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+				defer cancel()
+				sp := p
+				// 远程只取首页：此前每个远程各自按 StartIndex 分页，拼接后
+				// 又被 sliceSearchItems 再切一次——分页被二次偏移，远程结果
+				// 首屏不可见、翻页错位。合并后由 sliceSearchItems 单点分页。
+				sp.StartIndex = 0
+				sp.ParentID = "" // RemoteSearchMount 内部设 ParentId
+				remote, rerr := e.remote.RemoteSearchMount(sctx, job.mount, job.acct, sp)
+				if rerr != nil {
+					if e.log != nil {
+						e.log.Warn("remote emby search failed",
+							zap.String("account", job.acct.Name), zap.Error(rerr))
+					}
+					return
 				}
-				continue
-			}
-			if err := e.mergeRemoteUserData(ctx, p.UserID, remote); err != nil {
-				return nil, err
-			}
-			if raw, ok := remote["Items"].([]any); ok {
-				results = append(results, remoteResult{items: raw})
-			} else if rawMap, ok := remote["Items"].([]map[string]any); ok {
-				converted := make([]any, 0, len(rawMap))
-				for _, m := range rawMap {
-					converted = append(converted, any(m))
-				}
-				results = append(results, remoteResult{items: converted})
+				fetched[job.idx] = &remoteReply{acct: job.acct, envelope: remote}
+			}(job)
+		}
+		wg.Wait()
+		for _, r := range fetched {
+			if r != nil {
+				replies = append(replies, r)
 			}
 		}
 	}
-	items := make([]any, 0, len(localItemsAsAny(local))+len(results)*p.Limit)
+	items := make([]any, 0, len(localItemsAsAny(local))+len(replies)*p.Limit)
 	items = append(items, localItemsAsAny(local)...)
-	for _, res := range results {
-		items = append(items, res.items...)
+	for _, reply := range replies {
+		if err := e.mergeRemoteUserData(ctx, p.UserID, reply.envelope); err != nil {
+			return nil, err
+		}
+		items = append(items, remoteItemsAsAny(reply.envelope)...)
 	}
 	return sliceSearchItems(items, p), nil
+}
+
+// remoteItemsAsAny 提取远程载荷的 Items 列表（兼容 []any 与 []map 形态）。
+func remoteItemsAsAny(envelope map[string]any) []any {
+	if envelope == nil {
+		return nil
+	}
+	if raw, ok := envelope["Items"].([]any); ok {
+		return raw
+	}
+	if rawMap, ok := envelope["Items"].([]map[string]any); ok {
+		converted := make([]any, 0, len(rawMap))
+		for _, m := range rawMap {
+			converted = append(converted, any(m))
+		}
+		return converted
+	}
+	return nil
 }
 
 func localItemsAsAny(envelope map[string]any) []any {

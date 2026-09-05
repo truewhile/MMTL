@@ -26,7 +26,7 @@ type LibraryRoot struct {
 // Media 是单个可播放项。剧集链接到 SeriesID；电影 SeriesID == ""。
 type Media struct {
 	Base
-	LibraryID     string  `gorm:"index;size:36" json:"library_id"`
+	LibraryID     string  `gorm:"index;size:36;index:idx_media_library_release,priority:1" json:"library_id"`
 	LibraryRootID string  `gorm:"index;size:36" json:"library_root_id,omitempty"`
 	SeriesID      string  `gorm:"index;size:128" json:"series_id,omitempty"`
 	Title         string  `gorm:"size:255;not null" json:"title"`
@@ -46,7 +46,7 @@ type Media struct {
 	Overview      string  `gorm:"type:text" json:"overview,omitempty"`
 	Rating        float32 `json:"rating"`
 	Year          int     `json:"year"`
-	ReleaseDate   string  `gorm:"size:10;index" json:"release_date,omitempty"`
+	ReleaseDate   string  `gorm:"size:10;index:idx_media_library_release,priority:2" json:"release_date,omitempty"`
 	SeasonNum     int     `json:"season_num"`
 	EpisodeNum    int     `json:"episode_num"`
 	ScrapeStatus  string  `gorm:"size:16;default:pending" json:"scrape_status"`

@@ -207,9 +207,13 @@ async function toggleMediaFavourite(
   setFavourite: Dispatch<SetStateAction<boolean>>,
 ): Promise<void> {
   if (!media) return
-  const state = await playbackAPI.toggleFavourite(media.id)
-  setFavourite(state)
-  toast.success(state ? '已加入我的收藏' : '已取消收藏')
+  try {
+    const state = await playbackAPI.toggleFavourite(media.id)
+    setFavourite(state)
+    toast.success(state ? '已加入我的收藏' : '已取消收藏')
+  } catch (err: unknown) {
+    toast.error(apiErrorMessage(err, '收藏操作失败'))
+  }
 }
 
 async function rescrapeMedia(
@@ -218,13 +222,18 @@ async function rescrapeMedia(
   refresh: () => Promise<void>,
 ): Promise<void> {
   if (!media) return
-  await api.post(`/media/${media.id}/scrape`, {
-    episode_images: scrapeEpisodeArtwork,
-    refresh_matched: true,
-    include_matched: true,
-  })
+  try {
+    await api.post(`/media/${media.id}/scrape`, {
+      episode_images: scrapeEpisodeArtwork,
+      refresh_matched: true,
+      include_matched: true,
+    })
+  } catch (err: unknown) {
+    toast.error(apiErrorMessage(err, '触发重新刮削失败'))
+    return
+  }
   toast.success('已触发重新刮削')
-  await refresh()
+  await refresh().catch(() => undefined)
 }
 
 async function reprobeMedia(media: Media | null, refresh: () => Promise<void>): Promise<void> {
@@ -258,7 +267,12 @@ async function deleteMediaFromLibrary(media: Media | null, navigate: NavigateFun
     checkboxLabel: '同时删除本地文件（含同名 NFO）',
   })
   if (!result.confirmed) return
-  await mediaAPI.delete(media.id, { deleteFiles: result.checked })
+  try {
+    await mediaAPI.delete(media.id, { deleteFiles: result.checked })
+  } catch (err: unknown) {
+    toast.error(apiErrorMessage(err, '删除媒体失败'))
+    return
+  }
   toast.success(result.checked ? '已删除媒体及本地文件' : '已从媒体库删除')
   goBackFromMediaDetail(media, navigate, true)
 }

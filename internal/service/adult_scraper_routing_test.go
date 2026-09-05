@@ -20,7 +20,7 @@ func TestAdultProviderRouting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open sqlite: %v", err)
 	}
-	_ = db.AutoMigrate(&model.Setting{}, &model.ApiConfig{})
+	_ = db.AutoMigrate(&model.Setting{}, &model.APIConfig{})
 
 	repos := repository.New(db)
 

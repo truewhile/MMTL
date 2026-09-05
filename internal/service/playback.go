@@ -291,10 +291,29 @@ func (p *PlaybackService) GetPlaylist(ctx context.Context, playlistID string) (*
 	return &PlaylistDetail{Playlist: pl, Items: ordered}, nil
 }
 
+// ErrPlaylistForbidden 表示当前用户无权操作目标播放列表。
+var ErrPlaylistForbidden = errors.New("forbidden")
+
+// EnsurePlaylistOwner 校验播放列表属主；admin 可操作任意列表。
+// 非存在的列表返回 gorm.ErrRecordNotFound。
+func (p *PlaybackService) EnsurePlaylistOwner(ctx context.Context, playlistID, userID string, isAdmin bool) error {
+	var pl model.Playlist
+	if err := p.repo.DB.WithContext(ctx).Select("user_id").Where("id = ?", playlistID).First(&pl).Error; err != nil {
+		return err
+	}
+	if pl.UserID != userID && !isAdmin {
+		return ErrPlaylistForbidden
+	}
+	return nil
+}
+
 // AddToPlaylist appends a media item to the end of a playlist.
-func (p *PlaybackService) AddToPlaylist(ctx context.Context, playlistID, mediaID string) error {
+func (p *PlaybackService) AddToPlaylist(ctx context.Context, playlistID, userID, mediaID string, isAdmin bool) error {
+	if err := p.EnsurePlaylistOwner(ctx, playlistID, userID, isAdmin); err != nil {
+		return err
+	}
 	var count int64
-	if err := p.repo.DB.Model(&model.PlaylistItem{}).
+	if err := p.repo.DB.WithContext(ctx).Model(&model.PlaylistItem{}).
 		Where("playlist_id = ?", playlistID).Count(&count).Error; err != nil {
 		return err
 	}
@@ -307,14 +326,20 @@ func (p *PlaybackService) AddToPlaylist(ctx context.Context, playlistID, mediaID
 }
 
 // RemoveFromPlaylist 物理删除播放列表项（幂等）。
-func (p *PlaybackService) RemoveFromPlaylist(ctx context.Context, playlistID, mediaID string) error {
+func (p *PlaybackService) RemoveFromPlaylist(ctx context.Context, playlistID, userID, mediaID string, isAdmin bool) error {
+	if err := p.EnsurePlaylistOwner(ctx, playlistID, userID, isAdmin); err != nil {
+		return err
+	}
 	return p.repo.DB.WithContext(ctx).Unscoped().
 		Where("playlist_id = ? AND media_id = ?", playlistID, mediaID).
 		Delete(&model.PlaylistItem{}).Error
 }
 
 // DeletePlaylist 物理删除播放列表及其全部条目。
-func (p *PlaybackService) DeletePlaylist(ctx context.Context, playlistID string) error {
+func (p *PlaybackService) DeletePlaylist(ctx context.Context, playlistID, userID string, isAdmin bool) error {
+	if err := p.EnsurePlaylistOwner(ctx, playlistID, userID, isAdmin); err != nil {
+		return err
+	}
 	if err := p.repo.DB.WithContext(ctx).Unscoped().Where("playlist_id = ?", playlistID).
 		Delete(&model.PlaylistItem{}).Error; err != nil {
 		return err
