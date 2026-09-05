@@ -1,6 +1,6 @@
 // Package service — AES-GCM crypto helper for at-rest secrets.
 //
-// Sensitive fields (third-party API keys, qBittorrent passwords, …) are
+// Sensitive fields (third-party API keys, service passwords, …) are
 // stored in SQLite. We encrypt them with AES-256-GCM keyed off the JWT
 // secret so a stolen DB file alone is not enough to recover the
 // plaintext credentials.

@@ -29,7 +29,7 @@ services:
     ports:
       - "18080:8080"
 
-    # 让容器可以访问宿主机上的 qBittorrent。
+    # 让容器可以访问宿主机上的服务（如下载器）。
     # qB 地址通常可填：http://host.docker.internal:8085
     extra_hosts:
       - "host.docker.internal:host-gateway"

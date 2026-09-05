@@ -50,7 +50,7 @@ services:
         bind:
           create_host_path: false
 
-      # 下载目录。需要和 qBittorrent 保存路径保持一致。
+      # 下载目录。需要和下载器保存路径保持一致。
       # NAS 示例：source: /vol1/1000/Downloads
       # Windows Docker Desktop 示例：source: D:/Downloads
       - type: bind

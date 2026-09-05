@@ -2,7 +2,6 @@
 
 export * from './api'
 export * from './auth'
-export * from './downloads'
 export * from './events'
 export * from './history'
 export * from './library'

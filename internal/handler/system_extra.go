@@ -117,16 +117,6 @@ func schemaHandler(_ *service.Container) gin.HandlerFunc {
 					},
 				},
 				{
-					"key":   "qbittorrent",
-					"label": "qBittorrent",
-					"items": []gin.H{
-						{"key": "qbittorrent.url", "type": "text"},
-						{"key": "qbittorrent.username", "type": "text"},
-						{"key": "qbittorrent.password", "type": "text"},
-						{"key": "qbittorrent.savepath", "type": "text"},
-					},
-				},
-				{
 					"key":   "system-update",
 					"label": "系统更新",
 					"items": []gin.H{
