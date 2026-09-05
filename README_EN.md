@@ -49,7 +49,7 @@ In practice, MeBox gives you:
 | **Emby/Jellyfin client compatible** | Full Emby server protocol implementation: Infuse, SenPlayer, Fileball, and official Emby/Jellyfin clients can add MeBox as an Emby server and sign in with MeBox accounts — poster walls, watch progress, and multi-user work out of the box |
 | **Remote Emby mounts** | Browse remote Emby libraries inside MeBox without a separate Emby client |
 | **Cloud & STRM** | OpenList, CloudDrive2, 115, WebDAV; STRM sync; upload/download queues; direct or 302 playback |
-| **Downloads & organize** | qBittorrent, site search/subscriptions, post-download organization, file manager |
+| **Downloads & organize** | Scheduled download-folder organization (smart classification, auto library registration), file manager (copy/move/hardlink/symlink) |
 | **Users & permissions** | Admin/regular users, expiry, NSFW toggle, play-profile PIN, granular permissions |
 | **Operations** | Unified task queue, storage stats, DLNA casting, settings and logs |
 
@@ -162,7 +162,7 @@ environment:
 
 1. Create a library with a container path such as `/media/Movies`, then scan
 2. Add metadata providers (TMDb, Bangumi, etc.) in system settings
-3. Optionally connect qBittorrent (`http://host.docker.internal:8085` when qB runs on the host)
+3. Optionally set up download-folder auto-organization under file management so finished downloads land in the right library
 4. Optionally configure cloud accounts under STRM management
 5. Add the server in Emby-compatible players at `http://SERVER_IP:18080` using MeBox credentials
 
@@ -173,8 +173,8 @@ environment:
 **Library scan is slow**  
 Check path mapping and DB tier. Cloud scans also depend on API limits and folder size.
 
-**qBittorrent downloads are not organized**  
-Ensure the download directory is mounted into the container and env vars match.
+**Downloaded files are not organized**  
+Ensure the download directory is mounted into the container and env vars match. MeBox handles folder organization; run qBittorrent or any downloader yourself as a regular app.
 
 **Hardlink fails with cross-device link**  
 Hardlinks require the same filesystem/subvolume; use copy or symlink across disks or cloud mounts.

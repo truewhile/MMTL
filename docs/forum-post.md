@@ -90,7 +90,7 @@ GitHub：https://github.com/truewhile/MeBox
 
 ![文件管理](https://raw.githubusercontent.com/truewhile/MeBox/main/docs/tutorial-screenshots/11-file-manager.png)
 
-接入 qBittorrent，下载目录定时自动整理入媒体库：智能分类子库、自动注册目的地媒体库、复制/移动/硬链/软链多种整理方式，命名规则可配。
+配合任意下载器（qBittorrent、Transmission 等下载到本地目录即可），MeBox 定时自动整理入媒体库：智能分类子库、自动注册目的地媒体库、复制/移动/硬链/软链多种整理方式，命名规则可配。
 
 **10. 多用户与权限**
 
@@ -144,7 +144,7 @@ docker compose up -d
 - **网盘用户**：STRM 管理 → 添加网盘账号（115 可扫码）→ 添加同步目录 → 生成 STRM 后直链播放；
 - **已有 Emby**：Emby 挂载 → 添加 Emby 账号 → 勾选要挂载的媒体库；
 - **第三方播放器（Emby 客户端全兼容）**：Infuse / SenPlayer / Fileball / Emby、Jellyfin 官方客户端，按「添加 Emby 服务器」填 `http://服务器IP:18080`，用 MeBox 账号登录即可，原有使用习惯完全不变；
-- **下载党**：设置里接入 qBittorrent，配置下载目录自动整理，下完即入库。
+- **下载党**：qBittorrent 等任意下载器把视频下到下载目录，在文件管理里把它设为整理源，下完自动分类入库。
 
 ### 路径映射小抄（Docker 最常见坑）
 
