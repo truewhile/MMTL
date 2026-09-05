@@ -1161,3 +1161,48 @@ func TestWalk115FlatConcurrentProcessing(t *testing.T) {
 		t.Fatalf("incremental sync should skip all, new = %d skipped = %d", st2.rec.NewStrm, st2.rec.Skipped)
 	}
 }
+
+func TestCloud115FullPath(t *testing.T) {
+	paths := func(ids, names []string) []struct {
+		FileId string `json:"file_id"`
+		Name   string `json:"file_name"`
+	} {
+		out := make([]struct {
+			FileId string `json:"file_id"`
+			Name   string `json:"file_name"`
+		}, 0, len(ids))
+		for i := range ids {
+			out = append(out, struct {
+				FileId string `json:"file_id"`
+				Name   string `json:"file_name"`
+			}{FileId: ids[i], Name: names[i]})
+		}
+		return out
+	}
+
+	// 祖先链已包含当前目录自身（115 常规返回）
+	d := &cloud115.RemoteFileDetail{
+		FileId:   "330",
+		FileName: "剧集",
+		Paths:    paths([]string{"0", "100", "330"}, []string{"", "电影", "剧集"}),
+	}
+	if got := cloud115FullPath(d); got != "/电影/剧集" {
+		t.Fatalf("full path = %q, want /电影/剧集", got)
+	}
+
+	// 祖先链不含当前目录自身，用 FileName 兜底
+	d = &cloud115.RemoteFileDetail{
+		FileId:   "330",
+		FileName: "剧集",
+		Paths:    paths([]string{"0", "100"}, []string{"", "电影"}),
+	}
+	if got := cloud115FullPath(d); got != "/电影/剧集" {
+		t.Fatalf("full path = %q, want /电影/剧集", got)
+	}
+
+	// 根目录：无有效祖先段
+	d = &cloud115.RemoteFileDetail{FileId: "0"}
+	if got := cloud115FullPath(d); got != "" {
+		t.Fatalf("root full path = %q, want empty", got)
+	}
+}

@@ -36,7 +36,11 @@ type StrmSyncPath struct {
 	AccountID  string `gorm:"size:36;index" json:"account_id"` // StrmAccount.ID；local 为空
 	Provider   string `gorm:"size:32" json:"provider"`         // StrmProvider*（冗余，便于列表展示）
 	RemotePath string `gorm:"size:1024" json:"remote_path"`    // 远端目录：115=目录ID，OpenList/CD2=路径，local=源目录
-	LocalPath  string `gorm:"size:1024" json:"local_path"`     // STRM/元数据本地输出目录
+	// RemoteDisplayPath 是远端目录的完整展示路径（如 /电影/剧集）。115 的
+	// RemotePath 是目录 ID，用户无法辨认，浏览选择或按 ID 反查时把人类可读
+	// 路径存到这里；路径型网盘（CD2/OpenList）与 local 留空（RemotePath 即路径）。
+	RemoteDisplayPath string `gorm:"size:1024" json:"remote_display_path"`
+	LocalPath         string `gorm:"size:1024" json:"local_path"` // STRM/元数据本地输出目录
 	// STRM 链接配置（空值继承全局 strm.* 设置）
 	StrmBaseURL     string     `gorm:"size:512" json:"strm_base_url"`                  // 覆盖 strm.base_url
 	VideoExt        string     `gorm:"size:512" json:"video_ext"`                      // 逗号分隔，覆盖 strm.video_ext

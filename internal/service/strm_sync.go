@@ -6,10 +6,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -37,10 +37,10 @@ type strmSyncState struct {
 	syncType string
 
 	mu                  sync.Mutex
-	processed           int              // 已处理文件计数（用于定期落库进度）
-	lastProgressFlush   time.Time        // 上次进度落库时间
-	seenVideo           map[string]bool  // "v:"+去掉扩展名的相对路径 → 远端存在该视频
-	seenMeta            map[string]bool  // "m:"+相对路径 → 远端存在该元数据
+	processed           int               // 已处理文件计数（用于定期落库进度）
+	lastProgressFlush   time.Time         // 上次进度落库时间
+	seenVideo           map[string]bool   // "v:"+去掉扩展名的相对路径 → 远端存在该视频
+	seenMeta            map[string]bool   // "m:"+相对路径 → 远端存在该元数据
 	remoteMeta          map[string]int64  // 远端元数据大小（上传比对用）
 	remoteMetaRef       map[string]string // "m:"+相对路径 → 远端元数据文件引用（115 文件 ID，覆盖上传前删除旧文件用）
 	remoteMetaSha1      map[string]string // "m:"+相对路径 → 远端元数据内容 SHA1（115 列表返回；上传/下载精确比对用，其他网盘为空）
@@ -182,6 +182,66 @@ func (s *StrmService) ListRemoteDir(ctx context.Context, accountID, dir string) 
 		}
 	}
 	return provider.List(ctx, dir)
+}
+
+// ResolveRemoteDirPath 解析远端目录的完整展示路径。115 的目录以 ID 存储，
+// 用户无法辨认，这里按 ID 反查 115 返回的祖先链拼出人类可读路径；路径型
+// 网盘（CD2/OpenList）与本地目录的 remote_path 本身就是路径，原样返回。
+func (s *StrmService) ResolveRemoteDirPath(ctx context.Context, accountID, dir string) (string, error) {
+	acct, err := s.repo.StrmAccount.FindByID(ctx, accountID)
+	if err != nil || acct == nil {
+		return "", errNotFoundOr(err, "网盘账号不存在")
+	}
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return "", nil
+	}
+	if acct.Provider != model.StrmProvider115 {
+		return dir, nil
+	}
+	if dir == "0" {
+		return "", nil
+	}
+	provider, err := s.providerFor(ctx, acct)
+	if err != nil {
+		return "", err
+	}
+	oc, ok := provider.(interface{ OpenClient() *cloud115.OpenClient })
+	if !ok {
+		return "", fmt.Errorf("115: 客户端初始化失败")
+	}
+	detail, err := oc.OpenClient().GetFsDetailByCid(ctx, dir)
+	if err != nil {
+		return "", fmt.Errorf("115: 解析目录路径失败：%w", err)
+	}
+	return cloud115FullPath(detail), nil
+}
+
+// cloud115FullPath 把 115 目录详情的祖先链拼成以 / 开头的完整路径。
+func cloud115FullPath(detail *cloud115.RemoteFileDetail) string {
+	if detail == nil {
+		return ""
+	}
+	segments := make([]string, 0, len(detail.Paths)+1)
+	hasSelf := false
+	for _, p := range detail.Paths {
+		if p.FileId == "0" || p.FileId == "" {
+			continue
+		}
+		if p.FileId == detail.FileId {
+			hasSelf = true
+		}
+		if name := strings.TrimSpace(p.Name); name != "" {
+			segments = append(segments, name)
+		}
+	}
+	if !hasSelf && strings.TrimSpace(detail.FileName) != "" {
+		segments = append(segments, strings.TrimSpace(detail.FileName))
+	}
+	if len(segments) == 0 {
+		return ""
+	}
+	return "/" + strings.Join(segments, "/")
 }
 
 // runSync 执行同步主体；结束时更新记录与目录状态。
@@ -819,9 +879,9 @@ func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
 	}
 	fileCh := make(chan strmFileTask)
 	var (
-		procWg   sync.WaitGroup
+		procWg    sync.WaitGroup
 		procErrMu sync.Mutex
-		procErr  error
+		procErr   error
 	)
 	for i := 0; i < strmProcessWorkers; i++ {
 		procWg.Add(1)

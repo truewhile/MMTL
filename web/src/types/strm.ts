@@ -59,6 +59,7 @@ export interface StrmSyncPath {
   account_id: string
   provider: StrmProvider
   remote_path: string
+  remote_display_path?: string
   local_path: string
   strm_base_url: string
   video_ext: string
@@ -86,6 +87,7 @@ export interface StrmSyncPathInput {
   account_id?: string
   provider: StrmProvider
   remote_path: string
+  remote_display_path?: string
   local_path: string
   strm_base_url?: string
   video_ext?: string

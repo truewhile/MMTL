@@ -29,7 +29,7 @@ import {
   normalizeEmbyRemoteLines,
   type EmbyRemoteLine,
 } from '../utils/embyRemoteLines'
-import { lastPathSegment, syncLocalPathWithRemote } from '../utils/strmPaths'
+import { lastPathSegment, remoteTailNameOf, syncLocalPathWithRemote } from '../utils/strmPaths'
 
 // ─── 弹框外壳 ────────────────────────────────────────────────────────────────
 
@@ -573,22 +573,33 @@ export function StrmSettingsDialog({ onClose }: { onClose: () => void }) {
 
 // ─── 添加/编辑同步目录 ────────────────────────────────────────────────────────
 
+/** 推断已有配置当前实际拼在本地输出目录末尾的尾段（目录名或 115 目录 ID）。 */
+function initRemoteTail(existing: StrmSyncPath): string {
+  const cidTail = lastPathSegment(existing.remote_path)
+  const nameTail = existing.remote_display_path ? lastPathSegment(existing.remote_display_path) : ''
+  if (nameTail && lastPathSegment(existing.local_path) === nameTail) return nameTail
+  return cidTail
+}
+
 export function StrmSyncPathDialog({
   accounts,
   existing,
   onClose,
   onSaved,
+  onOpenSettings,
 }: {
   accounts: StrmAccount[]
   existing: StrmSyncPath | null
   onClose: () => void
   onSaved: () => void
+  onOpenSettings?: () => void
 }) {
   const [form, setForm] = useState<StrmSyncPathInput>(() => ({
     name: existing?.name ?? '',
     provider: existing?.provider ?? 'cloud115',
     account_id: existing?.account_id ?? '',
     remote_path: existing?.remote_path ?? '',
+    remote_display_path: existing?.remote_display_path ?? '',
     local_path: existing?.local_path ?? '',
     strm_base_url: existing?.strm_base_url ?? '',
     video_ext: existing?.video_ext ?? '',
@@ -607,22 +618,68 @@ export function StrmSyncPathDialog({
   const [saving, setSaving] = useState(false)
   const [browsing, setBrowsing] = useState(false)
   const [browsingLocal, setBrowsingLocal] = useState<null | 'remote_path' | 'local_path'>(null)
-  const prevRemoteTailRef = useRef(existing ? lastPathSegment(existing.remote_path) : '')
+  // 输入框显示的远端目录文本：对于 115 优先显示完整路径，若尚未反查到则显示 ID
+  const [remoteInputValue, setRemoteInputValue] = useState(
+    () => existing?.remote_display_path || existing?.remote_path || '',
+  )
+  // 反查展示路径的序号守卫：远端目录快速连续变更时丢弃过期响应
+  const resolveSeqRef = useRef(0)
+  // prevRemoteTailRef 记录当前拼在本地输出目录末尾、由本弹窗管理的尾段。
+  // 兼容两类历史数据：新版保存的 local_path 末段是目录名，旧版是目录 ID。
+  const prevRemoteTailRef = useRef(existing ? initRemoteTail(existing) : '')
 
   const set = <K extends keyof StrmSyncPathInput>(key: K, value: StrmSyncPathInput[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
 
-  const updateRemotePath = (remotePath: string) => {
+  const updateRemotePath = (remotePath: string, displayPath?: string) => {
+    const shown = (displayPath || remotePath).trim()
+    setRemoteInputValue(shown)
     setForm((f) => {
-      const synced = syncLocalPathWithRemote(f.local_path, remotePath, prevRemoteTailRef.current)
+      const tail = remoteTailNameOf(remotePath, displayPath)
+      const synced = syncLocalPathWithRemote(f.local_path, remotePath, prevRemoteTailRef.current, tail)
       prevRemoteTailRef.current = synced.remoteTail
-      return { ...f, remote_path: remotePath, local_path: synced.localPath }
+      return {
+        ...f,
+        remote_path: remotePath,
+        remote_display_path: displayPath ?? '',
+        local_path: synced.localPath,
+      }
     })
+  }
+
+  // 按 ID 反查完整展示路径。默认仅补展示、不改动已配置的本地输出目录；
+  // resyncTail 用于手动输入 ID 的新配置：把刚拼上的 ID 尾段替换为目录名。
+  const resolveDisplayPath = (accountId: string, remotePath: string, resyncTail = false) => {
+    const seq = ++resolveSeqRef.current
+    strmAPI
+      .resolveRemoteDirPath(accountId, remotePath)
+      .then((fullPath) => {
+        if (seq !== resolveSeqRef.current) return
+        if (fullPath) setRemoteInputValue(fullPath)
+        setForm((f) => {
+          if (f.remote_path !== remotePath) return f
+          if (resyncTail) {
+            const tail = remoteTailNameOf(remotePath, fullPath)
+            const synced = syncLocalPathWithRemote(f.local_path, remotePath, prevRemoteTailRef.current, tail)
+            prevRemoteTailRef.current = synced.remoteTail
+            return { ...f, remote_display_path: fullPath, local_path: synced.localPath }
+          }
+          // 旧配置的 local_path 末段若恰好就是目录名，把它认作受管尾段，
+          // 后续重新选择目录时才能正确替换而不是叠加
+          const tail = lastPathSegment(fullPath)
+          if (tail && prevRemoteTailRef.current !== tail && lastPathSegment(f.local_path) === tail) {
+            prevRemoteTailRef.current = tail
+          }
+          return { ...f, remote_display_path: fullPath }
+        })
+      })
+      .catch(() => undefined)
   }
 
   const commitLocalPath = (localPath: string) => {
     setForm((f) => {
-      const synced = syncLocalPathWithRemote(localPath, f.remote_path, prevRemoteTailRef.current)
+      const tail = remoteTailNameOf(f.remote_path, f.remote_display_path)
+      const synced = syncLocalPathWithRemote(localPath, f.remote_path, prevRemoteTailRef.current, tail)
       prevRemoteTailRef.current = synced.remoteTail
       return { ...f, local_path: synced.localPath }
     })
@@ -630,11 +687,30 @@ export function StrmSyncPathDialog({
 
   const isLocal = form.provider === 'local'
   const availableAccounts = accounts.filter((a) => a.provider === form.provider && a.has_credential)
+  const remoteDisplayPath = isLocal ? '' : form.remote_display_path?.trim() ?? ''
+  const remoteTail = isLocal ? '' : remoteTailNameOf(form.remote_path, remoteDisplayPath)
+
+  // 编辑旧配置时若尚未存展示路径，按 ID 反查补齐并更新输入框展示
+  useEffect(() => {
+    if (isLocal || form.provider !== 'cloud115') return
+    if (!form.account_id || !form.remote_path || form.remote_display_path) return
+    resolveDisplayPath(form.account_id, form.remote_path)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
     setSaving(true)
     try {
+      if (!existing) {
+        const settings = await strmAPI.getSettings()
+        if (!settings?.['strm.base_url']?.trim()) {
+          toast.error('未填写strm地址')
+          onClose()
+          onOpenSettings?.()
+          return
+        }
+      }
       if (existing) {
         await strmAPI.updatePath(existing.id, form)
         toast.success('同步目录已更新')
@@ -671,6 +747,9 @@ export function StrmSyncPathDialog({
                 const provider = e.target.value as StrmProvider
                 set('provider', provider)
                 set('account_id', '')
+                set('remote_path', '')
+                set('remote_display_path', '')
+                setRemoteInputValue('')
               }}
             >
               <option value="cloud115">115 网盘</option>
@@ -707,17 +786,39 @@ export function StrmSyncPathDialog({
                   isLocal
                     ? '扫描该目录下的视频生成 strm'
                     : form.provider === 'cloud115'
-                      ? '115 目录 ID（可通过浏览选择）'
+                      ? form.remote_path
+                        ? `115 目录 ID：${form.remote_path}（可通过右侧「浏览」选择更换）`
+                        : '可通过右侧「浏览」选择 115 目录，或直接粘贴目录 ID'
                       : '远端路径（可通过浏览选择）'
                 }
               >
                 <input
                   className={inputCls}
-                  value={form.remote_path}
-                  placeholder={isLocal ? 'D:\\movies' : '/'}
-                  onChange={(e) => set('remote_path', e.target.value)}
+                  value={remoteInputValue}
+                  placeholder={isLocal ? 'D:\\movies' : form.provider === 'cloud115' ? '点击右侧「浏览」选择目录' : '/'}
+                  onChange={(e) => setRemoteInputValue(e.target.value)}
                   onBlur={(e) => {
-                    if (!isLocal) updateRemotePath(e.target.value)
+                    const value = e.target.value.trim()
+                    if (isLocal) {
+                      set('remote_path', value)
+                      return
+                    }
+                    if (form.provider === 'cloud115') {
+                      if (!value) {
+                        updateRemotePath('', '')
+                        return
+                      }
+                      // 若用户直接输入/粘贴纯数字目录 ID，触发反查并自动替换为完整路径
+                      if (/^\d+$/.test(value)) {
+                        updateRemotePath(value, '')
+                        if (form.account_id) resolveDisplayPath(form.account_id, value, true)
+                        return
+                      }
+                      // 若当前展示的是完整路径且未变动，不做处理
+                      if (value === form.remote_display_path) return
+                    } else {
+                      updateRemotePath(value)
+                    }
                   }}
                 />
               </Field>
@@ -745,8 +846,8 @@ export function StrmSyncPathDialog({
               <Field
                 label="本地输出目录"
                 hint={
-                  !isLocal && lastPathSegment(form.remote_path)
-                    ? `将自动拼接远端末级目录「${lastPathSegment(form.remote_path)}」`
+                  !isLocal && remoteTail
+                    ? `将自动拼接远端末级目录「${remoteTail}」`
                     : '生成的 .strm 与下载的元数据写到这里的对应目录结构下'
                 }
               >
@@ -774,20 +875,6 @@ export function StrmSyncPathDialog({
         <details className="rounded-2xl border border-gray-100 bg-gray-50/50 p-3">
           <summary className="cursor-pointer text-sm font-semibold text-ink-600">高级选项</summary>
           <div className="mt-3 space-y-3">
-            <div className="grid gap-3 md:grid-cols-2">
-              <Field label="STRM 基础地址（覆盖全局）" hint="留空使用全局 STRM 设置">
-                <input className={inputCls} value={form.strm_base_url ?? ''} placeholder="http://host:port" onChange={(e) => set('strm_base_url', e.target.value)} />
-              </Field>
-              <Field label="最小视频大小(MB)" hint="0 表示继承全局设置">
-                <input
-                  className={inputCls}
-                  type="number"
-                  min={0}
-                  value={form.min_video_size_mb ?? 0}
-                  onChange={(e) => set('min_video_size_mb', Number(e.target.value))}
-                />
-              </Field>
-            </div>
             <div className="grid gap-3 md:grid-cols-3">
               <Field label="视频扩展名（覆盖全局）">
                 <input className={inputCls} value={form.video_ext ?? ''} placeholder="mkv,mp4,avi" onChange={(e) => set('video_ext', e.target.value)} />
@@ -800,6 +887,15 @@ export function StrmSyncPathDialog({
               </Field>
             </div>
             <div className="grid gap-3 md:grid-cols-3">
+              <Field label="最小视频大小(MB)" hint="0 表示继承全局设置">
+                <input
+                  className={inputCls}
+                  type="number"
+                  min={0}
+                  value={form.min_video_size_mb ?? 0}
+                  onChange={(e) => set('min_video_size_mb', Number(e.target.value))}
+                />
+              </Field>
               <Field label="STRM 链接 path 参数">
                 <select className={inputCls} value={form.add_path ?? 1} onChange={(e) => set('add_path', Number(e.target.value))}>
                   <option value={1}>完整远端路径</option>
@@ -813,10 +909,10 @@ export function StrmSyncPathDialog({
                   <option value="full">全量同步（全量校验）</option>
                 </select>
               </Field>
-              <Field label="定时同步 Cron" hint="5 段表达式，如 0 */6 * * *">
-                <input className={inputCls} value={form.cron ?? ''} placeholder="0 */6 * * *" onChange={(e) => set('cron', e.target.value)} />
-              </Field>
             </div>
+            <Field label="定时同步 Cron" hint="5 段表达式，如 0 */6 * * *">
+              <input className={inputCls} value={form.cron ?? ''} placeholder="0 */6 * * *" onChange={(e) => set('cron', e.target.value)} />
+            </Field>
             <div className="grid gap-2 md:grid-cols-2">
               <ToggleRow label="下载元数据" checked={form.download_meta ?? true} onChange={(v) => set('download_meta', v)} />
               <ToggleRow label="上传元数据" checked={form.upload_meta ?? false} onChange={(v) => set('upload_meta', v)} />
@@ -842,8 +938,8 @@ export function StrmSyncPathDialog({
         <StrmDirBrowserDialog
           accountId={form.account_id}
           initialDir={form.remote_path || undefined}
-          onSelect={(id) => {
-            updateRemotePath(id)
+          onSelect={(id, _name, fullPath) => {
+            updateRemotePath(id, form.provider === 'cloud115' ? fullPath : undefined)
             setBrowsing(false)
           }}
           onClose={() => setBrowsing(false)}
@@ -882,6 +978,12 @@ function ToggleRow({ label, checked, onChange }: { label: string; checked: boole
   )
 }
 
+/** 把浏览时经过的目录名称链拼成以 / 开头的完整展示路径。 */
+function chainFullPath(chain: { id: string; name: string }[]): string {
+  const names = chain.map((item) => item.name.trim()).filter(Boolean)
+  return names.length > 0 ? '/' + names.join('/') : ''
+}
+
 // ─── 远端目录浏览选择器 ───────────────────────────────────────────────────────
 
 function StrmDirBrowserDialog({
@@ -892,25 +994,28 @@ function StrmDirBrowserDialog({
 }: {
   accountId: string
   initialDir?: string
-  onSelect: (path: string) => void
+  onSelect: (id: string, name?: string, fullPath?: string) => void
   onClose: () => void
 }) {
   const [dir, setDir] = useState(initialDir ?? '')
-  const [crumbs, setCrumbs] = useState<string[]>([])
   const [entries, setEntries] = useState<StrmRemoteEntry[]>([])
   const [loading, setLoading] = useState(true)
+  // 已进入目录的名称链：面包屑按名称展示，「选择当前目录」时回传末级名称
+  const [dirChain, setDirChain] = useState<{ id: string; name: string }[]>([])
+  const dirChainRef = useRef<{ id: string; name: string }[]>([])
   // 递增序号守卫：快速连续进入目录时丢弃过期目录响应
   const loadSeqRef = useRef(0)
 
-  const load = async (target: string) => {
+  const load = async (target: string, nextChain?: { id: string; name: string }[]) => {
     const seq = ++loadSeqRef.current
     setLoading(true)
     try {
       const list = await strmAPI.listRemoteDir(accountId, target)
       if (seq !== loadSeqRef.current) return
+      if (nextChain) dirChainRef.current = nextChain
       setEntries(list)
       setDir(target)
-      setCrumbs(target ? target.split('/').filter(Boolean) : [])
+      setDirChain([...dirChainRef.current])
     } catch (err) {
       if (seq !== loadSeqRef.current) return
       toast.error(apiErrorMessage(err))
@@ -924,7 +1029,13 @@ function StrmDirBrowserDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountId])
 
-  const enterDir = (id: string) => load(id).catch(() => undefined)
+  const enterDir = (entry: StrmRemoteEntry) => {
+    const chain = [...dirChainRef.current]
+    const existingIdx = chain.findIndex((item) => item.id === entry.id)
+    if (existingIdx >= 0) chain.splice(existingIdx + 1)
+    else chain.push({ id: entry.id, name: entry.name })
+    load(entry.id, chain).catch(() => undefined)
+  }
 
   return (
     <div
@@ -944,13 +1055,13 @@ function StrmDirBrowserDialog({
           </button>
         </div>
         <div className="flex items-center gap-1 border-b border-gray-100 px-6 py-2.5 text-xs text-sand-500">
-          <button type="button" className="hover:text-brand-500" onClick={() => enterDir('')}>
+          <button type="button" className="hover:text-brand-500" onClick={() => load('', [])}>
             根目录
           </button>
-          {crumbs.map((crumb, index) => (
-            <span key={crumb + index} className="flex items-center gap-1">
+          {(dirChain.length > 0 ? dirChain.map((item) => item.name) : dir.split('/').filter(Boolean)).map((label, index) => (
+            <span key={label + index} className="flex items-center gap-1">
               <ChevronRight size={12} />
-              <span>{crumb}</span>
+              <span>{label}</span>
             </span>
           ))}
           <span className="ml-2 text-ink-50">{dir || '（根目录 / 0）'}</span>
@@ -971,8 +1082,8 @@ function StrmDirBrowserDialog({
                     key={entry.id}
                     type="button"
                     className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition hover:bg-gray-50"
-                    onClick={() => (entry.is_dir ? enterDir(entry.id) : undefined)}
-                    onDoubleClick={() => entry.is_dir && enterDir(entry.id)}
+                    onClick={() => (entry.is_dir ? enterDir(entry) : undefined)}
+                    onDoubleClick={() => entry.is_dir && enterDir(entry)}
                   >
                     <Icon size={16} className={entry.is_dir ? 'text-brand-400' : 'text-sand-400'} />
                     <span className="flex-1 truncate text-ink-600">{entry.name}</span>
@@ -982,7 +1093,7 @@ function StrmDirBrowserDialog({
                         className="rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-500 hover:bg-brand-100"
                         onClick={(e) => {
                           e.stopPropagation()
-                          onSelect(entry.id)
+                          onSelect(entry.id, entry.name, chainFullPath([...dirChainRef.current, { id: entry.id, name: entry.name }]))
                         }}
                       >
                         选择此目录
@@ -998,7 +1109,12 @@ function StrmDirBrowserDialog({
         </div>
         <div className="flex items-center justify-between border-t border-gray-100 px-6 py-3">
           <span className="text-xs text-sand-500">双击进入目录，点击「选择此目录」使用该目录 ID / 路径</span>
-          <button type="button" className="neon-button" onClick={() => onSelect(dir)} disabled={loading}>
+          <button
+            type="button"
+            className="neon-button"
+            onClick={() => onSelect(dir, dirChain[dirChain.length - 1]?.name, chainFullPath(dirChain))}
+            disabled={loading}
+          >
             选择当前目录
           </button>
         </div>

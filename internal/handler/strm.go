@@ -3,6 +3,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/url"
@@ -172,6 +173,19 @@ func listStrmRemoteDirHandler(svc *service.Container) gin.HandlerFunc {
 	}
 }
 
+// resolveStrmRemoteDirHandler 按远端目录引用（115 为目录 ID）反查完整展示路径。
+func resolveStrmRemoteDirHandler(svc *service.Container) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		dir := strings.TrimSpace(c.Query("dir"))
+		path, err := svc.Strm.ResolveRemoteDirPath(c.Request.Context(), c.Param("id"), dir)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"path": path})
+	}
+}
+
 // ─── 全局设置 ──────────────────────────────────────────────────────────────────
 
 func getStrmSettingsHandler(svc *service.Container) gin.HandlerFunc {
@@ -203,24 +217,25 @@ func updateStrmSettingsHandler(svc *service.Container) gin.HandlerFunc {
 // ─── 同步目录 ──────────────────────────────────────────────────────────────────
 
 type strmSyncPathReq struct {
-	Name           string `json:"name"`
-	AccountID      string `json:"account_id"`
-	Provider       string `json:"provider"`
-	RemotePath     string `json:"remote_path"`
-	LocalPath      string `json:"local_path"`
-	StrmBaseURL    string `json:"strm_base_url"`
-	VideoExt       string `json:"video_ext"`
-	MetaExt        string `json:"meta_ext"`
-	ExcludeName    string `json:"exclude_name"`
-	MinVideoSizeMB int64  `json:"min_video_size_mb"`
-	AddPath        int    `json:"add_path"`
-	DownloadMeta   *bool  `json:"download_meta"`
-	UploadMeta     *bool  `json:"upload_meta"`
-	DeleteDir      *bool  `json:"delete_dir"`
-	Cron           string `json:"cron"`
-	EnableCron     *bool  `json:"enable_cron"`
-	SyncMode       string `json:"sync_mode"`
-	Enabled        *bool  `json:"enabled"`
+	Name              string `json:"name"`
+	AccountID         string `json:"account_id"`
+	Provider          string `json:"provider"`
+	RemotePath        string `json:"remote_path"`
+	RemoteDisplayPath string `json:"remote_display_path"`
+	LocalPath         string `json:"local_path"`
+	StrmBaseURL       string `json:"strm_base_url"`
+	VideoExt          string `json:"video_ext"`
+	MetaExt           string `json:"meta_ext"`
+	ExcludeName       string `json:"exclude_name"`
+	MinVideoSizeMB    int64  `json:"min_video_size_mb"`
+	AddPath           int    `json:"add_path"`
+	DownloadMeta      *bool  `json:"download_meta"`
+	UploadMeta        *bool  `json:"upload_meta"`
+	DeleteDir         *bool  `json:"delete_dir"`
+	Cron              string `json:"cron"`
+	EnableCron        *bool  `json:"enable_cron"`
+	SyncMode          string `json:"sync_mode"`
+	Enabled           *bool  `json:"enabled"`
 }
 
 type strmSyncPathView struct {
@@ -239,6 +254,16 @@ func strmSyncPathViews(svc *service.Container, c *gin.Context, paths []model.Str
 				view.AccountName = acct.Name
 				view.AccountEnabled = acct.Enabled
 			}
+		}
+		// 历史 115 数据若尚未记录展示路径，尝试反查一次并回写数据库自愈
+		if p.Provider == model.StrmProvider115 && strings.TrimSpace(p.RemoteDisplayPath) == "" && strings.TrimSpace(p.RemotePath) != "" && p.AccountID != "" {
+			resolveCtx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
+			if fullPath, err := svc.Strm.ResolveRemoteDirPath(resolveCtx, p.AccountID, p.RemotePath); err == nil && fullPath != "" {
+				view.RemoteDisplayPath = fullPath
+				p.RemoteDisplayPath = fullPath
+				_ = svc.Repo.StrmSyncPath.Update(context.Background(), &p)
+			}
+			cancel()
 		}
 		out = append(out, view)
 	}
@@ -663,24 +688,25 @@ func strmPlayHandler(svc *service.Container) gin.HandlerFunc {
 // strmSyncPathFromReq 组装同步目录模型（缺省值交给服务层处理）。
 func strmSyncPathFromReq(req strmSyncPathReq) *model.StrmSyncPath {
 	return &model.StrmSyncPath{
-		Name:           strings.TrimSpace(req.Name),
-		AccountID:      strings.TrimSpace(req.AccountID),
-		Provider:       strings.TrimSpace(req.Provider),
-		RemotePath:     strings.TrimSpace(req.RemotePath),
-		LocalPath:      strings.TrimSpace(req.LocalPath),
-		StrmBaseURL:    strings.TrimSpace(req.StrmBaseURL),
-		VideoExt:       req.VideoExt,
-		MetaExt:        req.MetaExt,
-		ExcludeName:    req.ExcludeName,
-		MinVideoSizeMB: req.MinVideoSizeMB,
-		AddPath:        req.AddPath,
-		DownloadMeta:   boolValue(req.DownloadMeta, true),
-		UploadMeta:     boolValue(req.UploadMeta, false),
-		DeleteDir:      boolValue(req.DeleteDir, false),
-		Cron:           strings.TrimSpace(req.Cron),
-		EnableCron:     boolValue(req.EnableCron, false),
-		SyncMode:       strings.TrimSpace(req.SyncMode),
-		Enabled:        boolValue(req.Enabled, true),
+		Name:              strings.TrimSpace(req.Name),
+		AccountID:         strings.TrimSpace(req.AccountID),
+		Provider:          strings.TrimSpace(req.Provider),
+		RemotePath:        strings.TrimSpace(req.RemotePath),
+		RemoteDisplayPath: strings.TrimSpace(req.RemoteDisplayPath),
+		LocalPath:         strings.TrimSpace(req.LocalPath),
+		StrmBaseURL:       strings.TrimSpace(req.StrmBaseURL),
+		VideoExt:          req.VideoExt,
+		MetaExt:           req.MetaExt,
+		ExcludeName:       req.ExcludeName,
+		MinVideoSizeMB:    req.MinVideoSizeMB,
+		AddPath:           req.AddPath,
+		DownloadMeta:      boolValue(req.DownloadMeta, true),
+		UploadMeta:        boolValue(req.UploadMeta, false),
+		DeleteDir:         boolValue(req.DeleteDir, false),
+		Cron:              strings.TrimSpace(req.Cron),
+		EnableCron:        boolValue(req.EnableCron, false),
+		SyncMode:          strings.TrimSpace(req.SyncMode),
+		Enabled:           boolValue(req.Enabled, true),
 	}
 }
 

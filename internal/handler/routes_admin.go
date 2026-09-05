@@ -62,6 +62,7 @@ func registerAdminStrmRoutes(admin *gin.RouterGroup, svc *service.Container) {
 	admin.DELETE("/strm/accounts/:id", deleteStrmAccountHandler(svc))
 	admin.POST("/strm/accounts/:id/test", testStrmAccountHandler(svc))
 	admin.GET("/strm/accounts/:id/list", listStrmRemoteDirHandler(svc))
+	admin.GET("/strm/accounts/:id/resolve", resolveStrmRemoteDirHandler(svc))
 	admin.GET("/strm/115/sources", listStrm115SourcesHandler(svc))
 	admin.POST("/strm/accounts/:id/oauth/start", startStrm115OAuthHandler(svc))
 	admin.POST("/strm/accounts/:id/oauth/poll", pollStrm115OAuthHandler(svc))

@@ -80,6 +80,12 @@ export const strmAPI = {
       .get<StrmRemoteEntry[]>(`/admin/strm/accounts/${accountId}/list`, { params: { dir } })
       .then((r) => r.data),
 
+  // 按远端目录引用（115 为目录 ID）反查完整展示路径
+  resolveRemoteDirPath: (accountId: string, dir: string) =>
+    api
+      .get<{ path: string }>(`/admin/strm/accounts/${accountId}/resolve`, { params: { dir } })
+      .then((r) => r.data.path),
+
   list115Sources: () =>
     api.get<Strm115Sources>('/admin/strm/115/sources').then((r) => r.data),
 
