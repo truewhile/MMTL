@@ -3,10 +3,10 @@ name: Build & Publish
 # 版本策略（version 分支托管，main 零污染）：
 # - VERSION 文件单独存放在 version 分支，CI 构建时读取并自增写回 version 分支，
 #   main 分支不再出现任何 CI 提交，本地推送永不与远程冲突。
-# - push 到 main：发布 latest 镜像并部署服务器，版本号自动 patch+1。
-# - push tag v*：正式发版，版本号取 tag 名（不 bump version 分支），
-#   发布版本镜像、GitHub Release 与多平台单文件二进制。
-# - 手动触发：等同正式发版，版本号在 version 分支当前值上自增。
+# - push 到 main：版本号自动 patch+1，发布 latest + 版本镜像、GitHub Release、
+#   多平台单文件二进制，并部署服务器。
+# - push tag v*：正式发版，版本号取 tag 名（不 bump version 分支），其余同上。
+# - 手动触发：版本号在 version 分支当前值上自增，等同 push main 全量发布。
 # 查看当前版本号：git show origin/version:VERSION
 on:
   push:
@@ -25,7 +25,6 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       release_tag: ${{ steps.version.outputs.release_tag }}
-      is_release: ${{ steps.version.outputs.is_release }}
     steps:
       - uses: actions/checkout@v4
 
@@ -43,15 +42,8 @@ jobs:
             PATCH=$(echo "$BASE" | cut -d. -f3)
             VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
           fi
-          # tag / 手动触发视为正式发版；日常 push main 仅滚动 latest
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.ref_type }}" = "tag" ]; then
-            IS_RELEASE=true
-          else
-            IS_RELEASE=false
-          fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "release_tag=mebox-v${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "is_release=${IS_RELEASE}" >> "$GITHUB_OUTPUT"
           echo "new_version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       # 2. 把新版本号写回 version 分支（clone 单分支写入，冲突时 rebase 重试）
@@ -116,9 +108,7 @@ jobs:
 
   # 单文件可执行构建：把前端打包进二进制（go:embed），交叉编译 Windows /
   # Linux / macOS 的 amd64 / arm64 产物，作为 GitHub Release 附件发布。
-  # 仅正式发版（tag v* 或手动触发）时执行。
   build-frontend:
-    if: needs.build-image.outputs.is_release == 'true'
     needs: [build-image]
     runs-on: ubuntu-latest
     steps:
@@ -144,7 +134,6 @@ jobs:
   # 先创建（幂等）空的 GitHub Release，供后续 build-binaries 并行上传附件，
   # 也避免矩阵各 job 并发 upload 时 release 尚不存在而互相竞争。
   publish-create-release:
-    if: needs.build-image.outputs.is_release == 'true'
     needs: [build-image]
     runs-on: ubuntu-latest
     permissions:
@@ -168,7 +157,6 @@ jobs:
             --verify-tag --latest || true
 
   build-binaries:
-    if: needs.build-image.outputs.is_release == 'true'
     needs: [build-image, build-frontend, publish-create-release]
     runs-on: ubuntu-latest
     permissions:
