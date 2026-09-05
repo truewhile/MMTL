@@ -52,16 +52,28 @@ func (s *StrmService) downloadWorker(ctx context.Context) {
 			sleepContext(ctx, 2*time.Second)
 			continue
 		}
-		var wg sync.WaitGroup
+		// 处于 WAF 冷却的 115 任务先退回，剩余任务在派发前按账号批量换链：
+		// downurl 支持逗号分隔多个 pick_code，整批任务一次请求即可完成解析，
+		// 显著减少全局 QPS 限流下的换链请求量。
+		runnable := make([]*model.StrmDownloadTask, 0, len(tasks))
 		for i := range tasks {
+			task := &tasks[i]
+			if task.Provider == model.StrmProvider115 && s.wafCooldownLeft() > 0 {
+				s.requeueDownloadTask(task)
+				continue
+			}
+			runnable = append(runnable, task)
+		}
+		if len(runnable) == 0 {
+			continue
+		}
+		resolved := s.batchResolve115Links(ctx, runnable)
+		var wg sync.WaitGroup
+		for i := range runnable {
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()
-				task := &tasks[i]
-				if task.Provider == model.StrmProvider115 && s.wafCooldownLeft() > 0 {
-					s.requeueDownloadTask(task)
-					return
-				}
+				task := runnable[i]
 				if !s.acquireDownloadSlot(ctx, task.Provider) {
 					s.requeueDownloadTask(task)
 					return
@@ -76,13 +88,76 @@ func (s *StrmService) downloadWorker(ctx context.Context) {
 							s.downloadTaskFailWithRetry(task, "任务执行异常中断")
 						}
 					}()
-					s.processDownloadTask(ctx, task)
+					s.processDownloadTask(ctx, task, resolved)
 					completed = true
 				})
 			}(i)
 		}
 		wg.Wait()
 	}
+}
+
+// dlResolveKey 构造批量换链结果 map 的键（按账号隔离，避免极端情况下不同
+// 账号的引用串扰）。
+func dlResolveKey(accountID, fileRef string) string {
+	return accountID + "|" + fileRef
+}
+
+// batchResolve115Links 在派发执行前对 115 下载任务做批量换链。官方 downurl
+// 接口支持逗号分隔多个 pick_code（文档《获取文件下载地址》），按账号把整批
+// 任务的 pickcode 合并换取，减少 QPS 限流下的换链请求量。解析结果写入
+// pickcode 直链缓存供任务执行时命中；批量失败只记日志并触发风控冷却判定，
+// 未解析成功的任务在执行时回退到逐个 Resolve，不影响任务本身。
+func (s *StrmService) batchResolve115Links(ctx context.Context, tasks []*model.StrmDownloadTask) map[string]*cloud.DirectLink {
+	byAcct := map[string][]string{}
+	seenRef := map[string]map[string]struct{}{}
+	for _, task := range tasks {
+		if task.Provider != model.StrmProvider115 {
+			continue
+		}
+		ref := strings.TrimSpace(task.RemoteRef)
+		if ref == "" {
+			continue
+		}
+		if seenRef[task.AccountID] == nil {
+			seenRef[task.AccountID] = map[string]struct{}{}
+		}
+		if _, dup := seenRef[task.AccountID][ref]; dup {
+			continue
+		}
+		seenRef[task.AccountID][ref] = struct{}{}
+		byAcct[task.AccountID] = append(byAcct[task.AccountID], ref)
+	}
+	resolved := map[string]*cloud.DirectLink{}
+	for acctID, refs := range byAcct {
+		acct, err := s.repo.StrmAccount.FindByID(ctx, acctID)
+		if err != nil || acct == nil {
+			continue
+		}
+		provider, err := s.providerFor(ctx, acct)
+		if err != nil {
+			continue
+		}
+		batch, ok := provider.(cloud.BatchResolver)
+		if !ok {
+			continue
+		}
+		links, err := batch.ResolveBatch(ctx, refs)
+		if err != nil {
+			if is115Blocked(err) {
+				s.triggerWAFCooldown()
+			}
+			s.log.Warn("batch resolve 115 download links failed; fall back to per-task resolve",
+				zap.String("account_id", acctID), zap.Int("refs", len(refs)), zap.Error(err))
+		}
+		for ref, link := range links {
+			if link == nil || link.URL == "" {
+				continue
+			}
+			resolved[dlResolveKey(acctID, ref)] = link
+		}
+	}
+	return resolved
 }
 
 // requeueDownloadTask 把已认领但未实际执行的任务退回 pending，避免长期停留在 running。
@@ -104,7 +179,9 @@ func (s *StrmService) requeueDownloadTask(task *model.StrmDownloadTask) {
 	}
 }
 
-func (s *StrmService) processDownloadTask(ctx context.Context, task *model.StrmDownloadTask) {
+// processDownloadTask 处理单个下载任务：解析直链（优先使用批量换链预取的
+// 结果，未命中时逐个 Resolve）→ 下载 → 落盘。
+func (s *StrmService) processDownloadTask(ctx context.Context, task *model.StrmDownloadTask, resolved map[string]*cloud.DirectLink) {
 	cleanPath := sanitizeLocalPath(task.LocalPath)
 	if cleanPath != "" && cleanPath != task.LocalPath {
 		task.LocalPath = cleanPath
@@ -137,13 +214,16 @@ func (s *StrmService) processDownloadTask(ctx context.Context, task *model.StrmD
 		s.downloadTaskFailWithRetry(task, err.Error())
 		return
 	}
-	link, err := provider.Resolve(ctx, task.RemoteRef)
-	if err != nil {
-		if is115Blocked(err) {
-			s.triggerWAFCooldown()
+	link, ok := resolved[dlResolveKey(task.AccountID, task.RemoteRef)]
+	if !ok || link == nil || link.URL == "" {
+		link, err = provider.Resolve(ctx, task.RemoteRef)
+		if err != nil {
+			if is115Blocked(err) {
+				s.triggerWAFCooldown()
+			}
+			s.downloadTaskFailWithRetry(task, "解析下载地址失败："+err.Error())
+			return
 		}
-		s.downloadTaskFailWithRetry(task, "解析下载地址失败："+err.Error())
-		return
 	}
 	if err := downloadToFile(ctx, link, task.LocalPath, s.http); err != nil {
 		// 直链失效（403/404/410 等）：清掉缓存让下一轮重新换取
@@ -285,6 +365,20 @@ func (s *StrmService) processUpload115(ctx context.Context, task *model.StrmUplo
 	if !ok {
 		finish(model.StrmTaskFailed, "该网盘不支持元数据上传")
 		return
+	}
+	// 以本地为准：网盘端已有同名但内容不同的旧元数据时，先删除旧文件再上传。
+	// 115 的上传接口不保证同名覆盖，直接上传可能产生同名重复文件；删除失败则
+	// 任务重试（旧文件 ID 失效的场景会在下次同步后自动修复）。
+	if task.RemoteRef != "" {
+		open115, ok := provider.(cloud.OpenAPI115Provider)
+		if !ok {
+			finish(model.StrmTaskFailed, "该网盘不支持删除远端旧元数据")
+			return
+		}
+		if err := open115.OpenClient().DeleteFiles(ctx, task.RemotePath, task.RemoteRef); err != nil {
+			s.uploadTaskFailWithRetry(task, "删除网盘旧元数据失败："+err.Error())
+			return
+		}
 	}
 	f, err := os.Open(task.LocalPath)
 	if err != nil {
@@ -765,12 +859,15 @@ func (s *StrmService) wafCooldownLeft() time.Duration {
 }
 
 // is115Blocked 判断错误是否来自 115 的风控/限流（WAF 405 拦截页或限流错误码）。
+// 覆盖两层文案：HTTP 层（doJSON 的"接口触发频控/安全拦截（HTTP 405）"）与
+// 业务错误码层（OpenAPIError 的"115 接口错误（406/770004）"）。
 func is115Blocked(err error) bool {
 	if err == nil {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "115 接口返回 http 405") ||
+		strings.Contains(msg, "115 接口触发频控/安全拦截") ||
 		strings.Contains(msg, "访问被阻断") ||
 		strings.Contains(msg, "request has been blocked") ||
 		strings.Contains(msg, "115 接口错误（770004") ||

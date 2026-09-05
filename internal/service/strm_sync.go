@@ -41,7 +41,9 @@ type strmSyncState struct {
 	lastProgressFlush   time.Time        // 上次进度落库时间
 	seenVideo           map[string]bool  // "v:"+去掉扩展名的相对路径 → 远端存在该视频
 	seenMeta            map[string]bool  // "m:"+相对路径 → 远端存在该元数据
-	remoteMeta          map[string]int64 // 远端元数据大小（上传比对用）
+	remoteMeta          map[string]int64  // 远端元数据大小（上传比对用）
+	remoteMetaRef       map[string]string // "m:"+相对路径 → 远端元数据文件引用（115 文件 ID，覆盖上传前删除旧文件用）
+	remoteMetaSha1      map[string]string // "m:"+相对路径 → 远端元数据内容 SHA1（115 列表返回；上传/下载精确比对用，其他网盘为空）
 	seenMetaTarget      map[string]cloud.FileEntry
 	seenVideoTarget     map[string]cloud.FileEntry
 	activeDownloadPaths map[string]bool // 本地已在排队/进行的下载任务路径（内存去重）
@@ -50,6 +52,7 @@ type strmSyncState struct {
 	pendingUploads      []*model.StrmUploadTask
 	dirCache            sync.Map          // dirID (string) -> relativePath (string)
 	dirPathToID         map[string]string // relativePath (string) -> dirID（115 上传父目录寻址用，walk 后构建）
+	dirCacheDirty       map[string]string // 待批量落库的目录缓存（dirID → 相对路径），避免逐目录单条 upsert
 
 	scanIncomplete atomic.Bool // 远端目录树/文件列表本次扫描不完整 → 禁止增量 prune 误删本地文件
 }
@@ -201,6 +204,8 @@ func (s *StrmService) runSync(ctx context.Context, p *model.StrmSyncPath, rec *m
 		seenVideo:       map[string]bool{},
 		seenMeta:        map[string]bool{},
 		remoteMeta:      map[string]int64{},
+		remoteMetaRef:   map[string]string{},
+		remoteMetaSha1:  map[string]string{},
 		seenMetaTarget:  map[string]cloud.FileEntry{},
 		seenVideoTarget: map[string]cloud.FileEntry{},
 	}
@@ -330,6 +335,11 @@ func (st *strmSyncState) run() error {
 // 令牌桶限流（QPS/QPM/QPH），并发请求自动排队，不会触发风控；并发让
 // 多个目录列表请求的网络往返彼此重叠，大幅缩短大目录树同步耗时。
 const strmScanWorkers = 8
+
+// strmProcessWorkers 115 平铺拉取后本地文件分类处理（生成 strm/元数据入队）
+// 的 worker 数。本地磁盘 I/O 是大库同步的尾部瓶颈，输出目录在网络挂载上尤甚；
+// processRemoteFile 的共享状态均由 st.mu 保护，可安全并发。
+const strmProcessWorkers = 8
 
 // walkRemote 并发广度优先遍历网盘目录树。
 // 多个 worker 并行执行 List（受全局 115 令牌桶限流约束），子目录动态
@@ -509,8 +519,8 @@ func (st *strmSyncState) isMetaExt(ext string) bool {
 
 // cleanDirRel 对 115 扁平化拉取的目录相对路径逐段套用目录级文件名清洗，
 // 确保与 walkRemote / joinLocalRel（sanitizeRelativePath）使用同一套清洗规则。
-// 若不清洗，目录名中的冒号等非法字符会直达 rel，而 seenVideo/seenMeta 的 key
-// 与磁盘实际路径不一致，导致 pruneLocal 误删已下载的 strm / 元数据。
+// 若不清洗，目录名中的冒号等非法字符会直达 rel，而 seenVideo/remoteMeta 的 key
+// 与磁盘实际路径不一致，导致 pruneLocal 误删已下载的 strm、上传误传或重复下载。
 // 空 rel（根目录）原样返回。
 func cleanDirRel(rel string) string {
 	if rel == "" {
@@ -528,6 +538,34 @@ func cleanDirRel(rel string) string {
 		}
 	}
 	return strings.Join(out, "/")
+}
+
+// deferDirCacheSave 暂存一条目录缓存写入，由 flushDirCacheSave 统一批量落库。
+// 首次全量同步可能有上万个目录，逐目录单条 upsert 会造成明显的 SQLite 写锁
+// 竞争；内存 dirCache（sync.Map）始终即时可用，落库仅服务于下次增量预加载。
+func (st *strmSyncState) deferDirCacheSave(dirID, relPath string) {
+	st.mu.Lock()
+	if st.dirCacheDirty == nil {
+		st.dirCacheDirty = map[string]string{}
+	}
+	st.dirCacheDirty[dirID] = relPath
+	st.mu.Unlock()
+}
+
+// flushDirCacheSave 把暂存的目录缓存一次性批量落库；失败仅记日志（缓存缺失
+// 只影响下次增量的目录解析提速，正确性由"重新向 115 获取"兜底）。
+func (st *strmSyncState) flushDirCacheSave() {
+	st.mu.Lock()
+	dirty := st.dirCacheDirty
+	st.dirCacheDirty = nil
+	st.mu.Unlock()
+	if len(dirty) == 0 {
+		return
+	}
+	if err := st.s.repo.StrmDirCache.SetBatch(st.ctx, st.p.ID, dirty); err != nil {
+		st.s.log.Warn("batch save strm dir cache failed",
+			zap.Error(err), zap.Int("count", len(dirty)), zap.String("path_id", st.p.ID))
+	}
 }
 
 // walk115Flat 使用 115 开放平台扁平化分页批量拉取机制与目录拓扑缓存（参考 QMediaSync）。
@@ -721,7 +759,7 @@ func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
 							// 解析相对路径
 							relPath := cleanDirRel(detail.RelativePath(rootCID))
 							st.dirCache.Store(pid, relPath)
-							_ = st.s.repo.StrmDirCache.Set(ctx, st.p.ID, pid, relPath)
+							st.deferDirCacheSave(pid, relPath)
 
 							// 顺便解析并缓存 detail.Paths 中包含的中间各层级目录
 							for _, ancestor := range detail.Paths {
@@ -742,7 +780,7 @@ func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
 									}
 									ancestorRel := cleanDirRel(subDetail.RelativePath(rootCID))
 									st.dirCache.Store(ancestor.FileId, ancestorRel)
-									_ = st.s.repo.StrmDirCache.Set(ctx, st.p.ID, ancestor.FileId, ancestorRel)
+									st.deferDirCacheSave(ancestor.FileId, ancestorRel)
 								}
 							}
 						}
@@ -757,6 +795,9 @@ func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
 			}()
 		}
 		pwg.Wait()
+		// 目录解析阶段结束即批量落库已解析的缓存：失败路径也保留部分成果，
+		// 下次同步可少解析一批目录。
+		st.flushDirCacheSave()
 		if firstErr != nil {
 			// 目录树解析失败会导致 rel 塌缩，若继续处理会让大量本地文件
 			// 被错误判定为"云端不存在"而重复下载/上传，并可能误删本地文件。
@@ -767,10 +808,57 @@ func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
 
 	st.updateSyncMessage(fmt.Sprintf("正在生成 STRM 与同步文件 (共 %d 个)...", len(allFiles)))
 
-	// 5. 分类处理所有文件
+	// 5. 分类处理所有文件。本地磁盘 I/O（Stat/读内容比对/写盘）远慢于列表
+	// 拉取，串行消化是大库同步的尾部瓶颈（输出目录在网络挂载上尤甚）；
+	// processRemoteFile 的共享状态均由 st.mu 保护（walkRemote 已并发调用），
+	// 这里用有界 worker 池并行处理。rel 构建依赖 dirCache 且需在父目录缺失
+	// 时整体中止，保留在生产者侧串行完成。
+	type strmFileTask struct {
+		file cloud115.RemoteFile
+		rel  string
+	}
+	fileCh := make(chan strmFileTask)
+	var (
+		procWg   sync.WaitGroup
+		procErrMu sync.Mutex
+		procErr  error
+	)
+	for i := 0; i < strmProcessWorkers; i++ {
+		procWg.Add(1)
+		go func() {
+			defer procWg.Done()
+			if err := helper.Recover(st.s.log, "strm.sync.walk115.process", func() error {
+				for t := range fileCh {
+					// 中止（ctx 取消）后排空队列即可，不再产生任何写操作
+					if ctx.Err() != nil {
+						continue
+					}
+					entry := cloud.FileEntry{
+						ID:       t.file.FileId,
+						Name:     t.file.FileName,
+						IsDir:    false,
+						Size:     t.file.FileSize,
+						MTime:    t.file.Utime,
+						PickCode: t.file.PickCode,
+						Sha1:     t.file.Sha1,
+					}
+					st.processRemoteFile(entry, t.rel)
+				}
+				return nil
+			}); err != nil {
+				procErrMu.Lock()
+				if procErr == nil {
+					procErr = err
+				}
+				procErrMu.Unlock()
+				cancel()
+			}
+		}()
+	}
+feed:
 	for _, f := range allFiles {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			break
 		}
 		cleanName := cleanEntryName(f.FileName, false)
 		var rel string
@@ -783,21 +871,27 @@ func (st *strmSyncState) walk115Flat(open115 *cloud115.OpenClient) error {
 				// 父目录不在目录缓存，无法还原真实相对路径。若继续用塌缩后的
 				// 根路径处理，该文件会被错误判定，导致重复下载/上传或误删本地文件。
 				// 目录树不完整时宁可中止本次同步，也不带着损坏的 rel 继续执行。
-				return fmt.Errorf("115: 文件 %s 的父目录未解析成功，目录树不完整，中止同步以防误删/误传", cleanName)
+				procErrMu.Lock()
+				if procErr == nil {
+					procErr = fmt.Errorf("115: 文件 %s 的父目录未解析成功，目录树不完整，中止同步以防误删/误传", cleanName)
+				}
+				procErrMu.Unlock()
+				cancel()
+				break
 			}
 		}
-		entry := cloud.FileEntry{
-			ID:       f.FileId,
-			Name:     f.FileName,
-			IsDir:    false,
-			Size:     f.FileSize,
-			MTime:    f.Utime,
-			PickCode: f.PickCode,
+		select {
+		case fileCh <- strmFileTask{file: f, rel: rel}:
+		case <-ctx.Done():
+			break feed
 		}
-		st.processRemoteFile(entry, rel)
 	}
-
-	return nil
+	close(fileCh)
+	procWg.Wait()
+	if procErr != nil {
+		return procErr
+	}
+	return ctx.Err()
 }
 
 // handleVideo 生成/更新 .strm 文件。
@@ -933,11 +1027,46 @@ func (st *strmSyncState) strmPathParam(rel string) string {
 	}
 }
 
-// recordRemoteMeta 记录远端存在的元数据索引及文件大小。
+// usableSha1 归一化远端内容哈希：115 对目录/未完成文件可能返回空串或占位符 "-"，均视为不可用。
+func usableSha1(sha string) string {
+	sha = strings.TrimSpace(sha)
+	if sha == "-" {
+		return ""
+	}
+	return sha
+}
+
+// localSha1Matches 计算本地文件 SHA1 并与远端哈希做大小写不敏感比对
+// （115 列表返回大写 hex，本地计算为小写）。读取/哈希失败按"视为同一文件"
+// 处理，避免瞬时读文件错误触发大规模重复上传/下载。
+func (st *strmSyncState) localSha1Matches(path, remoteSha1 string) bool {
+	local, err := cloud115.FileSHA1(path)
+	if err != nil {
+		st.s.log.Warn("strm 计算本地元数据 SHA1 失败，按同一文件处理",
+			zap.String("path", path), zap.Error(err))
+		return true
+	}
+	return strings.EqualFold(local, remoteSha1)
+}
+
+// recordRemoteMeta 记录远端存在的元数据索引、文件大小、文件引用及内容 SHA1。
 func (st *strmSyncState) recordRemoteMeta(entry cloud.FileEntry, rel string) {
 	st.mu.Lock()
+	if st.remoteMeta == nil {
+		st.remoteMeta = map[string]int64{}
+	}
+	if st.remoteMetaRef == nil {
+		st.remoteMetaRef = map[string]string{}
+	}
+	if st.remoteMetaSha1 == nil {
+		st.remoteMetaSha1 = map[string]string{}
+	}
 	st.seenMeta["m:"+rel] = true
 	st.remoteMeta["m:"+rel] = entry.Size
+	st.remoteMetaRef["m:"+rel] = entry.ID
+	if sha := usableSha1(entry.Sha1); sha != "" {
+		st.remoteMetaSha1["m:"+rel] = sha
+	}
 	st.mu.Unlock()
 }
 
@@ -971,7 +1100,8 @@ func (st *strmSyncState) flushPendingUploads() {
 	}
 }
 
-// handleMeta 元数据入下载队列（本地已存在且大小一致则跳过）。
+// handleMeta 元数据入下载队列。本地已存在时：开启上传元数据则一律跳过（以本地
+// 为准）；否则大小与 SHA1（115 提供）均一致视为同一文件跳过，内容不同则下载覆盖。
 func (st *strmSyncState) handleMeta(entry cloud.FileEntry, rel, ext string) {
 	st.recordRemoteMeta(entry, rel)
 
@@ -993,9 +1123,22 @@ func (st *strmSyncState) handleMeta(entry cloud.FileEntry, rel, ext string) {
 	st.seenMetaTarget[target] = entry
 	st.mu.Unlock()
 
-	if info, err := os.Stat(target); err == nil && info.Size() == entry.Size {
-		st.touchProgress()
-		return
+	if info, err := os.Stat(target); err == nil {
+		// 开启上传元数据时以本地为准：本地已存在的元数据不再用远端版本覆盖，
+		// 与网盘版本的差异交给上传队列把本地文件推回网盘，避免下载/上传
+		// 两个队列互相覆盖形成回环。
+		if st.cfg.UploadMeta {
+			st.touchProgress()
+			return
+		}
+		// 同名同大小：115 提供远端 SHA1 时做内容级比对，网盘更新了同大小
+		// 元数据也能被下载到本地；无哈希（其他网盘/列表未返回）或哈希一致
+		// 视为同一文件跳过。
+		remoteSha := usableSha1(entry.Sha1)
+		if info.Size() == entry.Size && (remoteSha == "" || st.localSha1Matches(target, remoteSha)) {
+			st.touchProgress()
+			return
+		}
 	}
 	st.mu.Lock()
 	if st.activeDownloadPaths == nil {
@@ -1135,6 +1278,8 @@ func (st *strmSyncState) walkLocalSource() error {
 }
 
 // scanLocalMetaForUpload 扫描本地元数据，与远端比对后入上传队列。
+// 以本地为准：网盘端不存在、同名不同大小、或同名同大小但 SHA1 不同（115 提供
+// 远端哈希时做内容级比对）均入队覆盖上传；同名同大小同内容视为同一文件跳过。
 func (st *strmSyncState) scanLocalMetaForUpload() error {
 	defer st.flushPendingUploads()
 	if st.activeUploadPaths == nil {
@@ -1174,12 +1319,22 @@ func (st *strmSyncState) scanLocalMetaForUpload() error {
 			return nil
 		}
 		st.mu.Lock()
-		_, exists := st.remoteMeta["m:"+rel]
+		remoteSize, exists := st.remoteMeta["m:"+rel]
+		remoteRef := st.remoteMetaRef["m:"+rel]
+		remoteSha1 := st.remoteMetaSha1["m:"+rel]
 		st.mu.Unlock()
-		if exists {
-			// 网盘端已存在该元数据文件，跳过上传
-			return nil
+		if exists && remoteSize == info.Size() {
+			// 网盘端同名同大小：候选同一文件。115 提供远端 SHA1 时做内容级比对，
+			// 识别"同大小不同内容"（如 nfo 改一个字符长度不变）避免漏传；
+			// 无哈希（其他网盘/列表未返回）视为同一文件，保持大小比对兜底。
+			if remoteSha1 == "" || st.localSha1Matches(path, remoteSha1) {
+				return nil
+			}
 		}
+		// 入队上传（以本地为准）：网盘端不存在；或同名但大小不同（必然内容不同）；
+		// 或同名同大小但 SHA1 不同（精确比对发现的同大小不同内容）。
+		// 115 的上传接口不保证同名覆盖，任务携带远端旧文件 ID（RemoteRef），
+		// 由上传端先删旧文件再上传；WebDAV/OpenList 的 PutFile 本身即覆盖上传。
 		st.mu.Lock()
 		if st.activeUploadPaths != nil && st.activeUploadPaths[path] {
 			st.mu.Unlock()
@@ -1199,6 +1354,9 @@ func (st *strmSyncState) scanLocalMetaForUpload() error {
 			RemotePath: st.uploadRemoteTarget(rel),
 			Size:       info.Size(),
 			Status:     model.StrmTaskPending,
+		}
+		if exists && st.p.Provider == model.StrmProvider115 {
+			task.RemoteRef = remoteRef
 		}
 		st.mu.Lock()
 		st.pendingUploads = append(st.pendingUploads, task)
@@ -1260,10 +1418,11 @@ func (st *strmSyncState) taskExists(kind, syncPathID, localPath string) bool {
 	return count > 0
 }
 
-// pruneLocal 清理本地多余 .strm 与元数据（远端已不存在），可选删除空目录。
+// pruneLocal 清理本地多余 .strm（远端已不存在的视频），可选删除空目录。
+// 元数据文件（nfo/图片/字幕等）一律保留：本地刮削结果不因网盘端缺失而被删除。
 func (st *strmSyncState) pruneLocal() error {
 	// 增量同步保护：本次远端扫描不完整（目录详情解析失败 / 文件父路径降级）时，
-	// seenVideo/seenMeta 覆盖不全，按"远端不存在"清理会误删刚下载或已存在的本地文件，
+	// seenVideo 覆盖不全，按"远端不存在"清理会误删刚下载或已存在的本地 .strm，
 	// 进而触发"下次增量重新下载"的循环。此时跳过清理，仅做进度落库。
 	if st.syncType == model.StrmSyncTypeIncremental && st.scanIncomplete.Load() {
 		st.s.log.Warn("strm 增量同步跳过清理：本次远端扫描不完整，prune 已禁用",
@@ -1295,15 +1454,10 @@ func (st *strmSyncState) pruneLocal() error {
 		rel = filepath.ToSlash(rel)
 		ext := strings.ToLower(filepath.Ext(rel))
 		remove := false
-		switch {
-		case ext == ".strm":
+		if ext == ".strm" {
 			relSansExt := rel[:len(rel)-len(ext)]
 			st.mu.Lock()
 			remove = !st.seenVideo["v:"+relSansExt]
-			st.mu.Unlock()
-		case st.isMetaExt(ext) && st.cfg.DownloadMeta && !st.cfg.UploadMeta && st.p.Provider != model.StrmProviderLocal:
-			st.mu.Lock()
-			remove = !st.seenMeta["m:"+rel]
 			st.mu.Unlock()
 		}
 		if remove {

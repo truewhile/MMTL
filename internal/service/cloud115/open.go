@@ -225,6 +225,62 @@ func (c *OpenClient) GetDownloadURLWithUA(ctx context.Context, pickCode, ua stri
 	return first.URL.URL, nil
 }
 
+// downurlBatchSize 单次批量换取直链的 pick_code 数上限。官方 /open/ufile/downurl
+// 支持逗号分隔多个 pick_code，批量可大幅降低元数据下载的换链请求量；大小取
+// 保守值，减小单个违规/异常文件导致整批失败的爆炸半径。
+const downurlBatchSize = 10
+
+// GetDownloadURLsBatch 批量获取下载直链（pickcode → URL）。先查进程内缓存，
+// 仅对未命中的 pick_code 分片发起批量请求；单个分片失败时返回已解析的部分与
+// 错误，调用方对缺失项回退到逐个 GetDownloadURLWithUA。UA 语义与单个换取
+// 一致：直链绑定换取时的 UA，后续下载必须携带同一 UA。
+func (c *OpenClient) GetDownloadURLsBatch(ctx context.Context, pickCodes []string, ua string) (map[string]string, error) {
+	ua = strings.TrimSpace(ua)
+	out := make(map[string]string, len(pickCodes))
+	seen := make(map[string]struct{}, len(pickCodes))
+	missing := make([]string, 0, len(pickCodes))
+	for _, pc := range pickCodes {
+		pc = strings.TrimSpace(pc)
+		if pc == "" {
+			continue
+		}
+		if _, dup := seen[pc]; dup {
+			continue
+		}
+		seen[pc] = struct{}{}
+		if cached := GetDownloadURLCache(pc, ua); cached != "" {
+			out[pc] = cached
+			continue
+		}
+		missing = append(missing, pc)
+	}
+	for start := 0; start < len(missing); start += downurlBatchSize {
+		end := start + downurlBatchSize
+		if end > len(missing) {
+			end = len(missing)
+		}
+		chunk := missing[start:end]
+		params := map[string]string{"pick_code": strings.Join(chunk, ",")}
+		resp, err := c.doAuthJSONWithUA(ctx, "POST", ProAPIBase+"/open/ufile/downurl", params, 1, ua)
+		if err != nil {
+			return out, err
+		}
+		var data map[string]downloadURLData
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			return out, fmt.Errorf("115: 解析下载地址失败：%w", err)
+		}
+		// 响应以文件 ID 为键，条目内的 pick_code 用于映射回请求侧
+		for _, item := range data {
+			if item.PickCode == "" || item.URL.URL == "" {
+				continue
+			}
+			SetDownloadURLCache(item.PickCode, item.URL.URL, ua)
+			out[item.PickCode] = item.URL.URL
+		}
+	}
+	return out, nil
+}
+
 // ─── 授权（设备码扫码） ──────────────────────────────────────────────────────
 
 // QrCodeScanStatus 扫码状态。

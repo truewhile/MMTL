@@ -901,6 +901,53 @@ func (r *StrmDirCacheRepository) Set(ctx context.Context, syncPathID, dirID, pat
 	})
 }
 
+// SetBatch 批量 upsert 目录缓存（dirID → 相对路径）。单个事务内先查出已存在
+// 行再分流更新/插入，替代同步流程逐目录单条 Set，避免首次全量同步上万目录时
+// 的 SQLite 写锁竞争。同一 dirID 的重复项以 map 语义取最后一次写入。
+func (r *StrmDirCacheRepository) SetBatch(ctx context.Context, syncPathID string, paths map[string]string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	return withSQLiteBusyRetry(ctx, func() error {
+		return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			ids := make([]string, 0, len(paths))
+			for dirID := range paths {
+				ids = append(ids, dirID)
+			}
+			var existing []model.StrmDirCache
+			if err := tx.Where("sync_path_id = ? AND dir_id IN ?", syncPathID, ids).Find(&existing).Error; err != nil {
+				return err
+			}
+			existingRowID := make(map[string]string, len(existing))
+			for _, row := range existing {
+				existingRowID[row.DirID] = row.ID
+			}
+			now := time.Now()
+			var creates []model.StrmDirCache
+			for dirID, path := range paths {
+				if rowID, ok := existingRowID[dirID]; ok {
+					if err := tx.Model(&model.StrmDirCache{}).Where("id = ?", rowID).Updates(map[string]any{
+						"path":       path,
+						"updated_at": now,
+					}).Error; err != nil {
+						return err
+					}
+					continue
+				}
+				creates = append(creates, model.StrmDirCache{
+					SyncPathID: syncPathID,
+					DirID:      dirID,
+					Path:       path,
+				})
+			}
+			if len(creates) > 0 {
+				return tx.CreateInBatches(creates, 100).Error
+			}
+			return nil
+		})
+	})
+}
+
 func (r *StrmDirCacheRepository) DeleteBySyncPathID(ctx context.Context, syncPathID string) error {
 	return withSQLiteBusyRetry(ctx, func() error {
 		return r.db.WithContext(ctx).Unscoped().Where("sync_path_id = ?", syncPathID).Delete(&model.StrmDirCache{}).Error

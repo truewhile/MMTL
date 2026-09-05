@@ -67,7 +67,7 @@ var StrmSettingDefs = map[string]struct {
 	StrmSettingMinVideoSizeMB:  {Default: "0", Label: "最小视频大小(MB)", Kind: "number", Help: "小于该大小的视频文件不生成 STRM，0 表示不限"},
 	StrmSettingAddPath:         {Default: "1", Label: "STRM 链接 path 参数", Kind: "choice", Choices: []string{"1", "2", "3"}, Help: "1=附带完整远端路径 2=仅文件名 3=不带 path"},
 	StrmSettingDownloadMeta:    {Default: "true", Label: "下载元数据", Kind: "bool", Help: "同步时把远端 nfo/图片/字幕下载到本地输出目录"},
-	StrmSettingUploadMeta:      {Default: "false", Label: "上传元数据", Kind: "bool", Help: "同步时把本地元数据上传到远端（需网盘支持写入）"},
+	StrmSettingUploadMeta:      {Default: "false", Label: "上传元数据", Kind: "bool", Help: "同步时把本地元数据上传到远端；本地与网盘元数据不同时以本地为准覆盖（需网盘支持写入）"},
 	StrmSettingDeleteDir:       {Default: "false", Label: "清理空目录", Kind: "bool", Help: "清理远端已删除的多余 .strm/元数据后，删除空目录"},
 	Strm115RelayKeySetting:     {Default: "", Label: "115 中继授权共享密钥", Kind: "text", Help: "QMediaSync/MQFamily 中继授权的共享 AES 密钥（OAUTH_RELAY_ENCRYPTION_KEY）；不配置则中继授权不可用"},
 	StrmSettingDownloadThreads: {Default: "6", Label: "下载队列线程数", Kind: "number", Help: "OpenList/CloudDrive2 元数据下载并发数（115 独立限速为 3）"},

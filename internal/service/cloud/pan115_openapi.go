@@ -56,8 +56,9 @@ func (p *openAPI115Provider) Ping(ctx context.Context) error {
 }
 
 func (p *openAPI115Provider) List(ctx context.Context, dirID string) ([]FileEntry, error) {
-	// 115 开放平台列表接口按 offset/limit 分页，这里循环取完整个目录
-	const pageSize = 100
+	// 115 开放平台列表接口按 offset/limit 分页，这里循环取完整个目录；
+	// limit 上限 1150（官方文档《获取文件列表》），取上限减少大目录翻页次数
+	const pageSize = 1150
 	var out []FileEntry
 	for offset := 0; ; offset += pageSize {
 		files, _, err := p.c.GetFsList(ctx, dirID, offset, pageSize)
@@ -72,6 +73,7 @@ func (p *openAPI115Provider) List(ctx context.Context, dirID string) ([]FileEntr
 				Size:     f.FileSize,
 				MTime:    f.ModifiedAt(),
 				PickCode: f.PickCode,
+				Sha1:     f.Sha1,
 			})
 		}
 		if len(files) < pageSize {
@@ -103,6 +105,19 @@ func (p *openAPI115Provider) ResolveWithUA(ctx context.Context, fileRef, ua stri
 		bound = cloud115.DefaultUA
 	}
 	return &DirectLink{URL: url, Proxy: false, Headers: map[string]string{"User-Agent": bound}}, nil
+}
+
+// ResolveBatch 批量换取直链（downurl 支持逗号分隔多 pick_code，一次请求覆盖
+// 整批下载任务的换链）。返回 pickcode → 直链，未解析成功的引用不在结果中；
+// err 非 nil 表示批量过程部分/全部失败，调用方对缺失项回退到逐个 Resolve。
+// 下载队列统一使用默认 UA，与单个换取的防盗链绑定语义一致。
+func (p *openAPI115Provider) ResolveBatch(ctx context.Context, fileRefs []string) (map[string]*DirectLink, error) {
+	urls, err := p.c.GetDownloadURLsBatch(ctx, fileRefs, "")
+	out := make(map[string]*DirectLink, len(urls))
+	for pc, u := range urls {
+		out[pc] = &DirectLink{URL: u, Proxy: false, Headers: map[string]string{"User-Agent": cloud115.DefaultUA}}
+	}
+	return out, err
 }
 
 // OpenClient 暴露底层客户端（token 刷新用）。

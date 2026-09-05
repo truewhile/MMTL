@@ -344,14 +344,19 @@ func TestSanitizePathWithSpecialChars(t *testing.T) {
 	}
 }
 
-// TestScanLocalMetaForUpload 验证元数据上传比对逻辑：网盘已存在跳过，网盘不存在才入队上传。
+// TestScanLocalMetaForUpload 验证元数据上传比对逻辑：网盘同名同大小（同一文件）跳过，
+// 网盘不存在或同名不同大小（内容不同的元数据文件）以本地为准入队上传。
 func TestScanLocalMetaForUpload(t *testing.T) {
 	svc := testStrmService(t)
 	localDir := t.TempDir()
 
-	// 本地有 2 个元数据：poster.jpg 和 fanart.jpg
+	// 本地有 3 个元数据：
+	// poster.jpg  — 网盘已有同名同大小 → 同一文件，跳过
+	// fanart.jpg  — 网盘没有 → 上传
+	// tvshow.nfo  — 网盘已有同名但大小不同（内容不同的元数据文件）→ 以本地为准覆盖上传
 	writeFile(t, filepath.Join(localDir, "动漫", "poster.jpg"), "poster-data")
 	writeFile(t, filepath.Join(localDir, "动漫", "fanart.jpg"), "fanart-data")
+	writeFile(t, filepath.Join(localDir, "动漫", "tvshow.nfo"), "local-nfo-data")
 
 	p := &model.StrmSyncPath{
 		Base:       model.Base{ID: "test-path-upload"},
@@ -363,35 +368,47 @@ func TestScanLocalMetaForUpload(t *testing.T) {
 	}
 
 	st := &strmSyncState{
-		s:          svc,
-		ctx:        context.Background(),
-		p:          p,
-		cfg:        &strmPathConfig{UploadMeta: true, MetaExt: []string{"jpg", "nfo"}},
-		rec:        &model.StrmSyncRecord{},
-		seenMeta:   map[string]bool{},
-		remoteMeta: map[string]int64{},
+		s:             svc,
+		ctx:           context.Background(),
+		p:             p,
+		cfg:           &strmPathConfig{UploadMeta: true, MetaExt: []string{"jpg", "nfo"}},
+		rec:           &model.StrmSyncRecord{},
+		seenMeta:      map[string]bool{},
+		remoteMeta:    map[string]int64{},
+		remoteMetaRef: map[string]string{},
 	}
 
-	// 模拟远端已存在 poster.jpg
-	st.remoteMeta["m:动漫/poster.jpg"] = 1000
+	// 模拟远端已存在 poster.jpg（与本地同一文件）和 tvshow.nfo（与本地不同）
+	st.remoteMeta["m:动漫/poster.jpg"] = int64(len("poster-data"))
+	st.remoteMeta["m:动漫/tvshow.nfo"] = 999
 
 	if err := st.scanLocalMetaForUpload(); err != nil {
 		t.Fatalf("scanLocalMetaForUpload failed: %v", err)
 	}
 
-	// 此时应该只有 fanart.jpg 入队上传，poster.jpg 被跳过
+	// fanart.jpg（网盘缺失）与 tvshow.nfo（网盘版本不同）入队，poster.jpg 跳过
 	tasks, _, err := svc.repo.StrmUpload.List(context.Background(), "", 1, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tasks) != 1 {
-		t.Fatalf("expected 1 upload task (fanart.jpg), got %d", len(tasks))
+	if len(tasks) != 2 {
+		t.Fatalf("expected 2 upload tasks (fanart.jpg, tvshow.nfo), got %d", len(tasks))
 	}
-	if tasks[0].FileName != "fanart.jpg" {
-		t.Errorf("expected upload task for fanart.jpg, got %s", tasks[0].FileName)
+	got := map[string]model.StrmUploadTask{}
+	for _, task := range tasks {
+		got[task.FileName] = task
+	}
+	if _, ok := got["fanart.jpg"]; !ok {
+		t.Errorf("expected upload task for fanart.jpg, got %v", taskNames(tasks))
+	}
+	if _, ok := got["tvshow.nfo"]; !ok {
+		t.Errorf("expected upload task for tvshow.nfo (local wins), got %v", taskNames(tasks))
+	}
+	if _, ok := got["poster.jpg"]; ok {
+		t.Errorf("poster.jpg (same size on remote) should be skipped")
 	}
 
-	// 再次扫描：fanart.jpg 已经在队列中，应自动去重，不重复入队
+	// 再次扫描：已入队的文件自动去重，不重复入队
 	if err := st.scanLocalMetaForUpload(); err != nil {
 		t.Fatalf("second scanLocalMetaForUpload failed: %v", err)
 	}
@@ -399,8 +416,313 @@ func TestScanLocalMetaForUpload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(tasks) != 2 {
+		t.Fatalf("expected still 2 upload tasks after dedup, got %d", len(tasks))
+	}
+}
+
+// TestScanLocalMetaForUpload115CarriesRemoteRef 验证 115 覆盖上传时任务携带
+// 网盘旧文件 ID（供上传前删除旧文件，避免同名重复），网盘无同名文件时不携带。
+func TestScanLocalMetaForUpload115CarriesRemoteRef(t *testing.T) {
+	svc := testStrmService(t)
+	localDir := t.TempDir()
+
+	// movie.nfo 网盘已有同名但大小不同（需要删除旧文件后覆盖上传）
+	writeFile(t, filepath.Join(localDir, "movie.nfo"), "local-nfo-data")
+	// fresh.nfo 网盘没有（普通上传，不携带 ref）
+	writeFile(t, filepath.Join(localDir, "fresh.nfo"), "fresh-nfo")
+
+	p := &model.StrmSyncPath{
+		Base:       model.Base{ID: "test-path-upload-115"},
+		AccountID:  "acct-1",
+		Provider:   model.StrmProvider115,
+		RemotePath: "100",
+		LocalPath:  localDir,
+		UploadMeta: true,
+	}
+
+	st := &strmSyncState{
+		s:             svc,
+		ctx:           context.Background(),
+		p:             p,
+		cfg:           &strmPathConfig{UploadMeta: true, MetaExt: []string{"jpg", "nfo"}},
+		rec:           &model.StrmSyncRecord{},
+		seenMeta:      map[string]bool{},
+		remoteMeta:    map[string]int64{},
+		remoteMetaRef: map[string]string{},
+	}
+	st.remoteMeta["m:movie.nfo"] = 1
+	st.remoteMetaRef["m:movie.nfo"] = "file-42"
+
+	if err := st.scanLocalMetaForUpload(); err != nil {
+		t.Fatalf("scanLocalMetaForUpload failed: %v", err)
+	}
+
+	tasks, _, err := svc.repo.StrmUpload.List(context.Background(), "", 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 2 {
+		t.Fatalf("expected 2 upload tasks, got %d", len(tasks))
+	}
+	for _, task := range tasks {
+		switch task.FileName {
+		case "movie.nfo":
+			if task.RemoteRef != "file-42" {
+				t.Errorf("movie.nfo upload task should carry remote ref %q, got %q", "file-42", task.RemoteRef)
+			}
+			if task.RemotePath != "100" {
+				t.Errorf("movie.nfo upload task remote path = %q, want parent cid %q", task.RemotePath, "100")
+			}
+		case "fresh.nfo":
+			if task.RemoteRef != "" {
+				t.Errorf("fresh.nfo (not on remote) should not carry remote ref, got %q", task.RemoteRef)
+			}
+		default:
+			t.Errorf("unexpected upload task %s", task.FileName)
+		}
+	}
+}
+
+func taskNames(tasks []model.StrmUploadTask) []string {
+	names := make([]string, 0, len(tasks))
+	for _, task := range tasks {
+		names = append(names, task.FileName)
+	}
+	return names
+}
+
+// TestPruneLocalKeepsLocalMeta 验证清理规则：远端已删除的视频 .strm 仍会被清理，
+// 但本地元数据一律保留（即使开启"下载元数据"且未开启"上传元数据"、网盘端没有
+// 该元数据，也不再删除本地刮削好的 nfo/图片/字幕）。
+func TestPruneLocalKeepsLocalMeta(t *testing.T) {
+	svc := testStrmService(t)
+	localDir := t.TempDir()
+
+	// 阿凡达.strm（对应视频已被网盘删除 → 应清理）+ 阿凡达.nfo（网盘没有 → 保留）
+	writeFile(t, filepath.Join(localDir, "电影", "阿凡达.strm"), "http://test.local:8096/x")
+	writeFile(t, filepath.Join(localDir, "电影", "阿凡达.nfo"), "<local scraped meta/>")
+	writeFile(t, filepath.Join(localDir, "电影", "poster.jpg"), "local-poster")
+
+	p := &model.StrmSyncPath{
+		Base:         model.Base{ID: "prune-meta-path"},
+		Provider:     model.StrmProvider115,
+		RemotePath:   "0",
+		LocalPath:    localDir,
+		DownloadMeta: true,
+		UploadMeta:   false,
+	}
+
+	st := &strmSyncState{
+		s:          svc,
+		ctx:        context.Background(),
+		p:          p,
+		cfg:        &strmPathConfig{DownloadMeta: true, UploadMeta: false, MetaExt: []string{"nfo", "jpg"}},
+		rec:        &model.StrmSyncRecord{},
+		syncType:   model.StrmSyncTypeFull,
+		seenVideo:  map[string]bool{},
+		seenMeta:   map[string]bool{},
+		remoteMeta: map[string]int64{},
+	}
+	// 本次远端扫描既没有看到视频，也没有看到任何元数据
+	if err := st.pruneLocal(); err != nil {
+		t.Fatalf("pruneLocal failed: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(localDir, "电影", "阿凡达.strm")); !os.IsNotExist(err) {
+		t.Fatalf("orphan .strm should be pruned, stat err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(localDir, "电影", "阿凡达.nfo")); err != nil {
+		t.Fatalf("local meta must be kept even when missing on remote: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(localDir, "电影", "poster.jpg")); err != nil {
+		t.Fatalf("local poster must be kept even when missing on remote: %v", err)
+	}
+	if st.rec.Pruned != 1 {
+		t.Fatalf("expected 1 pruned (strm only), got %d", st.rec.Pruned)
+	}
+}
+
+// TestHandleMetaKeepsLocalWhenUploadEnabled 验证下载侧规则：开启"上传元数据"时
+// 以本地为准——本地已存在的元数据（即使与网盘大小不同）不再入下载队列被网盘版本
+// 覆盖；本地不存在的元数据仍正常入队下载。
+func TestHandleMetaKeepsLocalWhenUploadEnabled(t *testing.T) {
+	svc := testStrmService(t)
+	localDir := t.TempDir()
+
+	// 本地已有 test.nfo（大小 50，与网盘版本大小 100 不同）
+	writeFile(t, filepath.Join(localDir, "test.nfo"), strings.Repeat("L", 50))
+
+	p := &model.StrmSyncPath{
+		Base:         model.Base{ID: "meta-local-wins-path"},
+		Provider:     model.StrmProvider115,
+		RemotePath:   "0",
+		LocalPath:    localDir,
+		DownloadMeta: true,
+		UploadMeta:   true,
+	}
+
+	st := &strmSyncState{
+		s:              svc,
+		ctx:            context.Background(),
+		p:              p,
+		cfg:            &strmPathConfig{DownloadMeta: true, UploadMeta: true, MetaExt: []string{"nfo"}},
+		rec:            &model.StrmSyncRecord{},
+		seenMeta:       map[string]bool{},
+		remoteMeta:     map[string]int64{},
+		remoteMetaRef:  map[string]string{},
+		seenMetaTarget: map[string]cloud.FileEntry{},
+	}
+
+	// 网盘版本与本地不同：本地存在 → 不入下载队列（以本地为准）
+	entry := cloud.FileEntry{ID: "r1", Name: "test.nfo", Size: 100, PickCode: "pc1"}
+	st.handleMeta(entry, "test.nfo", ".nfo")
+	// 网盘独有：本地不存在 → 正常入下载队列
+	missing := cloud.FileEntry{ID: "r2", Name: "absent.nfo", Size: 200, PickCode: "pc2"}
+	st.handleMeta(missing, "absent.nfo", ".nfo")
+	st.flushPendingDownloads()
+
+	tasks, _, err := svc.repo.StrmDownload.List(context.Background(), "", 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(tasks) != 1 {
-		t.Fatalf("expected still 1 upload task after dedup, got %d", len(tasks))
+		t.Fatalf("expected only 1 download task (absent.nfo), got %d", len(tasks))
+	}
+	if tasks[0].FileName != "absent.nfo" {
+		t.Fatalf("expected download task for absent.nfo, got %s", tasks[0].FileName)
+	}
+	if st.rec.NewMeta != 1 {
+		t.Fatalf("expected NewMeta = 1, got %d", st.rec.NewMeta)
+	}
+}
+
+// TestScanLocalMetaForUploadSha1Identity 验证 115 远端 SHA1 可用时按内容精确比对：
+// 同名同大小同内容（大小写不敏感）跳过；同名同大小不同内容以本地为准覆盖上传，
+// 且任务携带网盘旧文件 ID。纯大小比对无法识别"同大小不同内容"（如 nfo 改一个字符）。
+func TestScanLocalMetaForUploadSha1Identity(t *testing.T) {
+	svc := testStrmService(t)
+	localDir := t.TempDir()
+
+	// same.nfo / diff.nfo 本地与网盘大小均相同：
+	// same.nfo 网盘内容与本地一致（SHA1 相同）→ 同一文件，跳过；
+	// diff.nfo 网盘上是另一个同大小文件（SHA1 不同）→ 以本地为准覆盖上传。
+	writeFile(t, filepath.Join(localDir, "same.nfo"), "same-content")
+	writeFile(t, filepath.Join(localDir, "diff.nfo"), "diff-content")
+	otherFile := filepath.Join(localDir, "other.tmp")
+	writeFile(t, otherFile, "other-content!")
+
+	sameSha, err := cloud115.FileSHA1(filepath.Join(localDir, "same.nfo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherSha, err := cloud115.FileSHA1(otherFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p := &model.StrmSyncPath{
+		Base:       model.Base{ID: "test-path-upload-sha1"},
+		AccountID:  "acct-1",
+		Provider:   model.StrmProvider115,
+		RemotePath: "100",
+		LocalPath:  localDir,
+		UploadMeta: true,
+	}
+	st := &strmSyncState{
+		s:              svc,
+		ctx:            context.Background(),
+		p:              p,
+		cfg:            &strmPathConfig{UploadMeta: true, MetaExt: []string{"nfo"}},
+		rec:            &model.StrmSyncRecord{},
+		seenMeta:       map[string]bool{},
+		remoteMeta:     map[string]int64{},
+		remoteMetaRef:  map[string]string{},
+		remoteMetaSha1: map[string]string{},
+	}
+	// 115 返回大写 SHA1，本地计算为小写：同时验证大小写不敏感比对
+	st.remoteMeta["m:same.nfo"] = int64(len("same-content"))
+	st.remoteMetaSha1["m:same.nfo"] = strings.ToUpper(sameSha)
+	st.remoteMeta["m:diff.nfo"] = int64(len("diff-content"))
+	st.remoteMetaSha1["m:diff.nfo"] = strings.ToUpper(otherSha)
+	st.remoteMetaRef["m:diff.nfo"] = "old-diff-1"
+
+	if err := st.scanLocalMetaForUpload(); err != nil {
+		t.Fatalf("scanLocalMetaForUpload failed: %v", err)
+	}
+
+	tasks, _, err := svc.repo.StrmUpload.List(context.Background(), "", 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 upload task (diff.nfo), got %d: %v", len(tasks), taskNames(tasks))
+	}
+	if tasks[0].FileName != "diff.nfo" {
+		t.Fatalf("expected upload task for diff.nfo, got %s", tasks[0].FileName)
+	}
+	if tasks[0].RemoteRef != "old-diff-1" {
+		t.Fatalf("diff.nfo task should carry remote ref %q, got %q", "old-diff-1", tasks[0].RemoteRef)
+	}
+}
+
+// TestHandleMetaSha1Identity 验证下载侧（未开启上传时镜像网盘元数据）：
+// 同名同大小同 SHA1 跳过；网盘更新了同大小元数据（SHA1 不同）仍会下载；
+// 网盘未返回哈希时退回大小比对。
+func TestHandleMetaSha1Identity(t *testing.T) {
+	svc := testStrmService(t)
+	localDir := t.TempDir()
+
+	writeFile(t, filepath.Join(localDir, "same.nfo"), "identical-data")   // 与网盘内容一致
+	writeFile(t, filepath.Join(localDir, "stale.nfo"), "stale-content!!") // 网盘已更新为同大小新内容
+	writeFile(t, filepath.Join(localDir, "nohash.nfo"), "nohash-content") // 网盘未返回 SHA1
+	otherFile := filepath.Join(localDir, "other.tmp")
+	writeFile(t, otherFile, "totally-newdata")
+
+	sameSha, err := cloud115.FileSHA1(filepath.Join(localDir, "same.nfo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherSha, err := cloud115.FileSHA1(otherFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p := &model.StrmSyncPath{
+		Base:         model.Base{ID: "meta-sha1-path"},
+		Provider:     model.StrmProvider115,
+		RemotePath:   "0",
+		LocalPath:    localDir,
+		DownloadMeta: true,
+		UploadMeta:   false,
+	}
+	st := &strmSyncState{
+		s:              svc,
+		ctx:            context.Background(),
+		p:              p,
+		cfg:            &strmPathConfig{DownloadMeta: true, UploadMeta: false, MetaExt: []string{"nfo"}},
+		rec:            &model.StrmSyncRecord{},
+		seenMeta:       map[string]bool{},
+		remoteMeta:     map[string]int64{},
+		remoteMetaRef:  map[string]string{},
+		remoteMetaSha1: map[string]string{},
+		seenMetaTarget: map[string]cloud.FileEntry{},
+	}
+
+	st.handleMeta(cloud.FileEntry{ID: "r1", Name: "same.nfo", Size: int64(len("identical-data")), Sha1: strings.ToUpper(sameSha), PickCode: "pc1"}, "same.nfo", ".nfo")
+	st.handleMeta(cloud.FileEntry{ID: "r2", Name: "stale.nfo", Size: int64(len("stale-content!!")), Sha1: strings.ToUpper(otherSha), PickCode: "pc2"}, "stale.nfo", ".nfo")
+	st.handleMeta(cloud.FileEntry{ID: "r3", Name: "nohash.nfo", Size: int64(len("nohash-content")), PickCode: "pc3"}, "nohash.nfo", ".nfo")
+	st.flushPendingDownloads()
+
+	tasks, _, err := svc.repo.StrmDownload.List(context.Background(), "", 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("expected only 1 download task (stale.nfo), got %d", len(tasks))
+	}
+	if tasks[0].FileName != "stale.nfo" {
+		t.Fatalf("expected download task for stale.nfo, got %s", tasks[0].FileName)
 	}
 }
 
@@ -672,7 +994,7 @@ func TestWalk115FlatAbortsOnDirResolveFailure(t *testing.T) {
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/open/ufile/files":
-			w.Write([]byte(`{"state":true,"count":1,"data":[{"fid":"100","pid":"999","fc":1,"fn":"movie.mkv","pc":"pc1","upt":1700000000,"fs":1024}]}`))
+			w.Write([]byte(`{"state":true,"count":1,"data":[{"fid":"100","pid":"999","fc":"1","fn":"movie.mkv","pc":"pc1","upt":1700000000,"fs":1024}]}`))
 		case "/open/folder/get_info":
 			w.Write([]byte(`{"state":false,"code":40140123,"message":"access_token 格式错误"}`))
 		default:
@@ -714,5 +1036,128 @@ func TestWalk115FlatAbortsOnDirResolveFailure(t *testing.T) {
 	})
 	if strmCount != 0 {
 		t.Fatalf("expected no .strm written after abort, got %d", strmCount)
+	}
+}
+
+// TestWalk115FlatConcurrentProcessing 验证 115 平铺拉取后文件分类处理走并发
+// worker 池：同一父目录下多个视频的 strm 全部生成，且解析出的目录拓扑缓存
+// 通过 SetBatch 批量落库，供下次增量同步预加载（省掉重复的 get_info 调用）。
+func TestWalk115FlatConcurrentProcessing(t *testing.T) {
+	svc := testStrmService(t)
+	localDir := t.TempDir()
+	acct := &model.StrmAccount{Name: "fake115", Provider: "cloud115", Config: "{}", Enabled: true}
+	if err := svc.repo.StrmAccount.Create(context.Background(), acct); err != nil {
+		t.Fatal(err)
+	}
+	p := &model.StrmSyncPath{
+		Base:       model.Base{ID: "flat-path"},
+		AccountID:  acct.ID,
+		Provider:   model.StrmProvider115,
+		RemotePath: "0",
+		LocalPath:  localDir,
+	}
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/open/ufile/files":
+			w.Write([]byte(`{"state":true,"count":3,"data":[
+				{"fid":"101","pid":"999","fc":"1","fn":"m1.mkv","pc":"pc1","upt":1700000001,"fs":1024},
+				{"fid":"102","pid":"999","fc":"1","fn":"m2.mkv","pc":"pc2","upt":1700000002,"fs":2048},
+				{"fid":"103","pid":"999","fc":"1","fn":"m3.mkv","pc":"pc3","upt":1700000003,"fs":4096}]}`))
+		case "/open/folder/get_info":
+			w.Write([]byte(`{"state":true,"data":{"file_id":"999","file_name":"Movies","file_category":"0",
+				"paths":[{"file_id":"0","file_name":"根目录"},{"file_id":"999","file_name":"Movies"}]}}`))
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer api.Close()
+	oldPro := cloud115.ProAPIBase
+	cloud115.ProAPIBase = api.URL
+	defer func() { cloud115.ProAPIBase = oldPro }()
+
+	oc := cloud115.NewOpenClient("app", "at", "rt")
+	st := &strmSyncState{
+		s:               svc,
+		ctx:             context.Background(),
+		p:               p,
+		provider:        cloud.NewOpenAPI115("app", "at", "rt"),
+		cfg:             &strmPathConfig{VideoExt: []string{"mkv"}, MetaExt: []string{"nfo"}, AddPath: 1},
+		rec:             &model.StrmSyncRecord{},
+		syncType:        model.StrmSyncTypeFull,
+		dirCache:        sync.Map{},
+		seenVideo:       map[string]bool{},
+		seenMeta:        map[string]bool{},
+		remoteMeta:      map[string]int64{},
+		remoteMetaRef:   map[string]string{},
+		remoteMetaSha1:  map[string]string{},
+		seenMetaTarget:  map[string]cloud.FileEntry{},
+		seenVideoTarget: map[string]cloud.FileEntry{},
+	}
+	if err := st.walk115Flat(oc); err != nil {
+		t.Fatalf("walk115Flat: %v", err)
+	}
+
+	// 3 个视频的 strm 全部生成
+	if st.rec.NewStrm != 3 {
+		t.Fatalf("expected 3 strm created, got %d", st.rec.NewStrm)
+	}
+	for _, name := range []string{"m1.strm", "m2.strm", "m3.strm"} {
+		if _, err := os.Stat(filepath.Join(localDir, "Movies", name)); err != nil {
+			t.Fatalf("strm %s missing: %v", name, err)
+		}
+	}
+
+	// 目录拓扑缓存已批量落库
+	rows, err := svc.repo.StrmDirCache.ListBySyncPathID(context.Background(), p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].DirID != "999" || rows[0].Path != "Movies" {
+		t.Fatalf("dir cache rows = %#v, want one row for dir 999 -> Movies", rows)
+	}
+
+	// 增量同步复用目录缓存：不再发起 get_info 调用
+	var infoCalls int
+	api.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/open/ufile/files":
+			w.Write([]byte(`{"state":true,"count":3,"data":[
+				{"fid":"101","pid":"999","fc":"1","fn":"m1.mkv","pc":"pc1","upt":1700000001,"fs":1024},
+				{"fid":"102","pid":"999","fc":"1","fn":"m2.mkv","pc":"pc2","upt":1700000002,"fs":2048},
+				{"fid":"103","pid":"999","fc":"1","fn":"m3.mkv","pc":"pc3","upt":1700000003,"fs":4096}]}`))
+		case "/open/folder/get_info":
+			infoCalls++
+			w.Write([]byte(`{"state":true,"data":{"file_id":"999","file_name":"Movies","file_category":"0","paths":[]}}`))
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+	})
+
+	st2 := &strmSyncState{
+		s:               svc,
+		ctx:             context.Background(),
+		p:               p,
+		provider:        cloud.NewOpenAPI115("app", "at", "rt"),
+		cfg:             st.cfg,
+		rec:             &model.StrmSyncRecord{},
+		syncType:        model.StrmSyncTypeIncremental,
+		dirCache:        sync.Map{},
+		seenVideo:       map[string]bool{},
+		seenMeta:        map[string]bool{},
+		remoteMeta:      map[string]int64{},
+		remoteMetaRef:   map[string]string{},
+		remoteMetaSha1:  map[string]string{},
+		seenMetaTarget:  map[string]cloud.FileEntry{},
+		seenVideoTarget: map[string]cloud.FileEntry{},
+	}
+	if err := st2.walk115Flat(oc); err != nil {
+		t.Fatalf("incremental walk115Flat: %v", err)
+	}
+	if infoCalls != 0 {
+		t.Fatalf("incremental sync should reuse dir cache, got %d get_info calls", infoCalls)
+	}
+	if st2.rec.NewStrm != 0 || st2.rec.Skipped != 3 {
+		t.Fatalf("incremental sync should skip all, new = %d skipped = %d", st2.rec.NewStrm, st2.rec.Skipped)
 	}
 }
